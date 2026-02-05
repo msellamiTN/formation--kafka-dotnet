@@ -6,6 +6,29 @@
 
 Créer une application console .NET qui envoie des messages simples (string) à Kafka avec gestion d'erreurs de base.
 
+### Architecture du Lab
+
+```mermaid
+flowchart LR
+    subgraph Producer["📦 .NET Producer"]
+        A["Program.cs"] --> B["ProducerBuilder"]
+        B --> C["ProduceAsync"]
+    end
+    
+    subgraph Kafka["🔥 Kafka Cluster"]
+        D["Topic: orders.created"]
+        E["Partition 0..5"]
+    end
+    
+    C -->|Envoi message| D
+    D -->|Distribution| E
+    
+    style Producer fill:#e1f5fe,stroke:#01579b
+    style Kafka fill:#fff3e0,stroke:#e65100
+```
+
+Ce diagramme illustre le flux de données : votre application .NET crée un producer, qui envoie des messages au topic Kafka qui les distribue sur ses partitions.
+
 ## 📚 Ce que vous allez apprendre
 
 - Configuration minimale d'un Producer Kafka
@@ -60,8 +83,27 @@ kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 
 
 ### Étape 1 : Créer le projet
 
-#### Avec Visual Studio Code
+#### 💻 Option A : Visual Studio Code (Recommandé pour débutants)
 
+Visual Studio Code est un éditeur léger, gratuit et multiplateforme. Idéal pour les labs Kafka.
+
+**Prérequis** :
+- [Visual Studio Code](https://code.visualstudio.com/download) installé
+- [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) installé
+- Extension C# Dev Kit (optionnel mais recommandé)
+
+```mermaid
+flowchart TD
+    A["💻 Visual Studio Code"] --> B["📁 Ouvrir le dossier lab-1.2a-producer-basic"]
+    B --> C["⚡ Terminal: dotnet new console -n KafkaProducerBasic"]
+    C --> D["📦 dotnet add package Confluent.Kafka"]
+    D --> E["▶️ dotnet run"]
+    
+    style A fill:#007acc,color:#fff
+    style E fill:#4caf50,color:#fff
+```
+
+**Commandes** :
 ```bash
 # Naviguer vers le dossier du lab
 cd lab-1.2a-producer-basic
@@ -80,20 +122,72 @@ dotnet add package Microsoft.Extensions.Logging --version 8.0.0
 dotnet add package Microsoft.Extensions.Logging.Console --version 8.0.0
 ```
 
-#### Avec Visual Studio 2022
+**Dans VS Code** :
+1. `Ctrl+J` pour ouvrir le terminal intégré
+2. `F5` pour déboguer ou `Ctrl+F5` pour exécuter sans débogage
+3. `Ctrl+Shift+P` → ".NET: Generate Assets for Build and Debug" (pour créer launch.json)
 
-1. Ouvrir Visual Studio 2022
-2. **Fichier** → **Nouveau** → **Projet**
-3. Sélectionner **Application console** (C#)
-4. Nom : `KafkaProducerBasic`
-5. Emplacement : `lab-1.2a-producer-basic`
-6. Framework : **.NET 8.0**
-7. Cliquer sur **Créer**
-8. Clic droit sur le projet → **Gérer les packages NuGet**
-9. Installer :
-   - `Confluent.Kafka` (version 2.3.0)
-   - `Microsoft.Extensions.Logging` (version 8.0.0)
-   - `Microsoft.Extensions.Logging.Console` (version 8.0.0)
+---
+
+#### 🎨 Option B : Visual Studio 2022 (IDE complet)
+
+Visual Studio 2022 offre une expérience IDE complète avec IntelliSense avancé, débogage graphique et designers visuels.
+
+**Prérequis** :
+- [Visual Studio 2022](https://visualstudio.microsoft.com/vs/) installé
+- Workload **"Développement .NET Desktop"** sélectionné lors de l'installation
+
+```mermaid
+flowchart TD
+    A["🎨 Visual Studio 2022"] --> B["📁 Fichier → Nouveau → Projet"]
+    B --> C["📋 Sélectionner 'Application console'"]
+    C --> D["⚙️ Framework: .NET 8.0"]
+    D --> E["📦 Gérer les packages NuGet"]
+    E --> F["▶️ F5 pour exécuter"]
+    
+    style A fill:#5c2d91,color:#fff
+    style F fill:#4caf50,color:#fff
+```
+
+**Instructions détaillées** :
+
+1. **Fichier** → **Nouveau** → **Projet** (`Ctrl+Shift+N`)
+
+2. Sélectionner **Application console** (pas "Application console (.NET Framework)")
+   ```
+   Modèles > C# > Application console
+   ```
+
+3. Configuration du projet :
+   | Paramètre | Valeur |
+   |-----------|--------|
+   | Nom du projet | `KafkaProducerBasic` |
+   | Emplacement | `lab-1.2a-producer-basic` |
+   | Framework | **.NET 8.0** |
+
+4. Ajouter les packages NuGet :
+   - Clic droit sur le projet → **Gérer les packages NuGet**
+   - Onglet **Parcourir**, rechercher et installer :
+     - ✅ `Confluent.Kafka` version **2.3.0**
+     - ✅ `Microsoft.Extensions.Logging` version **8.0.0**
+     - ✅ `Microsoft.Extensions.Logging.Console` version **8.0.0**
+
+5. Exécuter le projet :
+   - **F5** : Exécuter avec débogage (breakpoints, inspection variables)
+   - **Ctrl+F5** : Exécuter sans débogage (plus rapide)
+
+---
+
+#### 📊 Comparaison VS Code vs Visual Studio
+
+| Critère | VS Code | Visual Studio 2022 |
+|---------|---------|---------------------|
+| **Poids** | Léger (~300MB) | Lourd (~2-3GB) |
+| **Prix** | Gratuit | Gratuit (Community) |
+| **Débogage** | Basique | Avancé (points d'arrêt conditionnels, visualization) |
+| **IntelliSense** | Bon | Excellent |
+| **Idéal pour** | Labs, scripts | Projets complexes, équipes |
+| **Multiplateforme** | ✅ Windows/Mac/Linux | ⚠️ Windows uniquement |
 
 ---
 
@@ -165,6 +259,30 @@ using var producer = new ProducerBuilder<Null, string>(config)
 - `SetLogHandler` : Logs internes de librdkafka
 
 #### Envoi de Messages
+
+```mermaid
+sequenceDiagram
+    participant App as Application .NET
+    participant Producer as Kafka Producer
+    participant Buffer as Buffer Mémoire
+    participant Broker as Kafka Broker
+    participant Topic as Topic orders.created
+
+    App->>Producer: ProduceAsync(message)
+    Producer->>Buffer: Queue message
+    Producer-->>App: Task (async)
+    
+    Note over Buffer: Batch & Linger.ms
+    
+    Buffer->>Broker: Send batch
+    Broker->>Topic: Write to partition
+    Broker-->>Buffer: Ack (partition, offset)
+    Buffer-->>App: DeliveryResult
+    
+    App->>App: Log Partition + Offset
+```
+
+Ce diagramme montre le flux asynchrone : l'application envoie un message, il est mis en buffer, envoyé au broker, et la confirmation arrive avec les métadonnées (partition, offset).
 
 ```csharp
 var deliveryResult = await producer.ProduceAsync(topicName, new Message<Null, string>

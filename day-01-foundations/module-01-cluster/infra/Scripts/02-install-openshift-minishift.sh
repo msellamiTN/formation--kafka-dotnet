@@ -24,7 +24,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 # Configuration
 #===============================================================================
 CRC_VERSION="4.15.0"
-CRC_MEMORY="16384"  # 16GB RAM
+CRC_MEMORY="15000"  # 16GB RAM
 CRC_CPUS="4"
 CRC_DISK_SIZE="120"
 CRC_BASE_DIR="/opt/crc"

@@ -6,6 +6,37 @@
 
 Comprendre comment la clé détermine la partition et garantit l'ordre des messages pour une même entité (client, commande, compte bancaire).
 
+### Pourquoi utiliser une clé ?
+
+```mermaid
+flowchart TB
+    subgraph "Sans Clé (LAB 1.2A)"
+        A1["Msg 1"] --> P1["Partition 0"]
+        A2["Msg 2"] --> P2["Partition 1"]
+        A3["Msg 3"] --> P3["Partition 2"]
+        A4["Msg 4"] --> P4["Partition 0"]
+    end
+    
+    subgraph "Avec Clé (LAB 1.2B)"
+        B1["Key: customer-A"] --> Q1["Partition 0"]
+        B2["Key: customer-A"] --> Q1
+        B3["Key: customer-A"] --> Q1
+        B4["Key: customer-B"] --> Q2["Partition 1"]
+    end
+    
+    style A1 fill:#ffcc80
+    style A2 fill:#ffcc80
+    style A3 fill:#ffcc80
+    style A4 fill:#ffcc80
+    style B1 fill:#81d4fa
+    style B2 fill:#81d4fa
+    style B3 fill:#81d4fa
+    style B4 fill:#a5d6a7
+```
+
+**Sans clé** : Distribution aléatoire → pas d'ordre garanti  
+**Avec clé** : Même clé = même partition → ordre garanti pour cette clé
+
 ## 📚 Ce que vous allez apprendre
 
 - Différence entre messages avec et sans clé
@@ -69,11 +100,21 @@ await producer.ProduceAsync("orders", new Message<string, string>
 
 #### Formule de partitionnement
 
-```
-partition = murmur2_hash(key) % nombre_partitions
+```mermaid
+flowchart LR
+    A["📝 Clé: 'customer-A'"] --> B["🔢 Hash Murmur2"]
+    B --> C["💻 1234567890"]
+    C --> D["📊 % 6 partitions"]
+    D --> E["📦 Partition 4"]
+    
+    style A fill:#bbdefb,stroke:#1976d2
+    style B fill:#fff9c4,stroke:#fbc02d
+    style E fill:#c8e6c9,stroke:#388e3c
 ```
 
-**Exemple** :
+**Formule** : `partition = murmur2_hash(key) % nombre_partitions`
+
+**Exemple concret** :
 - Topic avec 6 partitions
 - Clé = "customer-A"
 - Hash Murmur2("customer-A") = 1234567890
