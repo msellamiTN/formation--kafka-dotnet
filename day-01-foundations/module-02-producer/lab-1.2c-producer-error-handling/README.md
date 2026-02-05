@@ -82,6 +82,7 @@ dotnet run
 Créer les topics nécessaires :
 
 **Docker** :
+
 ```bash
 # Topic principal
 docker exec kafka /opt/kafka/bin/kafka-topics.sh \
@@ -101,6 +102,7 @@ docker exec kafka /opt/kafka/bin/kafka-topics.sh \
 ```
 
 **OKD/K3s** :
+
 ```bash
 kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
   --restart=Never -n kafka -- \
@@ -137,6 +139,7 @@ flowchart TD
 ```
 
 **Commandes** :
+
 ```bash
 cd lab-1.2c-producer-error-handling
 dotnet new console -n KafkaProducerErrorHandling
@@ -169,16 +172,17 @@ flowchart TD
 ```
 
 **Instructions** :
-1. **Fichier** → **Nouveau** → **Projet** (`Ctrl+Shift+N`)
-2. Sélectionner **Application console** C#
-3. Nom : `KafkaProducerErrorHandling`
-4. Framework : **.NET 8.0**
-5. Clic droit projet → **Gérer les packages NuGet** :
-   - ✅ `Confluent.Kafka` version **2.3.0**
-   - ✅ `Microsoft.Extensions.Logging` version **8.0.0**
-   - ✅ `Microsoft.Extensions.Logging.Console` version **8.0.0**
-   - ✅ `System.Text.Json` version **8.0.0**
-6. **F5** pour exécuter avec débogage
+
+1.  **Fichier** → **Nouveau** → **Projet** (`Ctrl+Shift+N`)
+2.  Sélectionner **Application console** C#
+3.  Nom : `KafkaProducerErrorHandling`
+4.  Framework : **.NET 8.0**
+5.  Clic droit projet → **Gérer les packages NuGet** :
+    - ✅ `Confluent.Kafka` version **2.3.0**
+    - ✅ `Microsoft.Extensions.Logging` version **8.0.0**
+    - ✅ `Microsoft.Extensions.Logging.Console` version **8.0.0**
+    - ✅ `System.Text.Json` version **8.0.0**
+6.  **F5** pour exécuter avec débogage
 
 ---
 

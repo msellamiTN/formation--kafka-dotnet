@@ -48,7 +48,7 @@ flowchart TB
 
 ---
 
-## �️ Quick Start (5 minutes)
+## 🛠️ Quick Start (5 minutes)
 
 Pour une exécution rapide sans lire tout le lab :
 
@@ -97,6 +97,7 @@ flowchart TD
 **Prérequis** : Visual Studio Code + .NET 8.0 SDK
 
 **Commandes** :
+
 ```bash
 cd lab-1.2b-producer-keyed
 dotnet new console -n KafkaProducerKeyed
@@ -127,15 +128,16 @@ flowchart TD
 ```
 
 **Instructions** :
-1. **Fichier** → **Nouveau** → **Projet** (`Ctrl+Shift+N`)
-2. Sélectionner **Application console** C#
-3. Nom : `KafkaProducerKeyed`
-4. Framework : **.NET 8.0**
-5. Clic droit projet → **Gérer les packages NuGet** :
-   - ✅ `Confluent.Kafka` version **2.3.0**
-   - ✅ `Microsoft.Extensions.Logging` version **8.0.0**
-   - ✅ `Microsoft.Extensions.Logging.Console` version **8.0.0**
-6. **F5** pour exécuter avec débogage
+
+1.  **Fichier** → **Nouveau** → **Projet** (`Ctrl+Shift+N`)
+2.  Sélectionner **Application console** C#
+3.  Nom : `KafkaProducerKeyed`
+4.  Framework : **.NET 8.0**
+5.  Clic droit projet → **Gérer les packages NuGet** :
+    - ✅ `Confluent.Kafka` version **2.3.0**
+    - ✅ `Microsoft.Extensions.Logging` version **8.0.0**
+    - ✅ `Microsoft.Extensions.Logging.Console` version **8.0.0**
+6.  **F5** pour exécuter avec débogage
 
 ---
 
@@ -326,38 +328,38 @@ kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 
 
 **Instructions** :
 
-1. Modifier le code :
+1.  Modifier le code :
 
-```csharp
-var customers = Enumerable.Range(0, 10)
-    .Select(i => $"customer-{(char)('A' + i)}")
-    .ToArray();
+    ```csharp
+    var customers = Enumerable.Range(0, 10)
+        .Select(i => $"customer-{(char)('A' + i)}")
+        .ToArray();
 
-for (int i = 1; i <= 60; i++)
-{
-    var customerId = customers[i % 10];
-    // ... reste du code
-}
-```
+    for (int i = 1; i <= 60; i++)
+    {
+        var customerId = customers[i % 10];
+        // ... reste du code
+    }
+    ```
 
-2. Ajouter un compteur de distribution :
+2.  Ajouter un compteur de distribution :
 
-```csharp
-var partitionCounts = new Dictionary<int, int>();
+    ```csharp
+    var partitionCounts = new Dictionary<int, int>();
 
-// Dans la boucle, après ProduceAsync :
-partitionCounts[deliveryResult.Partition.Value] = 
-    partitionCounts.GetValueOrDefault(deliveryResult.Partition.Value, 0) + 1;
+    // Dans la boucle, après ProduceAsync :
+    partitionCounts[deliveryResult.Partition.Value] = 
+        partitionCounts.GetValueOrDefault(deliveryResult.Partition.Value, 0) + 1;
 
-// Après la boucle :
-Console.WriteLine("\n=== Distribution des messages par partition ===");
-foreach (var kvp in partitionCounts.OrderBy(x => x.Key))
-{
-    Console.WriteLine($"Partition {kvp.Key}: {kvp.Value} messages");
-}
-```
+    // Après la boucle :
+    Console.WriteLine("\n=== Distribution des messages par partition ===");
+    foreach (var kvp in partitionCounts.OrderBy(x => x.Key))
+    {
+        Console.WriteLine($"Partition {kvp.Key}: {kvp.Value} messages");
+    }
+    ```
 
-3. Exécuter et observer la distribution.
+3.  Exécuter et observer la distribution.
 
 **Question** : La distribution est-elle uniforme ? Pourquoi ?
 
@@ -376,18 +378,18 @@ Avec 10 clients et 6 partitions, la distribution dépend du hash de chaque clé.
 
 **Instructions** :
 
-1. Modifier le code pour que 80% des messages aient la même clé :
+1.  Modifier le code pour que 80% des messages aient la même clé :
 
-```csharp
-for (int i = 1; i <= 100; i++)
-{
-    // 80% des messages avec customer-A, 20% avec les autres
-    var customerId = (i % 10 < 8) ? "customer-A" : $"customer-{(char)('B' + (i % 4))}";
-    // ... reste du code
-}
-```
+    ```csharp
+    for (int i = 1; i <= 100; i++)
+    {
+        // 80% des messages avec customer-A, 20% avec les autres
+        var customerId = (i % 10 < 8) ? "customer-A" : $"customer-{(char)('B' + (i % 4))}";
+        // ... reste du code
+    }
+    ```
 
-2. Observer la distribution.
+2.  Observer la distribution.
 
 **Question** : Quelle partition reçoit le plus de messages ? Quel est le problème ?
 
@@ -411,27 +413,27 @@ La partition de "customer-A" reçoit 80 messages, les autres se partagent les 20
 
 **Instructions** :
 
-1. Ajouter cette méthode :
+1.  Ajouter cette méthode :
 
-```csharp
-static int PredictPartition(string key, int numPartitions)
-{
-    // Simuler le hash Murmur2 (simplifié)
-    var hash = key.GetHashCode();
-    return Math.Abs(hash) % numPartitions;
-}
-```
+    ```csharp
+    static int PredictPartition(string key, int numPartitions)
+    {
+        // Simuler le hash Murmur2 (simplifié)
+        var hash = key.GetHashCode();
+        return Math.Abs(hash) % numPartitions;
+    }
+    ```
 
-2. Avant d'envoyer un message, prédire sa partition :
+2.  Avant d'envoyer un message, prédire sa partition :
 
-```csharp
-var predictedPartition = PredictPartition(customerId, 6);
-Console.WriteLine($"Predicted partition for {customerId}: {predictedPartition}");
+    ```csharp
+    var predictedPartition = PredictPartition(customerId, 6);
+    Console.WriteLine($"Predicted partition for {customerId}: {predictedPartition}");
 
-var deliveryResult = await producer.ProduceAsync(...);
+    var deliveryResult = await producer.ProduceAsync(...);
 
-Console.WriteLine($"Actual partition: {deliveryResult.Partition.Value}");
-```
+    Console.WriteLine($"Actual partition: {deliveryResult.Partition.Value}");
+    ```
 
 **Note** : La prédiction peut ne pas être exacte car `GetHashCode()` n'est pas Murmur2, mais elle donne une idée.
 
@@ -486,16 +488,16 @@ Vous avez réussi ce lab si :
 
 ### 🎯 Points Clés à Retenir
 
-#### 1. Quand utiliser une clé ?
+1.  **Quand utiliser une clé ?
 
-✅ **Utilisez une clé si vous avez besoin de** :
-- **Ordre garanti** : Tous les événements d'une entité (client, commande) doivent arriver dans l'ordre
-- **Localité** : Un consumer doit voir tous les événements d'une entité ensemble
-- **Compaction** : Topic compacté (dernière valeur par clé conservée)
+    ✅ **Utilisez une clé si vous avez besoin de** :
+    - **Ordre garanti** : Tous les événements d'une entité (client, commande) doivent arriver dans l'ordre
+    - **Localité** : Un consumer doit voir tous les événements d'une entité ensemble
+    - **Compaction** : Topic compacté (dernière valeur par clé conservée)
 
-❌ **N'utilisez pas de clé si** :
-- Vous voulez une distribution uniforme sans contrainte d'ordre
-- Vous avez des clés très déséquilibrées (risque de hot partition)
+    ❌ **N'utilisez pas de clé si** :
+    - Vous voulez une distribution uniforme sans contrainte d'ordre
+    - Vous avez des clés très déséquilibrées (risque de hot partition)
 
 #### 2. Formule de partitionnement
 
@@ -507,29 +509,29 @@ partition = murmur2_hash(key) % nombre_partitions
 - **Uniforme** : Hash Murmur2 distribue bien les clés
 - **Stable** : Ne change pas si nombre de partitions constant
 
-#### 3. Hot Partitions
+3.  **Hot Partitions**
 
-**Problème** : Une partition reçoit beaucoup plus de messages que les autres.
+    **Problème** : Une partition reçoit beaucoup plus de messages que les autres.
 
-**Causes** :
-- Clés déséquilibrées (ex: 80% des messages avec même clé)
-- Clés mal choisies (ex: date du jour → tous les messages du jour sur même partition)
+    **Causes** :
+    - Clés déséquilibrées (ex: 80% des messages avec même clé)
+    - Clés mal choisies (ex: date du jour → tous les messages du jour sur même partition)
 
-**Solutions** :
-- Choisir des clés bien distribuées
-- Utiliser un hash de la clé si nécessaire
-- Augmenter le nombre de partitions
-- Utiliser une clé composite (ex: `customerId + orderId % 10`)
+    **Solutions** :
+    - Choisir des clés bien distribuées
+    - Utiliser un hash de la clé si nécessaire
+    - Augmenter le nombre de partitions
+    - Utiliser une clé composite (ex: `customerId + orderId % 10`)
 
-#### 4. Ordre des messages
+4.  **Ordre des messages**
 
-**Avec clé** :
-- Ordre garanti **au sein d'une partition**
-- Tous les messages avec même clé arrivent dans l'ordre
+    **Avec clé** :
+    - Ordre garanti **au sein d'une partition**
+    - Tous les messages avec même clé arrivent dans l'ordre
 
-**Sans clé** :
-- Aucune garantie d'ordre global
-- Sticky partitioner groupe les messages par batch
+    **Sans clé** :
+    - Aucune garantie d'ordre global
+    - Sticky partitioner groupe les messages par batch
 
 ---
 

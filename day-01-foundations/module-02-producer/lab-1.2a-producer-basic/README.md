@@ -40,7 +40,7 @@ Ce diagramme illustre le flux de données : votre application .NET crée un prod
 
 ---
 
-## �️ Quick Start (5 minutes)
+## 🛠️ Quick Start (5 minutes)
 
 Pour une exécution rapide sans lire tout le lab :
 
@@ -50,19 +50,36 @@ cd lab-1.2a-producer-basic
 dotnet new console -n KafkaProducerBasic
 cd KafkaProducerBasic
 dotnet add package Confluent.Kafka --version 2.3.0
+```
 
-# 2. Remplacer Program.cs avec le code fourni
-# 3. Exécuter
-dotnet run
+**Commandes** :
+
+```bash
+# Naviguer vers le dossier du lab
+cd lab-1.2a-producer-basic
+
+# Créer le projet console
+dotnet new console -n KafkaProducerBasic
+
+# Naviguer dans le projet
+cd KafkaProducerBasic
+
+# Ajouter le package Confluent.Kafka
+dotnet add package Confluent.Kafka --version 2.3.0
+
+# Ajouter les packages de logging
+dotnet add package Microsoft.Extensions.Logging --version 8.0.0
+dotnet add package Microsoft.Extensions.Logging.Console --version 8.0.0
 ```
 
 ---
 
-## �📋 Prérequis
+## � Prérequis
 
 ### Cluster Kafka en fonctionnement
 
 **Docker** :
+
 ```bash
 cd ../../module-01-cluster
 ./scripts/up.sh
@@ -70,6 +87,7 @@ cd ../../module-01-cluster
 ```
 
 **OKD/K3s** :
+
 ```bash
 kubectl get kafka -n kafka
 # Attendu : bhf-kafka avec status Ready
@@ -78,6 +96,7 @@ kubectl get kafka -n kafka
 ### Créer le topic
 
 **Docker** :
+
 ```bash
 docker exec kafka /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
@@ -88,6 +107,7 @@ docker exec kafka /opt/kafka/bin/kafka-topics.sh \
 ```
 
 **OKD/K3s** :
+
 ```bash
 kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
   --restart=Never -n kafka -- \
@@ -106,6 +126,7 @@ kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 
 Visual Studio Code est un éditeur léger, gratuit et multiplateforme. Idéal pour les labs Kafka.
 
 **Prérequis** :
+
 - [Visual Studio Code](https://code.visualstudio.com/download) installé
 - [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) installé
 - Extension C# Dev Kit (optionnel mais recommandé)
@@ -122,6 +143,7 @@ flowchart TD
 ```
 
 **Commandes** :
+
 ```bash
 # Naviguer vers le dossier du lab
 cd lab-1.2a-producer-basic
@@ -169,30 +191,34 @@ flowchart TD
 
 **Instructions détaillées** :
 
-1. **Fichier** → **Nouveau** → **Projet** (`Ctrl+Shift+N`)
+1.  **Fichier** → **Nouveau** → **Projet** (`Ctrl+Shift+N`)
 
-2. Sélectionner **Application console** (pas "Application console (.NET Framework)")
-   ```
-   Modèles > C# > Application console
-   ```
+2.  Sélectionner **Application console** (pas "Application console (.NET Framework)")
 
-3. Configuration du projet :
-   | Paramètre | Valeur |
-   |-----------|--------|
-   | Nom du projet | `KafkaProducerBasic` |
-   | Emplacement | `lab-1.2a-producer-basic` |
-   | Framework | **.NET 8.0** |
+    ```
+    Modèles > C# > Application console
+    ```
 
-4. Ajouter les packages NuGet :
-   - Clic droit sur le projet → **Gérer les packages NuGet**
-   - Onglet **Parcourir**, rechercher et installer :
-     - ✅ `Confluent.Kafka` version **2.3.0**
-     - ✅ `Microsoft.Extensions.Logging` version **8.0.0**
-     - ✅ `Microsoft.Extensions.Logging.Console` version **8.0.0**
+3.  Configuration du projet :
 
-5. Exécuter le projet :
-   - **F5** : Exécuter avec débogage (breakpoints, inspection variables)
-   - **Ctrl+F5** : Exécuter sans débogage (plus rapide)
+    | Paramètre | Valeur |
+    |-----------|--------|
+    | Nom du projet | `KafkaProducerBasic` |
+    | Emplacement | `lab-1.2a-producer-basic` |
+    | Framework | **.NET 8.0** |
+
+4.  Ajouter les packages NuGet :
+
+    - Clic droit sur le projet → **Gérer les packages NuGet**
+    - Onglet **Parcourir**, rechercher et installer :
+      - ✅ `Confluent.Kafka` version **2.3.0**
+      - ✅ `Microsoft.Extensions.Logging` version **8.0.0**
+      - ✅ `Microsoft.Extensions.Logging.Console` version **8.0.0**
+
+5.  Exécuter le projet :
+
+    - **F5** : Exécuter avec débogage (breakpoints, inspection variables)
+    - **Ctrl+F5** : Exécuter sans débogage (plus rapide)
 
 ---
 
@@ -464,6 +490,7 @@ finally
 #### Docker (localhost)
 
 Modifier `Program.cs` ligne 11 :
+
 ```csharp
 BootstrapServers = "localhost:9092"
 ```
@@ -471,11 +498,13 @@ BootstrapServers = "localhost:9092"
 #### OKD/K3s
 
 Modifier `Program.cs` ligne 11 :
+
 ```csharp
 BootstrapServers = "bhf-kafka-kafka-bootstrap:9092"
 ```
 
 Ou utiliser une variable d'environnement :
+
 ```csharp
 BootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") 
                    ?? "localhost:9092"
@@ -493,8 +522,8 @@ dotnet run
 
 #### Avec Visual Studio 2022
 
-1. Appuyer sur **F5** (ou **Ctrl+F5** sans debugger)
-2. Observer les logs dans la console
+1.  Appuyer sur **F5** (ou **Ctrl+F5** sans debugger)
+2.  Observer les logs dans la console
 
 ---
 
@@ -544,6 +573,7 @@ info: Program[0]
 #### Avec CLI Kafka
 
 **Docker** :
+
 ```bash
 docker exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
@@ -553,6 +583,7 @@ docker exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
 ```
 
 **OKD/K3s** :
+
 ```bash
 kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
   --restart=Never -n kafka -- \
@@ -561,6 +592,7 @@ kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 
 ```
 
 **Résultat attendu** :
+
 ```json
 {"orderId": "ORD-0001", "timestamp": "2026-02-05T11:30:00Z", "amount": 110}
 {"orderId": "ORD-0002", "timestamp": "2026-02-05T11:30:01Z", "amount": 120}
@@ -576,9 +608,10 @@ kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 
 **Objectif** : Envoyer 50 messages au lieu de 10.
 
 **Instructions** :
-1. Modifier la ligne `for (int i = 1; i <= 10; i++)` → `for (int i = 1; i <= 50; i++)`
-2. Relancer le producer
-3. Observer la distribution sur les partitions
+
+1.  Modifier la ligne `for (int i = 1; i <= 10; i++)` → `for (int i = 1; i <= 50; i++)`
+2.  Relancer le producer
+3.  Observer la distribution sur les partitions
 
 **Question** : Combien de messages par partition en moyenne ?
 
@@ -596,11 +629,14 @@ Avec 50 messages et 6 partitions, distribution attendue : ~8-9 messages par part
 **Objectif** : Ajouter un header `environment` avec la valeur `dev`.
 
 **Instructions** :
-1. Ajouter dans les headers :
-```csharp
-{ "environment", Encoding.UTF8.GetBytes("dev") }
-```
-2. Relancer et vérifier dans Kafka UI (onglet Headers)
+
+1.  Ajouter dans les headers :
+
+    ```csharp
+    { "environment", Encoding.UTF8.GetBytes("dev") }
+    ```
+
+2.  Relancer et vérifier dans Kafka UI (onglet Headers)
 
 ---
 
@@ -609,9 +645,10 @@ Avec 50 messages et 6 partitions, distribution attendue : ~8-9 messages par part
 **Objectif** : Observer le comportement en cas d'erreur de connexion.
 
 **Instructions** :
-1. Arrêter Kafka : `docker stop kafka` (Docker) ou `kubectl scale kafka bhf-kafka --replicas=0 -n kafka` (K8s)
-2. Relancer le producer
-3. Observer les logs d'erreur et les retries
+
+1.  Arrêter Kafka : `docker stop kafka` (Docker) ou `kubectl scale kafka bhf-kafka --replicas=0 -n kafka` (K8s)
+2.  Relancer le producer
+3.  Observer les logs d'erreur et les retries
 
 **Question** : Combien de retries avant échec final ?
 
@@ -622,7 +659,7 @@ Le producer tentera 3 retries (configuré via `MessageSendMaxRetries = 3`) avec 
 
 </details>
 
-4. Redémarrer Kafka : `docker start kafka` ou `kubectl scale kafka bhf-kafka --replicas=3 -n kafka`
+4.  Redémarrer Kafka : `docker start kafka` ou `kubectl scale kafka bhf-kafka --replicas=3 -n kafka`
 
 ---
 
@@ -631,42 +668,45 @@ Le producer tentera 3 retries (configuré via `MessageSendMaxRetries = 3`) avec 
 **Objectif** : Activer l'idempotence pour garantir exactly-once semantics.
 
 **Instructions** :
-1. Modifier la configuration pour activer l'idempotence :
-```csharp
-var config = new ProducerConfig
-{
-    BootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") 
-                       ?? "localhost:9092",
-    ClientId = "dotnet-idempotent-producer",
-    Acks = Acks.All,
-    
-    // 🔑 Activation de l'idempotence
-    EnableIdempotence = true,
-    MaxInFlight = 5,  // Requis pour idempotence
-    
-    MessageSendMaxRetries = 3,
-    RetryBackoffMs = 1000,
-    RequestTimeoutMs = 30000
-};
-```
 
-2. Envoyer le même message deux fois avec le même clé :
-```csharp
-for (int i = 1; i <= 2; i++)
-{
-    var messageValue = $"{{\"orderId\": \"ORD-123\", \"attempt\": {i}}}";
-    var deliveryResult = await producer.ProduceAsync(topicName, new Message<string, string>
+1.  Modifier la configuration pour activer l'idempotence :
+
+    ```csharp
+    var config = new ProducerConfig
     {
-        Key = "customer-123",  // Même clé
-        Value = messageValue
-    });
-    
-    logger.LogInformation("Attempt {Index}: Partition {Partition}, Offset {Offset}", 
-        i, deliveryResult.Partition.Value, deliveryResult.Offset.Value);
-}
-```
+        BootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") 
+                           ?? "localhost:9092",
+        ClientId = "dotnet-idempotent-producer",
+        Acks = Acks.All,
+        
+        // 🔑 Activation de l'idempotence
+        EnableIdempotence = true,
+        MaxInFlight = 5,  // Requis pour idempotence
+        
+        MessageSendMaxRetries = 3,
+        RetryBackoffMs = 1000,
+        RequestTimeoutMs = 30000
+    };
+    ```
 
-3. Observer que seul le premier message est écrit (le second est détecté comme duplicata).
+2.  Envoyer le même message deux fois avec le même clé :
+
+    ```csharp
+    for (int i = 1; i <= 2; i++)
+    {
+        var messageValue = $"{{\"orderId\": \"ORD-123\", \"attempt\": {i}}}";
+        var deliveryResult = await producer.ProduceAsync(topicName, new Message<string, string>
+        {
+            Key = "customer-123",  // Même clé
+            Value = messageValue
+        });
+        
+        logger.LogInformation("Attempt {Index}: Partition {Partition}, Offset {Offset}", 
+            i, deliveryResult.Partition.Value, deliveryResult.Offset.Value);
+    }
+    ```
+
+3.  Observer que seul le premier message est écrit (le second est détecté comme duplicata).
 
 <details>
 <summary>💡 Explication</summary>
@@ -682,45 +722,48 @@ Avec l'idempotence activée, Kafka utilise un PID (Producer ID) et des numéros 
 **Objectif** : Optimiser le producer pour haute performance.
 
 **Instructions** :
-1. Ajouter les paramètres de performance :
-```csharp
-var config = new ProducerConfig
-{
-    BootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") 
-                       ?? "localhost:9092",
-    ClientId = "dotnet-optimized-producer",
-    Acks = Acks.All,
-    
-    // 🚀 Optimisations performance
-    BatchSize = 32768,              // 32KB batch size
-    LingerMs = 5,                     // Attendre 5ms pour batcher
-    CompressionType = CompressionType.Snappy,  // Compression
-    
-    MessageSendMaxRetries = 3,
-    RetryBackoffMs = 1000,
-    RequestTimeoutMs = 30000
-};
-```
 
-2. Envoyer 1000 messages et mesurer le temps total :
-```csharp
-var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+1.  Ajouter les paramètres de performance :
 
-for (int i = 1; i <= 1000; i++)
-{
-    var messageValue = $"{{\"orderId\": \"ORD-{i:D4}\", \"timestamp\": \"{DateTime.UtcNow:o}\"}}";
-    await producer.ProduceAsync(topicName, new Message<Null, string>
+    ```csharp
+    var config = new ProducerConfig
     {
-        Value = messageValue
-    });
-}
+        BootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") 
+                           ?? "localhost:9092",
+        ClientId = "dotnet-optimized-producer",
+        Acks = Acks.All,
+        
+        // 🚀 Optimisations performance
+        BatchSize = 32768,              // 32KB batch size
+        LingerMs = 5,                     // Attendre 5ms pour batcher
+        CompressionType = CompressionType.Snappy,  // Compression
+        
+        MessageSendMaxRetries = 3,
+        RetryBackoffMs = 1000,
+        RequestTimeoutMs = 30000
+    };
+    ```
 
-stopwatch.Stop();
-logger.LogInformation("Sent 1000 messages in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
-logger.LogInformation("Throughput: {Throughput:F2} messages/sec", 1000.0 / stopwatch.Elapsed.TotalSeconds);
-```
+2.  Envoyer 1000 messages et mesurer le temps total :
 
-3. Comparer avec la version non optimisée.
+    ```csharp
+    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+    for (int i = 1; i <= 1000; i++)
+    {
+        var messageValue = $"{{\"orderId\": \"ORD-{i:D4}\", \"timestamp\": \"{DateTime.UtcNow:o}\"}}";
+        await producer.ProduceAsync(topicName, new Message<Null, string>
+        {
+            Value = messageValue
+        });
+    }
+
+    stopwatch.Stop();
+    logger.LogInformation("Sent 1000 messages in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+    logger.LogInformation("Throughput: {Throughput:F2} messages/sec", 1000.0 / stopwatch.Elapsed.TotalSeconds);
+    ```
+
+3.  Comparer avec la version non optimisée.
 
 <details>
 <summary>💡 Résultats attendus</summary>
@@ -740,51 +783,53 @@ Avec optimisation :
 **Objectif** : Implémenter un circuit breaker pour éviter les cascades d'échecs.
 
 **Instructions** :
-1. Ajouter une classe CircuitBreaker :
-```csharp
-public class CircuitBreakerProducer
-{
-    private int _failureCount = 0;
-    private DateTime _lastFailure = DateTime.MinValue;
-    private readonly int _threshold = 5;
-    private readonly TimeSpan _timeout = TimeSpan.FromMinutes(1);
-    
-    public async Task<DeliveryResult<Null, string>> SendAsync(
-        IProducer<Null, string> producer, 
-        string topic,
-        Message<Null, string> message)
-    {
-        if (IsCircuitOpen())
-            throw new InvalidOperationException("Circuit breaker is open");
-            
-        try
-        {
-            var result = await producer.ProduceAsync(topic, message);
-            ResetCircuit();
-            return result;
-        }
-        catch (Exception ex)
-        {
-            RecordFailure();
-            throw;
-        }
-    }
-    
-    private bool IsCircuitOpen() => 
-        _failureCount >= _threshold && 
-        DateTime.UtcNow - _lastFailure < _timeout;
-        
-    private void RecordFailure()
-    {
-        _failureCount++;
-        _lastFailure = DateTime.UtcNow;
-    }
-    
-    private void ResetCircuit() => _failureCount = 0;
-}
-```
 
-2. Utiliser le circuit breaker dans le producer principal.
+1.  Ajouter une classe CircuitBreaker :
+
+    ```csharp
+    public class CircuitBreakerProducer
+    {
+        private int _failureCount = 0;
+        private DateTime _lastFailure = DateTime.MinValue;
+        private readonly int _threshold = 5;
+        private readonly TimeSpan _timeout = TimeSpan.FromMinutes(1);
+        
+        public async Task<DeliveryResult<Null, string>> SendAsync(
+            IProducer<Null, string> producer, 
+            string topic,
+            Message<Null, string> message)
+        {
+            if (IsCircuitOpen())
+                throw new InvalidOperationException("Circuit breaker is open");
+                
+            try
+            {
+                var result = await producer.ProduceAsync(topic, message);
+                ResetCircuit();
+                return result;
+            }
+            catch (Exception ex)
+            {
+                RecordFailure();
+                throw;
+            }
+        }
+        
+        private bool IsCircuitOpen() => 
+            _failureCount >= _threshold && 
+            DateTime.UtcNow - _lastFailure < _timeout;
+            
+        private void RecordFailure()
+        {
+            _failureCount++;
+            _lastFailure = DateTime.UtcNow;
+        }
+        
+        private void ResetCircuit() => _failureCount = 0;
+    }
+    ```
+
+2.  Utiliser le circuit breaker dans le producer principal.
 
 <details>
 <summary>💡 Pattern avancé</summary>
@@ -850,12 +895,12 @@ Vous avez réussi ce lab si :
 
 ### 🎯 Points Clés à Retenir
 
-1. **ProduceAsync est non-bloquant** : Le message est mis en buffer et envoyé de manière asynchrone
-2. **Flush() est obligatoire** : Avant fermeture pour éviter perte de messages en attente
-3. **DeliveryResult contient les métadonnées** : Partition, offset, timestamp de livraison
-4. **Acks.All garantit durabilité** : Tous les réplicas synchronisés avant confirmation
-5. **Retry automatique** : Kafka gère les erreurs transientes automatiquement
-6. **Headers pour métadonnées** : Correlation ID, tracing, source, etc.
+1.  **ProduceAsync est non-bloquant** : Le message est mis en buffer et envoyé de manière asynchrone
+2.  **Flush() est obligatoire** : Avant fermeture pour éviter perte de messages en attente
+3.  **DeliveryResult contient les métadonnées** : Partition, offset, timestamp de livraison
+4.  **Acks.All garantit durabilité** : Tous les réplicas synchronisés avant confirmation
+5.  **Retry automatique** : Kafka gère les erreurs transientes automatiquement
+6.  **Headers pour métadonnées** : Correlation ID, tracing, source, etc.
 
 ---
 
