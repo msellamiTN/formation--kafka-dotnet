@@ -60,6 +60,25 @@ Si ce n'est pas déjà fait, créez le topic `orders.created` avec 6 partitions 
 
 ### Étape 1 : Créer le projet
 
+#### 💻 Option A : Visual Studio Code
+
+```mermaid
+flowchart TD
+    A["💻 Visual Studio Code"] --> B["📁 Ouvrir le dossier lab-1.2b-producer-keyed"]
+    B --> C["⚡ Terminal intégré: Ctrl+J"]
+    C --> D["📦 dotnet new console -n KafkaProducerKeyed"]
+    D --> E["📦 dotnet add package Confluent.Kafka --version 2.3.0"]
+    E --> F["📦 dotnet add package Microsoft.Extensions.Logging --version 8.0.0"]
+    F --> G["📦 dotnet add package Microsoft.Extensions.Logging.Console --version 8.0.0"]
+    G --> H["▶️ dotnet run"]
+    
+    style A fill:#007acc,color:#fff
+    style H fill:#4caf50,color:#fff
+```
+
+**Prérequis** : Visual Studio Code + .NET 8.0 SDK
+
+**Commandes** :
 ```bash
 cd lab-1.2b-producer-keyed
 dotnet new console -n KafkaProducerKeyed
@@ -68,6 +87,37 @@ dotnet add package Confluent.Kafka --version 2.3.0
 dotnet add package Microsoft.Extensions.Logging --version 8.0.0
 dotnet add package Microsoft.Extensions.Logging.Console --version 8.0.0
 ```
+
+---
+
+#### 🎨 Option B : Visual Studio 2022
+
+```mermaid
+flowchart TD
+    A["🎨 Visual Studio 2022"] --> B["📁 Fichier → Nouveau → Projet"]
+    B --> C["📋 Application console C#"]
+    C --> D["⚙️ Nom: KafkaProducerKeyed"]
+    D --> E["⚙️ Framework: .NET 8.0"]
+    E --> F["📦 Gérer les packages NuGet"]
+    F --> G["🔍 Confluent.Kafka 2.3.0"]
+    G --> H["🔍 Microsoft.Extensions.Logging 8.0.0"]
+    H --> I["🔍 Microsoft.Extensions.Logging.Console 8.0.0"]
+    I --> J["▶️ F5 pour exécuter"]
+    
+    style A fill:#5c2d91,color:#fff
+    style J fill:#4caf50,color:#fff
+```
+
+**Instructions** :
+1. **Fichier** → **Nouveau** → **Projet** (`Ctrl+Shift+N`)
+2. Sélectionner **Application console** C#
+3. Nom : `KafkaProducerKeyed`
+4. Framework : **.NET 8.0**
+5. Clic droit projet → **Gérer les packages NuGet** :
+   - ✅ `Confluent.Kafka` version **2.3.0**
+   - ✅ `Microsoft.Extensions.Logging` version **8.0.0**
+   - ✅ `Microsoft.Extensions.Logging.Console` version **8.0.0**
+6. **F5** pour exécuter avec débogage
 
 ---
 
