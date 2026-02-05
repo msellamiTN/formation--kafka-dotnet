@@ -1,293 +1,591 @@
 #!/usr/bin/env bash
+
+# ================================================================
+# OpenShift Local Installation Orchestrator
+# Main script to coordinate all installation steps
+# Version: 2.0
+# Date: February 2026
+# ================================================================
+
 set -euo pipefail
 
-# ========================================
-# OpenShift Local (CRC) install on Ubuntu 25.x
-# + optional public-IP access via HAProxy
-#
-# IMPORTANT:
-# - Do NOT run this script with sudo.
-# - CRC itself must be run as a regular user (it uses sudo internally when needed).
-# - OpenShift Local uses DNS names like api.crc.testing and *.apps-crc.testing.
-#   For remote/public access, clients must resolve those names to your server PUBLIC IP.
-# ========================================
-
-# ---------- Pretty output ----------
+# ---------- Colors and Output ----------
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
 NC='\033[0m'
 
-ok()   { echo -e "${GREEN}[✓]${NC} $*"; }
-info() { echo -e "${BLUE}[i]${NC} $*"; }
-warn() { echo -e "${YELLOW}[!]${NC} $*"; }
-err()  { echo -e "${RED}[✗]${NC} $*" >&2; }
+ok()     { echo -e "${GREEN}[✓]${NC} $*"; }
+info()   { echo -e "${BLUE}[i]${NC} $*"; }
+warn()   { echo -e "${YELLOW}[!]${NC} $*"; }
+err()    { echo -e "${RED}[✗]${NC} $*" >&2; }
+step()   { echo -e "${CYAN}[→]${NC} $*"; }
+header() { echo -e "${MAGENTA}[#]${NC} $*"; }
 
-# ---------- Safety: never run as root ----------
-if [[ "${EUID}" -eq 0 ]]; then
-  err "Do not run as root. Run as your normal user; the script will call sudo only where needed."
-  exit 1
-fi
+# ---------- Configuration ----------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OPENSHIFT_DIR="${SCRIPT_DIR}/openshift"
 
-# ---------- Args / env ----------
-# You can force public IP (recommended on multi-NIC/NAT):
-#   PUBLIC_IP=203.0.113.10 ./install-openshift-local-ubuntu25-publicip.sh
+# Default paths to scripts
+MIGRATE_SCRIPT="${OPENSHIFT_DIR}/01-migrate-to-networkmanager.sh"
+INSTALL_SCRIPT="${OPENSHIFT_DIR}/02-install-crc-ubuntu-public.sh"
+MANAGE_SCRIPT="${OPENSHIFT_DIR}/03-crc-manage.sh"
+VERIFY_SCRIPT="${OPENSHIFT_DIR}/04-verify-crc-remote-access.sh"
+BACKUP_SCRIPT="${OPENSHIFT_DIR}/05-backup-crc.sh"
+
+# Installation parameters (can be overridden by environment)
 PUBLIC_IP="${PUBLIC_IP:-}"
-
-# If you already downloaded pull secret:
-#   PULL_SECRET_FILE=$HOME/pull-secret.txt ./install-openshift-local-ubuntu25-publicip.sh
+TRUSTED_CIDR="${TRUSTED_CIDR:-}"
 PULL_SECRET_FILE="${PULL_SECRET_FILE:-$HOME/pull-secret.txt}"
-
-# CRC sizing (override if needed)
 CRC_CPUS="${CRC_CPUS:-4}"
-CRC_MEMORY_MB="${CRC_MEMORY_MB:-10240}"     # 10GB
+CRC_MEMORY_MB="${CRC_MEMORY_MB:-10240}"
 CRC_DISK_GB="${CRC_DISK_GB:-60}"
 
-# Whether to configure HAProxy for remote/public access
-ENABLE_PUBLIC_PROXY="${ENABLE_PUBLIC_PROXY:-true}"
+# ---------- Functions ----------
 
-echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}OpenShift Local (CRC) Installation${NC}"
-echo -e "${GREEN}Ubuntu 25.x + Public IP access (HAProxy)${NC}"
-echo -e "${GREEN}========================================${NC}"
-echo ""
+# Print banner
+print_banner() {
+    echo -e "${MAGENTA}"
+    echo "╔═══════════════════════════════════════════════════════╗"
+    echo "║    OpenShift Local (CRC) Installation Orchestrator    ║"
+    echo "║            Ubuntu 25.04 Complete Setup                ║"
+    echo "║                 Version 2.0 - Feb 2026                ║"
+    echo "╚═══════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+}
 
-# ---------- OS checks ----------
-if [[ ! -f /etc/os-release ]]; then
-  err "Cannot detect OS (/etc/os-release missing)."
-  exit 1
-fi
+# Print usage
+print_usage() {
+    echo "Usage: $0 [OPTION]"
+    echo ""
+    echo "Options:"
+    echo "  --full-install              Complete installation (migration + install)"
+    echo "  --install-only              Install CRC only (skip network migration)"
+    echo "  --migrate-only              Migrate network only"
+    echo "  --verify-remote             Verify remote access (on client machine)"
+    echo "  --backup                    Backup CRC cluster"
+    echo "  --restore                   Restore CRC from backup"
+    echo "  --manage                    Interactive management menu"
+    echo "  --status                    Check installation status"
+    echo "  --help                      Show this help"
+    echo ""
+    echo "Environment variables:"
+    echo "  PUBLIC_IP                  Public IP address (auto-detected if not set)"
+    echo "  TRUSTED_CIDR               Trusted network CIDR for firewall"
+    echo "  PULL_SECRET_FILE           Path to pull secret (default: ~/pull-secret.txt)"
+    echo "  CRC_CPUS                   CPU cores for CRC (default: 4)"
+    echo "  CRC_MEMORY_MB              Memory for CRC in MB (default: 10240)"
+    echo "  CRC_DISK_GB                Disk size for CRC in GB (default: 60)"
+    echo ""
+    echo "Examples:"
+    echo "  $0 --full-install"
+    echo "  PUBLIC_IP=192.168.1.100 $0 --install-only"
+    echo "  $0 --migrate-only"
+    echo "  $0 --manage"
+    echo ""
+}
 
-# shellcheck disable=SC1091
-source /etc/os-release
-
-if [[ "${ID}" != "ubuntu" ]]; then
-  err "This script targets Ubuntu. Detected: ${ID}"
-  exit 1
-fi
-
-info "Detected: Ubuntu ${VERSION_ID}"
-# Soft-check major version (25.x expected)
-if ! [[ "${VERSION_ID}" =~ ^25\. ]]; then
-  warn "This script was written for Ubuntu 25.x. You are on ${VERSION_ID}; it may still work."
-fi
-
-# ---------- Resource checks ----------
-info "Checking system resources..."
-TOTAL_CPU="$(nproc)"
-TOTAL_RAM_GB="$(free -g | awk '/^Mem:/{print $2}')"
-AVAILABLE_DISK_GB="$(df -BG / | awk 'NR==2 {print $4}' | sed 's/G//')"
-
-echo "  CPU cores: ${TOTAL_CPU}"
-echo "  RAM: ${TOTAL_RAM_GB}GB"
-echo "  Available disk: ${AVAILABLE_DISK_GB}GB"
-
-if [[ "${TOTAL_CPU}" -lt 4 ]]; then err "Need >= 4 CPU cores."; exit 1; fi
-if [[ "${TOTAL_RAM_GB}" -lt 10 ]]; then warn "RAM is < 10GB; CRC may be tight under load."; fi
-if [[ "${AVAILABLE_DISK_GB}" -lt 35 ]]; then err "Need >= 35GB free disk."; exit 1; fi
-ok "System resources look OK"
-
-# ---------- Packages ----------
-info "Updating APT index..."
-sudo apt-get update -qq
-ok "APT updated"
-
-info "Installing prerequisites..."
-sudo apt-get install -y \
-  curl wget jq tar xz-utils \
-  qemu-kvm cpu-checker \
-  libvirt-daemon-system libvirt-clients virtinst bridge-utils \
-  network-manager \
-  haproxy \
-  >/dev/null
-ok "Prerequisites installed"
-
-# ---------- Services ----------
-info "Enabling services..."
-sudo systemctl enable --now NetworkManager >/dev/null 2>&1 || true
-sudo systemctl enable --now libvirtd >/dev/null 2>&1 || true
-ok "NetworkManager/libvirtd enabled"
-
-# ---------- Groups / permissions ----------
-info "Configuring user permissions (libvirt/kvm)..."
-sudo usermod -aG libvirt,kvm "${USER}"
-ok "User added to libvirt,kvm groups"
-
-# The current shell may not have updated groups yet.
-if ! id -nG "${USER}" | grep -qw libvirt; then
-  warn "Group membership not active in this session yet."
-  echo ""
-  echo "Do ONE of the following, then re-run this script:"
-  echo "  1) Logout/login"
-  echo "  2) In the same terminal:  newgrp libvirt"
-  echo ""
-  exit 0
-fi
-
-# ---------- KVM check ----------
-info "Verifying KVM support..."
-if command -v kvm-ok >/dev/null 2>&1; then
-  if sudo kvm-ok | grep -q "KVM acceleration can be used"; then
-    ok "KVM acceleration available"
-  else
-    warn "kvm-ok did not confirm acceleration. CRC may run slowly or fail."
-  fi
-else
-  warn "kvm-ok not found (cpu-checker). Continuing anyway."
-fi
-
-# ---------- Install CRC (latest) ----------
-# Red Hat documents downloading crc-linux-amd64.tar.xz from a "latest" URL. [web:48]
-info "Downloading OpenShift Local (CRC) - latest..."
-TMPDIR="$(mktemp -d)"
-trap 'rm -rf "${TMPDIR}"' EXIT
-
-CRC_TAR="${TMPDIR}/crc-linux-amd64.tar.xz"
-wget -q --show-progress -O "${CRC_TAR}" \
-  "https://mirror.openshift.com/pub/openshift-v4/clients/crc/latest/crc-linux-amd64.tar.xz"
-ok "CRC downloaded"
-
-info "Extracting CRC..."
-tar -xf "${CRC_TAR}" -C "${TMPDIR}"
-CRC_BIN="$(find "${TMPDIR}" -maxdepth 2 -type f -name crc | head -n 1)"
-if [[ -z "${CRC_BIN}" ]]; then
-  err "Could not locate crc binary after extraction."
-  exit 1
-fi
-
-info "Installing CRC binary to /usr/local/bin..."
-sudo install -m 0755 "${CRC_BIN}" /usr/local/bin/crc
-ok "CRC installed: $(crc version | head -n 1 || true)"
-
-# ---------- CRC configuration ----------
-# CRC uses api.crc.testing and *.apps-crc.testing; DNS is part of CRC setup. [page:0]
-info "Configuring CRC defaults..."
-crc config set consent-telemetry no >/dev/null 2>&1 || true
-crc config set preset openshift >/dev/null 2>&1 || true
-crc config set cpus "${CRC_CPUS}" >/dev/null 2>&1 || true
-crc config set memory "${CRC_MEMORY_MB}" >/dev/null 2>&1 || true
-crc config set disk-size "${CRC_DISK_GB}" >/dev/null 2>&1 || true
-
-# For remote/public access, CRC docs specify that the remote-server procedure only works
-# with system-mode networking. [page:0]
-crc config set network-mode system >/dev/null 2>&1 || true
-
-ok "CRC configured"
-
-# ---------- crc setup ----------
-info "Running: crc setup (downloads/caches bundle)..."
-crc setup
-ok "crc setup complete"
-
-# ---------- Start cluster (optional if pull secret exists) ----------
-if [[ -f "${PULL_SECRET_FILE}" ]]; then
-  info "Pull secret found at: ${PULL_SECRET_FILE}"
-  info "Starting OpenShift Local..."
-  crc start -p "${PULL_SECRET_FILE}"
-  ok "OpenShift Local started"
-else
-  warn "Pull secret not found at: ${PULL_SECRET_FILE}"
-  echo "Get it from: https://console.redhat.com/openshift/create/local"
-  echo "Save it as: ${PULL_SECRET_FILE}"
-  echo "Then run:   crc start -p ${PULL_SECRET_FILE}"
-fi
-
-# ---------- Public IP detection ----------
-if [[ -z "${PUBLIC_IP}" ]]; then
-  # Best-effort: public IP (may fail behind restrictive egress).
-  PUBLIC_IP="$(curl -fsS https://api.ipify.org || true)"
-fi
-
-CRC_IP="$(crc ip 2>/dev/null || true)"
-
-info "CRC VM IP: ${CRC_IP:-<unknown>}"
-
-# ---------- HAProxy fronting (public access) ----------
-if [[ "${ENABLE_PUBLIC_PROXY}" == "true" ]]; then
-  if [[ -z "${CRC_IP}" ]]; then
-    warn "Cannot configure HAProxy because 'crc ip' is empty. Is the cluster started?"
-  else
-    info "Configuring HAProxy to forward 80/443/6443 -> CRC VM (${CRC_IP})..."
-    sudo cp /etc/haproxy/haproxy.cfg "/etc/haproxy/haproxy.cfg.bak.$(date +%s)" || true
-
-    # This matches the CRC docs concept: bind on 0.0.0.0 and forward to CRC VM ports. [page:0]
-    sudo tee /etc/haproxy/haproxy.cfg >/dev/null <<EOF
-global
-  log /dev/log local0
-  maxconn 2048
-
-defaults
-  log global
-  mode tcp
-  option tcplog
-  timeout connect 5s
-  timeout client  500s
-  timeout server  500s
-
-listen apps_http
-  bind 0.0.0.0:80
-  server crcvm ${CRC_IP}:80 check
-
-listen apps_https
-  bind 0.0.0.0:443
-  server crcvm ${CRC_IP}:443 check
-
-listen api
-  bind 0.0.0.0:6443
-  server crcvm ${CRC_IP}:6443 check
-EOF
-
-    sudo systemctl enable --now haproxy >/dev/null 2>&1 || sudo systemctl restart haproxy
-    ok "HAProxy enabled (ports 80/443/6443)"
-
-    # Firewall: try ufw if present.
-    if command -v ufw >/dev/null 2>&1; then
-      info "Opening firewall ports with ufw (80,443,6443/tcp)..."
-      sudo ufw allow 80/tcp >/dev/null 2>&1 || true
-      sudo ufw allow 443/tcp >/dev/null 2>&1 || true
-      sudo ufw allow 6443/tcp >/dev/null 2>&1 || true
-      ok "ufw rules applied (if ufw is enabled)"
-    else
-      warn "ufw not found; ensure ports 80/443/6443 are open in your firewall/security-group."
+# Check if running as root
+check_not_root() {
+    if [[ "${EUID}" -eq 0 ]]; then
+        err "This script should NOT be run as root or with sudo."
+        err "Run as your normal user. The script will use sudo when needed."
+        exit 1
     fi
-  fi
-fi
+}
 
-# ---------- Output: how to access ----------
-echo ""
-echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}Done${NC}"
-echo -e "${GREEN}========================================${NC}"
-echo ""
+# Check if openshift directory exists
+check_openshift_dir() {
+    if [[ ! -d "${OPENSHIFT_DIR}" ]]; then
+        warn "OpenShift scripts directory not found: ${OPENSHIFT_DIR}"
+        echo ""
+        echo "Please create the directory and place all scripts in it:"
+        echo "  mkdir -p ${OPENSHIFT_DIR}"
+        echo "  cp *.sh ${OPENSHIFT_DIR}/"
+        echo ""
+        echo "Required scripts:"
+        echo "  - migrate-to-networkmanager.sh"
+        echo "  - install-crc-ubuntu-public.sh"
+        echo "  - crc-manage.sh"
+        echo "  - verify-crc-remote-access.sh"
+        echo "  - backup-crc.sh"
+        echo ""
+        exit 1
+    fi
+}
 
-# CRC DNS names: api.crc.testing and apps-crc.testing are standard for CRC. [page:0]
-echo "Local URLs (on the server itself):"
-echo "  API:     https://api.crc.testing:6443"
-echo "  Console: https://console-openshift-console.apps-crc.testing"
-echo ""
+# Check if required scripts exist
+check_required_scripts() {
+    local missing=0
+    
+    for script in "${MIGRATE_SCRIPT}" "${INSTALL_SCRIPT}"; do
+        if [[ ! -f "${script}" ]]; then
+            err "Missing required script: $(basename "${script}")"
+            missing=1
+        fi
+    done
+    
+    if [[ ${missing} -eq 1 ]]; then
+        echo ""
+        echo "Place all required scripts in: ${OPENSHIFT_DIR}"
+        exit 1
+    fi
+    
+    # Make scripts executable
+    chmod +x "${OPENSHIFT_DIR}"/*.sh 2>/dev/null || true
+}
 
-if [[ -n "${PUBLIC_IP}" ]]; then
-  echo "Public/remote access (from another machine):"
-  echo "  1) Ensure ports 80, 443, 6443 reach this Ubuntu host (public IP: ${PUBLIC_IP})."
-  echo "  2) On the CLIENT machine, make api.crc.testing and *.apps-crc.testing resolve to ${PUBLIC_IP}."
-  echo ""
-  echo "     Example (Linux client with dnsmasq + NetworkManager), as per CRC docs idea:"  # [page:0]
-  echo "       address=/apps-crc.testing/${PUBLIC_IP}"
-  echo "       address=/api.crc.testing/${PUBLIC_IP}"
-  echo ""
-  echo "  Then browse:"
-  echo "    https://console-openshift-console.apps-crc.testing"
-  echo ""
-else
-  warn "Could not auto-detect PUBLIC_IP. Set it explicitly and re-run, e.g.:"
-  echo "  PUBLIC_IP=203.0.113.10 ENABLE_PUBLIC_PROXY=true ./install-openshift-local-ubuntu25-publicip.sh"
-fi
+# Check current system state
+check_system_state() {
+    header "System Status Check"
+    
+    # Check OS
+    if [[ ! -f /etc/os-release ]]; then
+        err "Cannot detect OS"
+        return 1
+    fi
+    
+    source /etc/os-release
+    info "OS: ${PRETTY_NAME}"
+    
+    # Check NetworkManager
+    if systemctl is-active --quiet NetworkManager; then
+        ok "NetworkManager is active"
+    else
+        warn "NetworkManager is not active"
+    fi
+    
+    # Check systemd-networkd
+    if systemctl is-active --quiet systemd-networkd; then
+        warn "systemd-networkd is active (should be disabled for CRC)"
+    fi
+    
+    # Check libvirt
+    if systemctl is-active --quiet libvirtd; then
+        ok "libvirtd is active"
+    fi
+    
+    # Check CRC installation
+    if command -v crc >/dev/null 2>&1; then
+        ok "CRC is installed"
+        crc version 2>/dev/null | head -n1
+    else
+        info "CRC is not installed"
+    fi
+    
+    # Check cluster status
+    if command -v crc >/dev/null 2>&1; then
+        if crc status 2>/dev/null | grep -q "Running"; then
+            ok "CRC cluster is running"
+        else
+            info "CRC cluster is not running"
+        fi
+    fi
+    
+    echo ""
+}
 
-echo ""
-echo "Cluster credentials (once started):"
-echo "  crc console --credentials"
-echo ""
-echo "CLI login:"
-echo "  oc login -u developer -p developer https://api.crc.testing:6443"
-echo ""
+# Network migration
+migrate_network() {
+    header "Step 1: Network Migration"
+    info "Migrating from systemd-networkd to NetworkManager..."
+    
+    if [[ ! -f "${MIGRATE_SCRIPT}" ]]; then
+        err "Migration script not found: ${MIGRATE_SCRIPT}"
+        return 1
+    fi
+    
+    step "Running network migration..."
+    "${MIGRATE_SCRIPT}"
+    
+    if [[ $? -eq 0 ]]; then
+        ok "Network migration completed"
+        echo ""
+        warn "A reboot is required to complete the migration."
+        echo ""
+        read -p "Reboot now? (y/N): " reboot_choice
+        if [[ "${reboot_choice}" =~ ^[Yy]$ ]]; then
+            info "Rebooting system..."
+            sudo reboot
+        else
+            warn "Please reboot manually before continuing with installation."
+        fi
+    else
+        err "Network migration failed"
+        return 1
+    fi
+}
+
+# Main installation
+install_crc() {
+    header "Step 2: OpenShift Local Installation"
+    
+    if [[ ! -f "${INSTALL_SCRIPT}" ]]; then
+        err "Installation script not found: ${INSTALL_SCRIPT}"
+        return 1
+    fi
+    
+    # Prepare environment variables
+    local env_vars=""
+    
+    if [[ -n "${PUBLIC_IP}" ]]; then
+        env_vars+="PUBLIC_IP=${PUBLIC_IP} "
+    fi
+    
+    if [[ -n "${TRUSTED_CIDR}" ]]; then
+        env_vars+="TRUSTED_CIDR=${TRUSTED_CIDR} "
+    fi
+    
+    if [[ -n "${PULL_SECRET_FILE}" ]]; then
+        env_vars+="PULL_SECRET_FILE=${PULL_SECRET_FILE} "
+    fi
+    
+    env_vars+="CRC_CPUS=${CRC_CPUS} "
+    env_vars+="CRC_MEMORY_MB=${CRC_MEMORY_MB} "
+    env_vars+="CRC_DISK_GB=${CRC_DISK_GB} "
+    
+    step "Running OpenShift Local installation..."
+    info "Parameters:"
+    echo "  CPU cores: ${CRC_CPUS}"
+    echo "  Memory: ${CRC_MEMORY_MB} MB"
+    echo "  Disk: ${CRC_DISK_GB} GB"
+    echo "  Public IP: ${PUBLIC_IP:-auto-detect}"
+    echo ""
+    
+    # Check for pull secret
+    if [[ ! -f "${PULL_SECRET_FILE}" ]]; then
+        warn "Pull secret not found at: ${PULL_SECRET_FILE}"
+        echo ""
+        echo "You need a Red Hat pull secret to continue."
+        echo ""
+        echo "1. Get your pull secret from:"
+        echo "   https://console.redhat.com/openshift/create/local"
+        echo ""
+        echo "2. Save it to: ${PULL_SECRET_FILE}"
+        echo ""
+        read -p "Press Enter after saving the pull secret, or Ctrl+C to cancel..."
+    fi
+    
+    # Run installation
+    eval "${env_vars}" "${INSTALL_SCRIPT}"
+    
+    if [[ $? -eq 0 ]]; then
+        ok "OpenShift Local installation completed"
+    else
+        err "Installation failed"
+        return 1
+    fi
+}
+
+# Verify remote access
+verify_remote() {
+    header "Remote Access Verification"
+    
+    if [[ ! -f "${VERIFY_SCRIPT}" ]]; then
+        err "Verification script not found: ${VERIFY_SCRIPT}"
+        return 1
+    fi
+    
+    if [[ -z "${PUBLIC_IP}" ]]; then
+        read -p "Enter the public IP of your CRC server: " PUBLIC_IP
+    fi
+    
+    step "Running remote access verification..."
+    PUBLIC_IP="${PUBLIC_IP}" "${VERIFY_SCRIPT}"
+}
+
+# Backup CRC
+backup_crc() {
+    header "CRC Backup"
+    
+    if [[ ! -f "${BACKUP_SCRIPT}" ]]; then
+        err "Backup script not found: ${BACKUP_SCRIPT}"
+        return 1
+    fi
+    
+    step "Running backup..."
+    "${BACKUP_SCRIPT}"
+}
+
+# Interactive management menu
+manage_menu() {
+    header "OpenShift Local Management"
+    
+    if [[ ! -f "${MANAGE_SCRIPT}" ]]; then
+        err "Management script not found: ${MANAGE_SCRIPT}"
+        return 1
+    fi
+    
+    echo "Management Options:"
+    echo "  1. Start cluster"
+    echo "  2. Stop cluster"
+    echo "  3. Check status"
+    echo "  4. Show credentials"
+    echo "  5. Open console"
+    echo "  6. Login with oc CLI"
+    echo "  7. View logs"
+    echo "  8. Cleanup"
+    echo "  9. Delete cluster"
+    echo "  10. Show info"
+    echo "  0. Exit"
+    echo ""
+    
+    read -p "Select option (0-10): " choice
+    
+    case "${choice}" in
+        1) "${MANAGE_SCRIPT}" start ;;
+        2) "${MANAGE_SCRIPT}" stop ;;
+        3) "${MANAGE_SCRIPT}" status ;;
+        4) "${MANAGE_SCRIPT}" credentials ;;
+        5) "${MANAGE_SCRIPT}" console ;;
+        6) "${MANAGE_SCRIPT}" login ;;
+        7) "${MANAGE_SCRIPT}" logs ;;
+        8) "${MANAGE_SCRIPT}" cleanup ;;
+        9) "${MANAGE_SCRIPT}" delete ;;
+        10) "${MANAGE_SCRIPT}" info ;;
+        0) exit 0 ;;
+        *) err "Invalid option" ;;
+    esac
+}
+
+# Full installation process
+full_installation() {
+    print_banner
+    
+    # Check prerequisites
+    check_not_root
+    check_openshift_dir
+    check_required_scripts
+    
+    # Show system status
+    check_system_state
+    
+    # Check NetworkManager
+    if ! systemctl is-active --quiet NetworkManager; then
+        warn "NetworkManager is not active. Network migration is required."
+        echo ""
+        read -p "Run network migration now? (Y/n): " migrate_choice
+        if [[ "${migrate_choice}" != "n" && "${migrate_choice}" != "N" ]]; then
+            migrate_network
+            echo ""
+            info "After reboot, run this script again to continue installation."
+            exit 0
+        else
+            warn "Skipping network migration. CRC installation may fail."
+        fi
+    fi
+    
+    # Run installation
+    install_crc
+    
+    # Post-installation
+    if [[ $? -eq 0 ]]; then
+        echo ""
+        header "Post-Installation Instructions"
+        echo ""
+        echo "1. Access your cluster locally:"
+        echo "   Console: https://console-openshift-console.apps-crc.testing"
+        echo "   API:     https://api.crc.testing:6443"
+        echo ""
+        
+        if [[ -n "${PUBLIC_IP}" ]]; then
+            echo "2. For remote access, configure client DNS:"
+            echo "   Add these entries to point to ${PUBLIC_IP}:"
+            echo "     api.crc.testing"
+            echo "     *.apps-crc.testing"
+            echo ""
+            echo "3. Verify remote access:"
+            echo "   ./install-openshift-local.sh --verify-remote"
+        fi
+        
+        echo ""
+        echo "4. Use the management script for daily operations:"
+        echo "   ./install-openshift-local.sh --manage"
+        echo ""
+        
+        ok "OpenShift Local installation complete!"
+    fi
+}
+
+# Restore from backup
+restore_backup() {
+    header "Restore CRC from Backup"
+    
+    echo "Available backups:"
+    echo "=================="
+    ls -lh ~/crc-backup-*.tar.gz 2>/dev/null || echo "No backups found in ~/"
+    echo ""
+    
+    read -p "Enter backup file path (or leave empty to list): " backup_file
+    
+    if [[ -z "${backup_file}" ]]; then
+        echo "Backups in home directory:"
+        find ~ -name "crc-backup-*.tar.gz" -type f 2>/dev/null || echo "No backups found"
+        echo ""
+        read -p "Enter backup file path: " backup_file
+    fi
+    
+    if [[ ! -f "${backup_file}" ]]; then
+        err "Backup file not found: ${backup_file}"
+        return 1
+    fi
+    
+    warn "This will restore CRC from backup. Current cluster will be deleted."
+    read -p "Continue? (yes/NO): " confirm
+    if [[ "${confirm}" != "yes" ]]; then
+        info "Restore cancelled"
+        return 0
+    fi
+    
+    # Extract backup
+    local backup_dir="${HOME}/crc-restore-$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "${backup_dir}"
+    
+    step "Extracting backup..."
+    tar xzf "${backup_file}" -C "${backup_dir}"
+    
+    # Find the actual backup directory inside
+    local actual_backup=$(find "${backup_dir}" -type d -name "crc-backup-*" | head -n1)
+    
+    if [[ -z "${actual_backup}" ]]; then
+        err "Could not find backup data in archive"
+        return 1
+    fi
+    
+    # Stop and delete current cluster
+    step "Stopping current cluster..."
+    crc stop 2>/dev/null || true
+    crc delete 2>/dev/null || true
+    
+    # Restore files
+    step "Restoring files..."
+    if [[ -d "${actual_backup}/machines" ]]; then
+        rm -rf ~/.crc/machines
+        cp -r "${actual_backup}/machines" ~/.crc/
+    fi
+    
+    if [[ -f "${actual_backup}/crc.json" ]]; then
+        cp "${actual_backup}/crc.json" ~/.crc/
+    fi
+    
+    # Re-import VM if XML exists
+    if [[ -f "${actual_backup}/crc-vm.xml" ]]; then
+        step "Re-importing VM..."
+        sudo virsh define "${actual_backup}/crc-vm.xml" 2>/dev/null || true
+    fi
+    
+    # Cleanup
+    rm -rf "${backup_dir}"
+    
+    # Start cluster
+    step "Starting restored cluster..."
+    crc start
+    
+    ok "Restore completed"
+}
+
+# ---------- Main Program ----------
+
+# Handle command line arguments
+case "${1:-}" in
+    --full-install)
+        full_installation
+        ;;
+    
+    --install-only)
+        check_not_root
+        check_openshift_dir
+        check_required_scripts
+        install_crc
+        ;;
+    
+    --migrate-only)
+        check_not_root
+        check_openshift_dir
+        migrate_network
+        ;;
+    
+    --verify-remote)
+        verify_remote
+        ;;
+    
+    --backup)
+        check_not_root
+        check_openshift_dir
+        backup_crc
+        ;;
+    
+    --restore)
+        check_not_root
+        restore_backup
+        ;;
+    
+    --manage)
+        manage_menu
+        ;;
+    
+    --status)
+        check_system_state
+        ;;
+    
+    --help|-h)
+        print_banner
+        print_usage
+        ;;
+    
+    *)
+        if [[ $# -eq 0 ]]; then
+            # Interactive mode
+            print_banner
+            echo "Select an option:"
+            echo ""
+            echo "1. Full installation (migration + install)"
+            echo "2. Install CRC only (skip network migration)"
+            echo "3. Migrate network only"
+            echo "4. Verify remote access"
+            echo "5. Backup cluster"
+            echo "6. Restore from backup"
+            echo "7. Management menu"
+            echo "8. Check system status"
+            echo "9. Show help"
+            echo "0. Exit"
+            echo ""
+            
+            read -p "Enter choice (0-9): " main_choice
+            
+            case "${main_choice}" in
+                1) full_installation ;;
+                2) 
+                    check_not_root
+                    check_openshift_dir
+                    check_required_scripts
+                    install_crc
+                    ;;
+                3)
+                    check_not_root
+                    check_openshift_dir
+                    migrate_network
+                    ;;
+                4) verify_remote ;;
+                5)
+                    check_not_root
+                    check_openshift_dir
+                    backup_crc
+                    ;;
+                6) restore_backup ;;
+                7) manage_menu ;;
+                8) check_system_state ;;
+                9) print_usage ;;
+                0) exit 0 ;;
+                *) err "Invalid choice" ;;
+            esac
+        else
+            err "Unknown option: $1"
+            print_usage
+            exit 1
+        fi
+        ;;
+esac

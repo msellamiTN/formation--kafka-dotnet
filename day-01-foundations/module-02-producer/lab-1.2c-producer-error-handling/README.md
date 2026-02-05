@@ -1,85 +1,69 @@
-# LAB 1.2C : Producer avec Gestion d'Erreurs et DLQ
+# LAB 1.2C : API Producer avec Gestion d'Erreurs et DLQ - Transactions Échouées
 
-## ⏱️ Durée estimée : 45 minutes
+## ⏱️ Durée estimée : 60 minutes
 
-## 🎯 Objectif
+## 🏦 Contexte E-Banking
 
-Implémenter un pattern production-ready avec classification des erreurs, retry automatique, et Dead Letter Queue (DLQ) pour les messages échoués.
-
-### Architecture du Pattern DLQ
+Dans ce lab, vous allez créer une API Web **production-ready** qui gère les erreurs de manière robuste. Les transactions bancaires échouées sont envoyées vers une **Dead Letter Queue (DLQ)** pour analyse et retraitement. Un système de **retry avec exponential backoff** et un **circuit breaker** protègent contre les pannes en cascade.
 
 ```mermaid
 flowchart TB
-    subgraph App["📦 .NET Producer Application"]
-        P["Producer Principal"] 
+    subgraph API["🚀 ASP.NET Core Web API"]
+        TC["TransactionsController"]
+        RS["ResilientKafkaProducerService"]
     end
-    
+
     subgraph ErrorHandling["🔧 Gestion des Erreurs"]
-        R["⚡ Retry 3x"]
+        R["⚡ Retry 3x + Backoff"]
+        CB["🔒 Circuit Breaker"]
         C{"❓ Type d'erreur ?"}
-        D["📤 DLQ Producer"]
-        F["📄 Fichier Local"]
     end
-    
+
     subgraph Kafka["🔥 Kafka Cluster"]
-        T1["Topic: orders.created"]
-        T2["Topic: orders.dlq"]
+        T1["📋 banking.transactions"]
+        T2["📋 banking.transactions.dlq"]
     end
-    
-    P -->|Send message| T1
-    P -.->|Erreur| R
-    R -.->|Épuisé| C
-    C -->|Retriable| R
-    C -->|Permanent| D
-    C -->|DLQ failed| F
-    D -->|Send to DLQ| T2
-    
-    style P fill:#bbdefb,stroke:#1976d2
+
+    subgraph Fallback["📄 Fallback"]
+        F["💾 Fichier Local JSON"]
+    end
+
+    TC --> RS
+    RS -->|"Succès"| T1
+    RS -.->|"Erreur"| R
+    R -.->|"Épuisé"| C
+    C -->|"Retriable"| R
+    C -->|"Permanent"| T2
+    C -->|"DLQ failed"| F
+    RS -.->|"Trop d'échecs"| CB
+    CB -.->|"Circuit ouvert"| T2
+
+    style API fill:#e8f5e8,stroke:#388e3c
     style T1 fill:#c8e6c9,stroke:#388e3c
     style T2 fill:#ffcdd2,stroke:#d32f2f
-    style D fill:#fff9c4,stroke:#fbc02d
     style F fill:#e1bee7,stroke:#7b1fa2
 ```
 
-**Flux complet** : Le producer envoie un message → En cas d'échec, retry 3 fois → Si échec persistant, analyse du type d'erreur → Erreurs permanentes vers DLQ → Si DLQ échoue aussi, fallback vers fichier local.
+---
 
-## 📚 Ce que vous allez apprendre
+## 🎯 Objectifs
 
-- Classification des erreurs Kafka (retriable vs permanent vs configuration)
-- Pattern Dead Letter Queue (DLQ) pour messages échoués
-- Retry automatique avec exponential backoff
-- Métadonnées d'erreur dans headers pour debugging
-- Logging structuré et monitoring des échecs
-- Fallback vers fichier local si DLQ échoue
+À la fin de ce lab, vous serez capable de :
+
+1. Classifier les **erreurs Kafka** (retriable vs permanent vs configuration)
+2. Implémenter un **pattern DLQ** pour les transactions échouées
+3. Ajouter un **retry avec exponential backoff**
+4. Implémenter un **circuit breaker** pour protéger le système
+5. Exposer des **métriques d'erreur** via l'API
+6. Tester tous les scénarios d'erreur via **Swagger/OpenAPI**
 
 ---
 
-## �️ Quick Start (5 minutes)
+## 📋 Prérequis
 
-Pour une exécution rapide sans lire tout le lab :
-
-```bash
-# 1. Créer et configurer
-cd lab-1.2c-producer-error-handling
-dotnet new console -n KafkaProducerErrorHandling
-cd KafkaProducerErrorHandling
-dotnet add package Confluent.Kafka --version 2.3.0
-dotnet add package Microsoft.Extensions.Logging --version 8.0.0
-dotnet add package Microsoft.Extensions.Logging.Console --version 8.0.0
-dotnet add package System.Text.Json --version 8.0.0
-
-# 2. Remplacer Program.cs avec le code fourni
-# 3. Exécuter
-dotnet run
-```
-
----
-
-## �📋 Prérequis
+### LAB 1.2A et 1.2B complétés
 
 ### Topics Kafka
-
-Créer les topics nécessaires :
 
 **Docker** :
 
@@ -88,7 +72,7 @@ Créer les topics nécessaires :
 docker exec kafka /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --create --if-not-exists \
-  --topic orders.created \
+  --topic banking.transactions \
   --partitions 6 \
   --replication-factor 1
 
@@ -96,7 +80,7 @@ docker exec kafka /opt/kafka/bin/kafka-topics.sh \
 docker exec kafka /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --create --if-not-exists \
-  --topic orders.dlq \
+  --topic banking.transactions.dlq \
   --partitions 3 \
   --replication-factor 1
 ```
@@ -107,604 +91,869 @@ docker exec kafka /opt/kafka/bin/kafka-topics.sh \
 kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
   --restart=Never -n kafka -- \
   bin/kafka-topics.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
-  --create --if-not-exists --topic orders.created --partitions 6 --replication-factor 3
+  --create --if-not-exists --topic banking.transactions --partitions 6 --replication-factor 3
 
 kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
   --restart=Never -n kafka -- \
   bin/kafka-topics.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
-  --create --if-not-exists --topic orders.dlq --partitions 3 --replication-factor 3
+  --create --if-not-exists --topic banking.transactions.dlq --partitions 3 --replication-factor 3
 ```
 
 ---
 
 ## 🚀 Instructions Pas à Pas
 
-### Étape 1 : Créer le projet
+### Étape 1 : Créer le projet API Web
 
 #### 💻 Option A : Visual Studio Code
 
-```mermaid
-flowchart TD
-    A["💻 Visual Studio Code"] --> B["📁 Ouvrir le dossier lab-1.2c-producer-error-handling"]
-    B --> C["⚡ Terminal: Ctrl+J"]
-    C --> D["📦 dotnet new console -n KafkaProducerErrorHandling"]
-    D --> E["📦 dotnet add package Confluent.Kafka --version 2.3.0"]
-    E --> F["📦 dotnet add package Microsoft.Extensions.Logging --version 8.0.0"]
-    F --> G["📦 dotnet add package Microsoft.Extensions.Logging.Console --version 8.0.0"]
-    G --> H["📦 dotnet add package System.Text.Json --version 8.0.0"]
-    H --> I["▶️ dotnet run"]
-    
-    style A fill:#007acc,color:#fff
-    style I fill:#4caf50,color:#fff
-```
-
-**Commandes** :
-
 ```bash
 cd lab-1.2c-producer-error-handling
-dotnet new console -n KafkaProducerErrorHandling
-cd KafkaProducerErrorHandling
+dotnet new webapi -n EBankingResilientProducerAPI
+cd EBankingResilientProducerAPI
 dotnet add package Confluent.Kafka --version 2.3.0
-dotnet add package Microsoft.Extensions.Logging --version 8.0.0
-dotnet add package Microsoft.Extensions.Logging.Console --version 8.0.0
-dotnet add package System.Text.Json --version 8.0.0
+dotnet add package Swashbuckle.AspNetCore --version 6.5.0
 ```
-
----
 
 #### 🎨 Option B : Visual Studio 2022
 
-```mermaid
-flowchart TD
-    A["🎨 Visual Studio 2022"] --> B["📁 Fichier → Nouveau → Projet"]
-    B --> C["📋 Application console C#"]
-    C --> D["⚙️ Nom: KafkaProducerErrorHandling"]
-    D --> E["⚙️ Framework: .NET 8.0"]
-    E --> F["📦 Gérer les packages NuGet"]
-    F --> G["🔍 Confluent.Kafka 2.3.0"]
-    G --> H["🔍 Microsoft.Extensions.Logging 8.0.0"]
-    H --> I["🔍 Microsoft.Extensions.Logging.Console 8.0.0"]
-    I --> J["🔍 System.Text.Json 8.0.0"]
-    J --> K["▶️ F5 pour exécuter"]
-    
-    style A fill:#5c2d91,color:#fff
-    style K fill:#4caf50,color:#fff
-```
-
-**Instructions** :
-
-1.  **Fichier** → **Nouveau** → **Projet** (`Ctrl+Shift+N`)
-2.  Sélectionner **Application console** C#
-3.  Nom : `KafkaProducerErrorHandling`
-4.  Framework : **.NET 8.0**
-5.  Clic droit projet → **Gérer les packages NuGet** :
-    - ✅ `Confluent.Kafka` version **2.3.0**
-    - ✅ `Microsoft.Extensions.Logging` version **8.0.0**
-    - ✅ `Microsoft.Extensions.Logging.Console` version **8.0.0**
-    - ✅ `System.Text.Json` version **8.0.0**
-6.  **F5** pour exécuter avec débogage
+1. **Fichier** → **Nouveau** → **Projet** (`Ctrl+Shift+N`)
+2. Sélectionner **API Web ASP.NET Core**
+3. Nom : `EBankingResilientProducerAPI`, Framework : **.NET 8.0**
+4. Clic droit projet → **Gérer les packages NuGet** :
+   - `Confluent.Kafka` version **2.3.0**
+   - `Swashbuckle.AspNetCore` version **6.5.0**
 
 ---
 
 ### Étape 2 : Comprendre les types d'erreurs
 
-#### Classification des erreurs Kafka
+#### Classification des erreurs Kafka en e-banking
 
-| Type | Retriable ? | ErrorCode | Exemple | Action |
-|------|-------------|-----------|---------|--------|
-| **Transient** | ✅ Oui | `NotEnoughReplicasException`, `LeaderNotAvailableException`, `NetworkException` | Broker temporairement indisponible | Retry automatique |
-| **Permanent** | ❌ Non | `RecordTooLargeException`, `InvalidTopicException`, `UnknownTopicOrPartition` | Message trop grand, topic inexistant | DLQ |
-| **Configuration** | ❌ Non | `AuthenticationException`, `AuthorizationException`, `SerializationException` | Credentials invalides | Fix config |
-
-#### Pattern de gestion
-
-```
-┌─────────────────┐
-│  ProduceAsync   │
-└────────┬────────┘
-         │
-         ▼
-    ┌─────────┐
-    │ Success?│
-    └────┬────┘
-         │
-    ┌────┴────┐
-    │         │
-   YES       NO
-    │         │
-    ▼         ▼
-  ✓ OK   ┌──────────┐
-         │ Retriable?│
-         └─────┬─────┘
-               │
-          ┌────┴────┐
-          │         │
-         YES       NO
-          │         │
-          ▼         ▼
-    ┌─────────┐  ┌─────┐
-    │  Retry  │  │ DLQ │
-    │(auto 3x)│  └─────┘
-    └─────────┘
-```
+| Type | Retriable ? | Exemples | Action | Impact bancaire |
+| ---- | ----------- | -------- | ------ | --------------- |
+| **Transient** | Oui | `BrokerTransportFailure`, `LeaderNotAvailable` | Retry auto | Transaction en attente |
+| **Permanent** | Non | `RecordTooLarge`, `UnknownTopic` | DLQ | Transaction rejetée |
+| **Configuration** | Non | `AuthenticationException` | Fix config | Service indisponible |
 
 ---
 
-### Étape 3 : Comprendre le code
+### Étape 3 : Créer le modèle Transaction (réutiliser LAB 1.2A)
 
-Le code fourni implémente un producer robuste avec :
+Copier le fichier `Models/Transaction.cs` du LAB 1.2A.
 
-#### 1. Configuration avec retry
+---
 
-```csharp
-var config = new ProducerConfig
-{
-    BootstrapServers = "localhost:9092",
-    ClientId = "dotnet-error-handling-producer",
-    Acks = Acks.All,
-    
-    // ===== RETRY AUTOMATIQUE =====
-    MessageSendMaxRetries = 3,      // 3 tentatives
-    RetryBackoffMs = 1000,          // 1 seconde entre retries
-    RequestTimeoutMs = 30000,       // 30 secondes timeout
-};
-```
+### Étape 4 : Créer le service Kafka Producer résilient
 
-#### 2. Error Handler
+Créer le fichier `Services/ResilientKafkaProducerService.cs` :
 
 ```csharp
-.SetErrorHandler((_, error) =>
+using Confluent.Kafka;
+using System.Text.Json;
+using EBankingResilientProducerAPI.Models;
+
+namespace EBankingResilientProducerAPI.Services;
+
+public class ResilientKafkaProducerService : IDisposable
 {
-    if (error.IsFatal)
-    {
-        logger.LogCritical("Fatal error: {Code} - {Reason}", error.Code, error.Reason);
-        Environment.Exit(1);  // Arrêt si erreur fatale
-    }
-    else
-    {
-        logger.LogWarning("Non-fatal error: {Code} - {Reason}", error.Code, error.Reason);
-    }
-})
-```
+    private readonly IProducer<string, string> _producer;
+    private readonly IProducer<string, string> _dlqProducer;
+    private readonly ILogger<ResilientKafkaProducerService> _logger;
+    private readonly string _topic;
+    private readonly string _dlqTopic;
 
-#### 3. Gestion des exceptions
+    // Circuit Breaker state
+    private int _consecutiveFailures = 0;
+    private DateTime _lastFailure = DateTime.MinValue;
+    private const int CircuitBreakerThreshold = 5;
+    private static readonly TimeSpan CircuitBreakerTimeout = TimeSpan.FromMinutes(1);
 
-```csharp
-catch (ProduceException<string, string> ex)
-{
-    logger.LogError("Failed after {Retries} retries: {ErrorCode}", 
-        config.MessageSendMaxRetries, ex.Error.Code);
-    
-    // Classification de l'erreur
-    if (IsRetriableError(ex.Error.Code))
-    {
-        logger.LogWarning("Transient error persisted. Consider increasing retry count.");
-    }
-    else if (IsPermanentError(ex.Error.Code))
-    {
-        logger.LogError("Permanent error. Sending to DLQ.");
-        await SendToDeadLetterQueueAsync(message, ex);
-    }
-}
-```
+    // Metrics
+    private long _messagesProduced = 0;
+    private long _messagesFailed = 0;
+    private long _messagesSentToDlq = 0;
+    private long _messagesSavedToFile = 0;
+    private readonly Dictionary<string, int> _errorCounts = new();
 
-#### 4. Dead Letter Queue
-
-```csharp
-private static async Task SendToDeadLetterQueueAsync(
-    Message<string, string> failedMessage, 
-    Exception originalException)
-{
-    var dlqMessage = new Message<string, string>
+    public ResilientKafkaProducerService(IConfiguration config, ILogger<ResilientKafkaProducerService> logger)
     {
-        Key = failedMessage.Key,
-        Value = failedMessage.Value,
-        Headers = new Headers
+        _logger = logger;
+        _topic = config["Kafka:Topic"] ?? "banking.transactions";
+        _dlqTopic = config["Kafka:DlqTopic"] ?? "banking.transactions.dlq";
+
+        var producerConfig = new ProducerConfig
         {
-            { "original-topic", Encoding.UTF8.GetBytes("orders.created") },
-            { "error-timestamp", Encoding.UTF8.GetBytes(DateTime.UtcNow.ToString("o")) },
-            { "error-type", Encoding.UTF8.GetBytes(originalException.GetType().Name) },
-            { "error-message", Encoding.UTF8.GetBytes(originalException.Message) },
-            { "retry-count", Encoding.UTF8.GetBytes("3") }
+            BootstrapServers = config["Kafka:BootstrapServers"] ?? "localhost:9092",
+            ClientId = config["Kafka:ClientId"] ?? "ebanking-resilient-producer",
+            Acks = Acks.All,
+            EnableIdempotence = true,
+            MessageSendMaxRetries = 3,
+            RetryBackoffMs = 1000,
+            RequestTimeoutMs = 30000,
+            LingerMs = 10,
+            BatchSize = 16384,
+            CompressionType = CompressionType.Snappy
+        };
+
+        _producer = new ProducerBuilder<string, string>(producerConfig)
+            .SetErrorHandler((_, error) =>
+            {
+                if (error.IsFatal)
+                    _logger.LogCritical("FATAL Kafka Error: {Reason}", error.Reason);
+                else
+                    _logger.LogWarning("Kafka Error: {Reason} (Code: {Code})", error.Reason, error.Code);
+            })
+            .Build();
+
+        _dlqProducer = new ProducerBuilder<string, string>(producerConfig).Build();
+    }
+
+    /// <summary>
+    /// Send transaction with full error handling, retry, DLQ, and circuit breaker
+    /// </summary>
+    public async Task<TransactionResult> SendTransactionAsync(
+        Transaction transaction, CancellationToken ct = default)
+    {
+        // Circuit Breaker check
+        if (IsCircuitOpen())
+        {
+            _logger.LogWarning("Circuit breaker OPEN. Sending {Id} directly to DLQ",
+                transaction.TransactionId);
+            await SendToDlqAsync(transaction, "Circuit breaker open", "CircuitBreakerException");
+            return new TransactionResult
+            {
+                TransactionId = transaction.TransactionId,
+                Status = "SentToDLQ",
+                ErrorMessage = "Circuit breaker is open - too many consecutive failures"
+            };
         }
+
+        // Retry with exponential backoff
+        var maxRetries = 3;
+        for (int attempt = 0; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                var json = JsonSerializer.Serialize(transaction, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                });
+
+                var message = new Message<string, string>
+                {
+                    Key = transaction.CustomerId,
+                    Value = json,
+                    Headers = new Headers
+                    {
+                        { "correlation-id", System.Text.Encoding.UTF8.GetBytes(Guid.NewGuid().ToString()) },
+                        { "event-type", System.Text.Encoding.UTF8.GetBytes("transaction.created") },
+                        { "source", System.Text.Encoding.UTF8.GetBytes("ebanking-resilient-api") },
+                        { "attempt", System.Text.Encoding.UTF8.GetBytes((attempt + 1).ToString()) }
+                    },
+                    Timestamp = new Timestamp(transaction.Timestamp)
+                };
+
+                var result = await _producer.ProduceAsync(_topic, message, ct);
+
+                // Success - reset circuit breaker
+                Interlocked.Increment(ref _messagesProduced);
+                _consecutiveFailures = 0;
+
+                _logger.LogInformation(
+                    "Transaction {Id} sent (attempt {A}) → Partition: {P}, Offset: {O}",
+                    transaction.TransactionId, attempt + 1,
+                    result.Partition.Value, result.Offset.Value);
+
+                return new TransactionResult
+                {
+                    TransactionId = transaction.TransactionId,
+                    Status = "Processing",
+                    KafkaPartition = result.Partition.Value,
+                    KafkaOffset = result.Offset.Value,
+                    Timestamp = result.Timestamp.UtcDateTime,
+                    Attempts = attempt + 1
+                };
+            }
+            catch (ProduceException<string, string> ex)
+            {
+                _logger.LogWarning("Attempt {A}/{Max} failed for {Id}: {Error}",
+                    attempt + 1, maxRetries + 1, transaction.TransactionId, ex.Error.Reason);
+
+                TrackError(ex.Error.Code.ToString());
+
+                if (!IsRetriableError(ex.Error.Code) || attempt == maxRetries)
+                {
+                    // Permanent error or retries exhausted → DLQ
+                    Interlocked.Increment(ref _messagesFailed);
+                    _consecutiveFailures++;
+                    _lastFailure = DateTime.UtcNow;
+
+                    await SendToDlqAsync(transaction, ex.Error.Reason, ex.Error.Code.ToString());
+
+                    return new TransactionResult
+                    {
+                        TransactionId = transaction.TransactionId,
+                        Status = "SentToDLQ",
+                        ErrorMessage = $"Error: {ex.Error.Reason} (Code: {ex.Error.Code})",
+                        Attempts = attempt + 1
+                    };
+                }
+
+                // Exponential backoff: 1s, 2s, 4s
+                var delayMs = (int)Math.Pow(2, attempt) * 1000;
+                _logger.LogInformation("Retrying in {Delay}ms...", delayMs);
+                await Task.Delay(delayMs, ct);
+            }
+        }
+
+        return new TransactionResult
+        {
+            TransactionId = transaction.TransactionId,
+            Status = "Failed",
+            ErrorMessage = "Unexpected: all retries exhausted"
+        };
+    }
+
+    private async Task SendToDlqAsync(Transaction transaction, string errorMessage, string errorCode)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(transaction, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            });
+
+            var dlqMessage = new Message<string, string>
+            {
+                Key = transaction.CustomerId,
+                Value = json,
+                Headers = new Headers
+                {
+                    { "original-topic", System.Text.Encoding.UTF8.GetBytes(_topic) },
+                    { "error-timestamp", System.Text.Encoding.UTF8.GetBytes(DateTime.UtcNow.ToString("o")) },
+                    { "error-code", System.Text.Encoding.UTF8.GetBytes(errorCode) },
+                    { "error-message", System.Text.Encoding.UTF8.GetBytes(errorMessage) },
+                    { "transaction-id", System.Text.Encoding.UTF8.GetBytes(transaction.TransactionId) },
+                    { "customer-id", System.Text.Encoding.UTF8.GetBytes(transaction.CustomerId) },
+                    { "amount", System.Text.Encoding.UTF8.GetBytes(transaction.Amount.ToString("F2")) }
+                }
+            };
+
+            await _dlqProducer.ProduceAsync(_dlqTopic, dlqMessage);
+            Interlocked.Increment(ref _messagesSentToDlq);
+
+            _logger.LogWarning("Transaction {Id} sent to DLQ: {Error}",
+                transaction.TransactionId, errorMessage);
+        }
+        catch (Exception dlqEx)
+        {
+            // DLQ failed → fallback to local file
+            _logger.LogError(dlqEx, "DLQ failed for {Id}. Saving to local file.",
+                transaction.TransactionId);
+            await SaveToLocalFileAsync(transaction, errorMessage, dlqEx.Message);
+        }
+    }
+
+    private async Task SaveToLocalFileAsync(Transaction transaction, string originalError, string dlqError)
+    {
+        var fallbackDir = Path.Combine(AppContext.BaseDirectory, "fallback");
+        Directory.CreateDirectory(fallbackDir);
+
+        var entry = new
+        {
+            Timestamp = DateTime.UtcNow,
+            Transaction = transaction,
+            OriginalError = originalError,
+            DlqError = dlqError
+        };
+
+        var json = JsonSerializer.Serialize(entry, new JsonSerializerOptions { WriteIndented = true });
+        var fileName = $"failed-tx-{transaction.TransactionId}-{DateTime.UtcNow:yyyyMMddHHmmss}.json";
+        await File.AppendAllTextAsync(Path.Combine(fallbackDir, fileName), json + Environment.NewLine);
+
+        Interlocked.Increment(ref _messagesSavedToFile);
+        _logger.LogCritical("Transaction {Id} saved to fallback file: {File}",
+            transaction.TransactionId, fileName);
+    }
+
+    private bool IsCircuitOpen() =>
+        _consecutiveFailures >= CircuitBreakerThreshold &&
+        DateTime.UtcNow - _lastFailure < CircuitBreakerTimeout;
+
+    private static bool IsRetriableError(ErrorCode code) => code switch
+    {
+        ErrorCode.Local_Transport => true,
+        ErrorCode.Local_Timeout => true,
+        ErrorCode.NotEnoughReplicas => true,
+        ErrorCode.LeaderNotAvailable => true,
+        ErrorCode.RequestTimedOut => true,
+        _ => false
     };
-    
-    await dlqProducer.ProduceAsync("orders.dlq", dlqMessage);
+
+    private void TrackError(string errorCode)
+    {
+        lock (_errorCounts)
+        {
+            _errorCounts[errorCode] = _errorCounts.GetValueOrDefault(errorCode, 0) + 1;
+        }
+    }
+
+    /// <summary>
+    /// Get producer metrics
+    /// </summary>
+    public ProducerMetrics GetMetrics() => new()
+    {
+        MessagesProduced = _messagesProduced,
+        MessagesFailed = _messagesFailed,
+        MessagesSentToDlq = _messagesSentToDlq,
+        MessagesSavedToFile = _messagesSavedToFile,
+        CircuitBreakerOpen = IsCircuitOpen(),
+        ConsecutiveFailures = _consecutiveFailures,
+        ErrorCounts = new Dictionary<string, int>(_errorCounts),
+        SuccessRate = _messagesProduced + _messagesFailed > 0
+            ? (double)_messagesProduced / (_messagesProduced + _messagesFailed) * 100
+            : 100
+    };
+
+    public void Dispose()
+    {
+        _producer?.Flush(TimeSpan.FromSeconds(10));
+        _producer?.Dispose();
+        _dlqProducer?.Flush(TimeSpan.FromSeconds(10));
+        _dlqProducer?.Dispose();
+    }
+}
+
+// --- Result and Metrics DTOs ---
+
+public class TransactionResult
+{
+    public string TransactionId { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public int KafkaPartition { get; set; }
+    public long KafkaOffset { get; set; }
+    public DateTime Timestamp { get; set; }
+    public int Attempts { get; set; }
+    public string? ErrorMessage { get; set; }
+}
+
+public class ProducerMetrics
+{
+    public long MessagesProduced { get; set; }
+    public long MessagesFailed { get; set; }
+    public long MessagesSentToDlq { get; set; }
+    public long MessagesSavedToFile { get; set; }
+    public bool CircuitBreakerOpen { get; set; }
+    public int ConsecutiveFailures { get; set; }
+    public Dictionary<string, int> ErrorCounts { get; set; } = new();
+    public double SuccessRate { get; set; }
 }
 ```
 
 ---
 
-### Étape 4 : Exécuter et observer
+### Étape 5 : Créer le contrôleur API
+
+Créer le fichier `Controllers/TransactionsController.cs` :
+
+```csharp
+using Microsoft.AspNetCore.Mvc;
+using EBankingResilientProducerAPI.Models;
+using EBankingResilientProducerAPI.Services;
+
+namespace EBankingResilientProducerAPI.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+[Produces("application/json")]
+public class TransactionsController : ControllerBase
+{
+    private readonly ResilientKafkaProducerService _kafka;
+    private readonly ILogger<TransactionsController> _logger;
+
+    public TransactionsController(ResilientKafkaProducerService kafka, ILogger<TransactionsController> logger)
+    {
+        _kafka = kafka;
+        _logger = logger;
+    }
+
+    /// <summary>
+    /// Créer une transaction avec gestion d'erreurs complète (retry + DLQ + circuit breaker)
+    /// </summary>
+    /// <remarks>
+    /// La transaction sera envoyée à Kafka avec retry automatique.
+    /// En cas d'échec persistant, elle sera redirigée vers la DLQ.
+    /// Si le circuit breaker est ouvert, elle ira directement en DLQ.
+    ///
+    ///     POST /api/transactions
+    ///     {
+    ///         "fromAccount": "FR7630001000123456789",
+    ///         "toAccount":   "FR7630001000987654321",
+    ///         "amount": 250.00,
+    ///         "currency": "EUR",
+    ///         "type": 1,
+    ///         "description": "Virement mensuel loyer",
+    ///         "customerId": "CUST-001"
+    ///     }
+    ///
+    /// </remarks>
+    [HttpPost]
+    [ProducesResponseType(typeof(TransactionResult), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(TransactionResult), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<TransactionResult>> CreateTransaction(
+        [FromBody] Transaction transaction, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(transaction.TransactionId))
+            transaction.TransactionId = Guid.NewGuid().ToString();
+
+        var result = await _kafka.SendTransactionAsync(transaction, ct);
+
+        return result.Status switch
+        {
+            "Processing" => CreatedAtAction(nameof(GetTransaction),
+                new { transactionId = result.TransactionId }, result),
+            "SentToDLQ" => Accepted(result),
+            _ => StatusCode(500, result)
+        };
+    }
+
+    /// <summary>
+    /// Envoyer un lot de transactions avec gestion d'erreurs
+    /// </summary>
+    [HttpPost("batch")]
+    [ProducesResponseType(typeof(BatchResilientResponse), StatusCodes.Status201Created)]
+    public async Task<ActionResult<BatchResilientResponse>> CreateBatch(
+        [FromBody] List<Transaction> transactions, CancellationToken ct)
+    {
+        var results = new List<TransactionResult>();
+
+        foreach (var tx in transactions)
+        {
+            if (string.IsNullOrEmpty(tx.TransactionId))
+                tx.TransactionId = Guid.NewGuid().ToString();
+
+            results.Add(await _kafka.SendTransactionAsync(tx, ct));
+        }
+
+        var response = new BatchResilientResponse
+        {
+            TotalCount = results.Count,
+            SuccessCount = results.Count(r => r.Status == "Processing"),
+            DlqCount = results.Count(r => r.Status == "SentToDLQ"),
+            FailedCount = results.Count(r => r.Status == "Failed"),
+            Transactions = results
+        };
+
+        return Created("", response);
+    }
+
+    /// <summary>
+    /// Obtenir les métriques du producer (erreurs, DLQ, circuit breaker)
+    /// </summary>
+    [HttpGet("metrics")]
+    [ProducesResponseType(typeof(ProducerMetrics), StatusCodes.Status200OK)]
+    public ActionResult<ProducerMetrics> GetMetrics()
+    {
+        return Ok(_kafka.GetMetrics());
+    }
+
+    /// <summary>
+    /// Obtenir le statut d'une transaction (placeholder)
+    /// </summary>
+    [HttpGet("{transactionId}")]
+    [ProducesResponseType(typeof(TransactionResult), StatusCodes.Status200OK)]
+    public ActionResult<TransactionResult> GetTransaction(string transactionId)
+    {
+        return Ok(new TransactionResult
+        {
+            TransactionId = transactionId,
+            Status = "Processing",
+            Timestamp = DateTime.UtcNow
+        });
+    }
+
+    /// <summary>
+    /// Health check avec état du circuit breaker
+    /// </summary>
+    [HttpGet("health")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    public ActionResult GetHealth()
+    {
+        var metrics = _kafka.GetMetrics();
+        return Ok(new
+        {
+            Status = metrics.CircuitBreakerOpen ? "Degraded" : "Healthy",
+            Service = "EBanking Resilient Producer API",
+            CircuitBreaker = metrics.CircuitBreakerOpen ? "OPEN" : "CLOSED",
+            ConsecutiveFailures = metrics.ConsecutiveFailures,
+            SuccessRate = $"{metrics.SuccessRate:F1}%",
+            Timestamp = DateTime.UtcNow
+        });
+    }
+}
+
+// --- Response DTOs ---
+
+public class BatchResilientResponse
+{
+    public int TotalCount { get; set; }
+    public int SuccessCount { get; set; }
+    public int DlqCount { get; set; }
+    public int FailedCount { get; set; }
+    public List<TransactionResult> Transactions { get; set; } = new();
+}
+```
+
+---
+
+### Étape 6 : Configurer Program.cs
+
+```csharp
+using EBankingResilientProducerAPI.Services;
+using Microsoft.OpenApi.Models;
+using System.Reflection;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddControllers();
+builder.Services.AddSingleton<ResilientKafkaProducerService>();
+
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "E-Banking Resilient Producer API",
+        Version = "v1",
+        Description = "API de transactions bancaires avec gestion d'erreurs production-ready.\n\n"
+            + "**Fonctionnalités :**\n"
+            + "- Retry avec exponential backoff (1s, 2s, 4s)\n"
+            + "- Dead Letter Queue (DLQ) pour transactions échouées\n"
+            + "- Circuit breaker (seuil: 5 échecs consécutifs)\n"
+            + "- Fallback fichier local si DLQ échoue\n"
+            + "- Métriques temps réel\n\n"
+            + "**Endpoints :**\n"
+            + "- `POST /api/transactions` — Transaction avec retry + DLQ\n"
+            + "- `POST /api/transactions/batch` — Lot avec rapport d'erreurs\n"
+            + "- `GET /api/transactions/metrics` — Métriques du producer\n"
+            + "- `GET /api/transactions/health` — Health + circuit breaker"
+    });
+
+    var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+        options.IncludeXmlComments(xmlPath);
+});
+
+var app = builder.Build();
+
+app.UseSwagger();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "E-Banking Resilient Producer API v1");
+    c.RoutePrefix = "swagger";
+});
+
+app.MapControllers();
+
+var logger = app.Services.GetRequiredService<ILogger<Program>>();
+logger.LogInformation("========================================");
+logger.LogInformation("  E-Banking Resilient Producer API");
+logger.LogInformation("  Features: Retry, DLQ, Circuit Breaker");
+logger.LogInformation("  Swagger UI : https://localhost:5001/swagger");
+logger.LogInformation("========================================");
+
+app.Run();
+```
+
+---
+
+### Étape 7 : Configurer appsettings.json
+
+```json
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "Kafka": {
+    "BootstrapServers": "localhost:9092",
+    "Topic": "banking.transactions",
+    "DlqTopic": "banking.transactions.dlq",
+    "ClientId": "ebanking-resilient-producer"
+  }
+}
+```
+
+---
+
+### Étape 8 : Exécuter et tester
 
 ```bash
 dotnet run
 ```
 
-#### Logs attendus (succès)
-
-```
-info: Sending message 1: {"orderId": "ORD-0001", ...}
-info: ✓ Message 1 delivered → Partition: 3, Offset: 0
-info: Sending message 2: {"orderId": "ORD-0002", ...}
-info: ✓ Message 2 delivered → Partition: 1, Offset: 0
-...
-info: All 10 messages sent successfully!
-```
+Ouvrir Swagger UI : **<https://localhost:5001/swagger>**
 
 ---
 
-### Étape 5 : Simuler des erreurs
+## 🧪 Tests OpenAPI (Swagger)
 
-#### Test 1 : Erreur transiente (broker indisponible)
+### Test 1 : Transaction normale (succès)
 
-1. Arrêter Kafka pendant l'envoi :
+**POST /api/transactions** :
+
+```json
+{
+  "fromAccount": "FR7630001000123456789",
+  "toAccount": "FR7630001000987654321",
+  "amount": 250.00,
+  "currency": "EUR",
+  "type": 1,
+  "description": "Virement mensuel loyer",
+  "customerId": "CUST-001",
+  "riskScore": 5
+}
+```
+
+**Réponse attendue** (201 Created) :
+
+```json
+{
+  "transactionId": "a1b2c3d4-...",
+  "status": "Processing",
+  "kafkaPartition": 2,
+  "kafkaOffset": 0,
+  "timestamp": "2026-02-06T00:00:00Z",
+  "attempts": 1,
+  "errorMessage": null
+}
+```
+
+### Test 2 : Lot de transactions mixtes
+
+**POST /api/transactions/batch** :
+
+```json
+[
+  {
+    "fromAccount": "FR7630001000123456789",
+    "toAccount": "FR7630001000111111111",
+    "amount": 50.00,
+    "currency": "EUR",
+    "type": 2,
+    "description": "Paiement Netflix",
+    "customerId": "CUST-001"
+  },
+  {
+    "fromAccount": "FR7630001000123456789",
+    "toAccount": "FR7630001000222222222",
+    "amount": 1500.00,
+    "currency": "EUR",
+    "type": 1,
+    "description": "Virement épargne",
+    "customerId": "CUST-001"
+  },
+  {
+    "fromAccount": "FR7630001000333333333",
+    "toAccount": "GB29NWBK60161331926819",
+    "amount": 25000.00,
+    "currency": "EUR",
+    "type": 6,
+    "description": "International transfer",
+    "customerId": "CUST-002",
+    "riskScore": 85
+  }
+]
+```
+
+**Réponse attendue** :
+
+```json
+{
+  "totalCount": 3,
+  "successCount": 3,
+  "dlqCount": 0,
+  "failedCount": 0,
+  "transactions": [...]
+}
+```
+
+### Test 3 : Consulter les métriques
+
+**GET /api/transactions/metrics** :
+
+```json
+{
+  "messagesProduced": 4,
+  "messagesFailed": 0,
+  "messagesSentToDlq": 0,
+  "messagesSavedToFile": 0,
+  "circuitBreakerOpen": false,
+  "consecutiveFailures": 0,
+  "errorCounts": {},
+  "successRate": 100.0
+}
+```
+
+### Test 4 : Health check avec circuit breaker
+
+**GET /api/transactions/health** :
+
+```json
+{
+  "status": "Healthy",
+  "service": "EBanking Resilient Producer API",
+  "circuitBreaker": "CLOSED",
+  "consecutiveFailures": 0,
+  "successRate": "100.0%",
+  "timestamp": "2026-02-06T00:00:00Z"
+}
+```
+
+### Test 5 : Simuler des erreurs (broker indisponible)
+
+1. Arrêter Kafka : `docker stop kafka`
+2. Envoyer une transaction via Swagger
+3. Observer la réponse 202 Accepted avec `status: "SentToDLQ"`
+4. Consulter les métriques → `messagesFailed` et `messagesSentToDlq` incrémentés
+5. Redémarrer Kafka : `docker start kafka`
+
+---
+
+## 📊 Vérifier dans Kafka
+
+### Vérifier les transactions réussies
+
 ```bash
-# Docker
-docker stop kafka
-
-# OKD/K3s
-kubectl scale kafka bhf-kafka --replicas=0 -n kafka
-```
-
-2. Relancer le producer
-3. Observer les retries dans les logs :
-```
-warn: Kafka internal log: [thrd:main]: Broker transport failure
-warn: Non-fatal error: Local_Transport - Broker transport failure
-warn: Kafka internal log: [thrd:main]: Retrying in 1000ms
-```
-
-4. Redémarrer Kafka :
-```bash
-# Docker
-docker start kafka
-
-# OKD/K3s
-kubectl scale kafka bhf-kafka --replicas=3 -n kafka
-```
-
-#### Test 2 : Erreur permanente (topic inexistant)
-
-1. Modifier le code pour utiliser un topic inexistant :
-```csharp
-const string topicName = "nonexistent.topic";
-```
-
-2. Relancer le producer
-3. Observer l'erreur et l'envoi vers DLQ :
-```
-error: Failed after 3 retries: UnknownTopicOrPartition
-error: Permanent error. Sending to DLQ.
-warn: Message sent to DLQ: Key=customer-A
-```
-
-4. Vérifier le message dans DLQ :
-```bash
-# Docker
 docker exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
-  --topic orders.dlq \
+  --topic banking.transactions \
+  --from-beginning \
+  --max-messages 10
+```
+
+### Vérifier la DLQ
+
+```bash
+docker exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic banking.transactions.dlq \
   --from-beginning \
   --property print.headers=true
-
-# OKD/K3s
-kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
-  --restart=Never -n kafka -- \
-  bin/kafka-console-consumer.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
-  --topic orders.dlq --from-beginning --property print.headers=true
 ```
 
-**Résultat attendu** :
-```
-original-topic:orders.created,error-timestamp:2026-02-05T12:00:00Z,error-type:ProduceException,...
-{"orderId": "ORD-0001", ...}
+**Headers DLQ attendus** :
+
+```text
+original-topic:banking.transactions, error-code:Local_Transport, error-message:Broker transport failure, transaction-id:abc-123, customer-id:CUST-001, amount:250.00
 ```
 
 ---
 
-## 🎯 Error Simulation Scenarios
+## 🎯 Concepts Clés Expliqués
 
-### Scénarios de test disponibles
+### Pattern DLQ en e-banking
 
-| Scénario | Comment déclencher | Comportement attendu | DLQ ? |
-|----------|-------------------|----------------------|-------|
-| **Broker indisponible** | `docker stop kafka` | Retry 3x → échec → DLQ | ✅ |
-| **Topic inexistant** | Envoyer vers `topic.inexistant` | Erreur immédiate → DLQ | ✅ |
-| **Message trop grand** | Message > 1MB | Erreur permanente → DLQ | ✅ |
-| **Serialization error** | JSON invalide | Erreur permanente → DLQ | ✅ |
-| **DLQ pleine** | Simuler DLQ saturée | Fallback fichier local | ❌ |
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant API as Web API
+    participant P as Producer
+    participant K as Kafka
+    participant DLQ as DLQ Topic
+    participant F as Fichier Local
 
-### Comment tester chaque scénario
+    C->>API: POST /api/transactions
+    API->>P: SendTransactionAsync()
 
-```bash
-# Scénario 1 : Broker indisponible
-docker stop kafka
-# Exécuter le producer → Observer les retries
-docker start kafka
-
-# Scénario 2 : Topic inexistant
-# Modifier le code pour envoyer vers 'orders.nonexistent'
-
-# Scénario 3 : Message trop grand
-# Créer un message de 2MB
-
-# Scénario 4 : DLQ échoue
-# Modifier la configuration DLQ pour pointer sur un broker inexistant
+    alt Succès
+        P->>K: ProduceAsync()
+        K-->>P: DeliveryResult
+        P-->>API: Status: Processing
+        API-->>C: 201 Created
+    else Échec après retries
+        P->>K: ProduceAsync() x3
+        K-->>P: Error
+        P->>DLQ: SendToDlqAsync()
+        DLQ-->>P: OK
+        P-->>API: Status: SentToDLQ
+        API-->>C: 202 Accepted
+    else DLQ échoue aussi
+        P->>DLQ: SendToDlqAsync()
+        DLQ-->>P: Error
+        P->>F: SaveToLocalFileAsync()
+        P-->>API: Status: Failed
+        API-->>C: 500 Error
+    end
 ```
+
+### Classification des erreurs
+
+| Erreur | Type | Retry ? | Action |
+| ------ | ---- | ------- | ------ |
+| `Local_Transport` | Transient | Oui | Retry 3x |
+| `Local_Timeout` | Transient | Oui | Retry 3x |
+| `NotEnoughReplicas` | Transient | Oui | Retry 3x |
+| `LeaderNotAvailable` | Transient | Oui | Retry 3x |
+| `MsgSizeTooLarge` | Permanent | Non | DLQ |
+| `UnknownTopicOrPartition` | Permanent | Non | DLQ |
+| `InvalidTopic` | Permanent | Non | DLQ |
+
+### Circuit Breaker
+
+| État | Condition | Comportement |
+| ---- | --------- | ------------ |
+| **CLOSED** | < 5 échecs consécutifs | Envoi normal |
+| **OPEN** | >= 5 échecs consécutifs | Envoi direct en DLQ |
+| **HALF-OPEN** | Après 1 minute de timeout | Tentative de rétablissement |
 
 ---
 
-## 📊 Production Readiness Checklist
+## 🔧 Troubleshooting
 
-### ✅ Configuration Production-Ready
-
-| Élément | Statut | Pourquoi c'est important |
-|---------|--------|---------------------------|
-| **Retry automatique** | ✅ Implémenté | Gère les erreurs transientes (réseau, broker temporairement indisponible) |
-| **DLQ (Dead Letter Queue)** | ✅ Implémenté | Préserve les messages échoués pour analyse manuelle |
-| **Fallback fichier local** | ✅ Implémenté | Dernier recours si DLQ échoue aussi |
-| **Logging structuré** | ✅ Implémenté | Facilite le monitoring et debugging |
-| **Métriques d'erreur** | ✅ Implémenté | Permet de surveiller la santé du producer |
-| **Timeouts configurés** | ✅ Implémenté | Évite les blocages infinis |
-| **Circuit breaker** | 🔄 Optionnel | Protège contre les pannes en cascade |
-
-### 🚀 Monitoring en production
-
-```bash
-# Surveiller les erreurs dans les logs
-docker logs kafka-producer-error-handling | grep "ERROR"
-
-# Vérifier la DLQ
-docker exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
-  --bootstrap-server localhost:9092 --topic orders.dlq --from-beginning
-
-# Monitorer les métriques Kafka
-curl http://localhost:8080/api/clusters/kafka/brokers
-```
-
----
-
-## 🧪 Exercices Pratiques
-
-### Exercice 1 : Ajouter un compteur d'erreurs
-
-**Objectif** : Compter le nombre d'erreurs par type.
-
-**Instructions** :
-
-1. Ajouter un dictionnaire de compteurs :
-```csharp
-var errorCounts = new Dictionary<ErrorCode, int>();
-```
-
-2. Dans le catch, incrémenter le compteur :
-```csharp
-errorCounts[ex.Error.Code] = errorCounts.GetValueOrDefault(ex.Error.Code, 0) + 1;
-```
-
-3. Afficher les statistiques à la fin :
-```csharp
-Console.WriteLine("\n=== Error Statistics ===");
-foreach (var kvp in errorCounts)
-{
-    Console.WriteLine($"{kvp.Key}: {kvp.Value} errors");
-}
-```
-
----
-
-### Exercice 2 : Implémenter exponential backoff
-
-**Objectif** : Augmenter progressivement le délai entre retries.
-
-**Instructions** :
-
-1. Créer une méthode de retry avec backoff :
-```csharp
-private static async Task<DeliveryResult<string, string>> ProduceWithExponentialBackoffAsync(
-    IProducer<string, string> producer,
-    string topic,
-    Message<string, string> message,
-    int maxRetries = 3)
-{
-    for (int attempt = 0; attempt <= maxRetries; attempt++)
-    {
-        try
-        {
-            return await producer.ProduceAsync(topic, message);
-        }
-        catch (ProduceException<string, string> ex) when (IsRetriableError(ex.Error.Code) && attempt < maxRetries)
-        {
-            var delayMs = (int)Math.Pow(2, attempt) * 1000;  // 1s, 2s, 4s, 8s
-            logger.LogWarning("Retry {Attempt}/{MaxRetries} after {Delay}ms", attempt + 1, maxRetries, delayMs);
-            await Task.Delay(delayMs);
-        }
-    }
-    
-    throw new Exception("Max retries exceeded");
-}
-```
-
-2. Utiliser cette méthode au lieu de `ProduceAsync` direct.
-
----
-
-### Exercice 3 : Monitoring avec métriques
-
-**Objectif** : Exposer des métriques pour monitoring.
-
-**Instructions** :
-
-1. Ajouter des compteurs :
-```csharp
-private static long messagesProduced = 0;
-private static long messagesFailed = 0;
-private static long messagesSentToDLQ = 0;
-```
-
-2. Incrémenter selon le résultat :
-```csharp
-// Succès
-Interlocked.Increment(ref messagesProduced);
-
-// Échec
-Interlocked.Increment(ref messagesFailed);
-
-// DLQ
-Interlocked.Increment(ref messagesSentToDLQ);
-```
-
-3. Afficher les métriques :
-```csharp
-Console.WriteLine($"\n=== Metrics ===");
-Console.WriteLine($"Messages produced: {messagesProduced}");
-Console.WriteLine($"Messages failed: {messagesFailed}");
-Console.WriteLine($"Messages sent to DLQ: {messagesSentToDLQ}");
-Console.WriteLine($"Success rate: {(double)messagesProduced / (messagesProduced + messagesFailed):P2}");
-```
+| Symptôme | Cause probable | Solution |
+| -------- | -------------- | -------- |
+| Circuit breaker toujours ouvert | Kafka indisponible | Redémarrer Kafka, attendre 1 min |
+| Messages dans fichier fallback | DLQ et Kafka indisponibles | Vérifier la connectivité réseau |
+| `successRate` en baisse | Erreurs transientes fréquentes | Augmenter `RetryBackoffMs` |
+| Métriques à zéro | Aucune transaction envoyée | Envoyer des transactions via Swagger |
+| 202 au lieu de 201 | Transaction envoyée en DLQ | Vérifier les logs pour le type d'erreur |
 
 ---
 
 ## ✅ Validation du Lab
 
-Vous avez réussi ce lab si :
-
+- [ ] L'API démarre et Swagger UI est accessible
+- [ ] `POST /api/transactions` retourne 201 (succès) ou 202 (DLQ)
+- [ ] `GET /api/transactions/metrics` affiche les compteurs corrects
+- [ ] `GET /api/transactions/health` montre l'état du circuit breaker
+- [ ] Les transactions échouées apparaissent dans `banking.transactions.dlq`
+- [ ] Les headers DLQ contiennent `error-code`, `error-message`, `transaction-id`
 - [ ] Vous comprenez la différence entre erreurs retriable et permanent
-- [ ] Le producer gère automatiquement les retries (3 tentatives)
-- [ ] Les messages échoués sont envoyés vers DLQ avec métadonnées
-- [ ] Les headers DLQ contiennent les informations d'erreur
-- [ ] Vous savez simuler et observer différents types d'erreurs
-- [ ] Le code est production-ready avec logging structuré
+- [ ] Vous comprenez le fonctionnement du circuit breaker
 
 ---
 
-## 🎯 Points Clés à Retenir
-
-### 1. Classification des erreurs
-
-**Retriable** (transient) :
-- `Local_Transport` : Problème réseau temporaire
-- `NotEnoughReplicas` : Pas assez de réplicas synchronisés
-- `LeaderNotAvailable` : Leader en cours d'élection
-- `RequestTimedOut` : Timeout réseau
-
-**Permanent** (non-retriable) :
-- `MsgSizeTooLarge` : Message dépasse `max.message.bytes`
-- `UnknownTopicOrPartition` : Topic n'existe pas
-- `InvalidTopic` : Nom de topic invalide
-- `RecordTooLarge` : Message trop grand
-
-**Configuration** :
-- `AuthenticationException` : Credentials invalides
-- `AuthorizationException` : Pas de permissions
-- `SerializationException` : Erreur de sérialisation
-
-### 2. Pattern DLQ
-
-**Avantages** :
-- ✅ Pas de perte de messages
-- ✅ Debugging facilité (métadonnées d'erreur)
-- ✅ Retraitement possible après fix
-- ✅ Monitoring centralisé
-
-**Best Practices** :
-- Toujours inclure métadonnées d'erreur dans headers
-- Monitorer le topic DLQ (alertes si messages)
-- Prévoir un processus de retraitement
-- Ne jamais bloquer le producer principal
-
-### 3. Retry Strategy
-
-**Configuration recommandée** :
-```csharp
-MessageSendMaxRetries = 3           // 3 tentatives
-RetryBackoffMs = 1000               // 1 seconde entre retries
-RequestTimeoutMs = 30000            // 30 secondes timeout
-```
-
-**Exponential backoff** (optionnel) :
-- Retry 1 : 1 seconde
-- Retry 2 : 2 secondes
-- Retry 3 : 4 secondes
-- Retry 4 : 8 secondes
-
-### 4. Fallback Strategy
-
-Si DLQ échoue aussi :
-1. Logger dans fichier local
-2. Écrire dans base de données
-3. Envoyer alerte critique
-4. Ne jamais perdre le message silencieusement
-
----
-
-## 📖 Concepts Théoriques
-
-### Circuit Breaker Pattern
-
-Pour éviter de surcharger un système défaillant :
-
-```csharp
-private static int consecutiveFailures = 0;
-private const int CircuitBreakerThreshold = 10;
-private static bool circuitOpen = false;
-
-if (circuitOpen)
-{
-    logger.LogWarning("Circuit breaker is OPEN. Skipping message.");
-    await SendToDeadLetterQueueAsync(message, new Exception("Circuit breaker open"));
-    return;
-}
-
-try
-{
-    await producer.ProduceAsync(topic, message);
-    consecutiveFailures = 0;  // Reset on success
-}
-catch (ProduceException ex)
-{
-    consecutiveFailures++;
-    if (consecutiveFailures >= CircuitBreakerThreshold)
-    {
-        circuitOpen = true;
-        logger.LogCritical("Circuit breaker OPENED after {Count} failures", consecutiveFailures);
-    }
-}
-```
-
-### Idempotence
-
-Pour éviter les doublons en cas de retry :
-
-```csharp
-var config = new ProducerConfig
-{
-    EnableIdempotence = true,  // Garantit exactly-once
-    MaxInFlight = 5,           // Max 5 requêtes en parallèle
-    Acks = Acks.All            // Obligatoire avec idempotence
-};
-```
-
-**Fonctionnement** :
-- Kafka assigne un ID unique à chaque message
-- Si retry, Kafka détecte le doublon et l'ignore
-- Garantit exactly-once delivery
-
----
-
-## 🚀 Prochaine Étape
+## 🚀 Module Complété
 
 Félicitations ! Vous avez complété le module Producer avec un code production-ready.
 
-**Récapitulatif du module** :
-- ✅ LAB 1.2A : Producer basique avec configuration minimale
-- ✅ LAB 1.2B : Partitionnement par clé pour ordre garanti
-- ✅ LAB 1.2C : Gestion d'erreurs et DLQ pour résilience
+**Récapitulatif** :
+
+- **LAB 1.2A** : API Producer basique avec Swagger/OpenAPI
+- **LAB 1.2B** : Partitionnement par `CustomerId` pour ordre garanti
+- **LAB 1.2C** : Gestion d'erreurs, DLQ, circuit breaker, métriques
 
 👉 **Passez au [Module 03 : Consumer C#](../../module-03-consumer/README.md)**
 
-Dans le prochain module, vous apprendrez :
+Dans le prochain module :
+
 - Poll loop et gestion des offsets
 - Consumer Groups et scaling horizontal
 - Rebalancing et gestion d'état
