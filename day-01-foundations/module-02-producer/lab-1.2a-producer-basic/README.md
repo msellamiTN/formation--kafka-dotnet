@@ -4,7 +4,11 @@
 
 ## 🏦 Contexte E-Banking
 
-Dans ce lab, vous allez créer une **API Web ASP.NET Core** qui expose des endpoints REST pour traiter des **transactions bancaires** et les envoyer vers Apache Kafka. Chaque transaction (virement, paiement, retrait) sera publiée comme message Kafka, simulant un système de traitement de transactions en temps réel.
+Dans une banque moderne, chaque opération client (virement, paiement carte, retrait DAB, prélèvement) doit être **capturée en temps réel** pour alimenter les systèmes de détection de fraude, de calcul de solde, de conformité réglementaire et de notification client.
+
+Dans ce lab, vous allez créer une **API Web ASP.NET Core** qui expose des endpoints REST pour traiter des **transactions bancaires** et les publier vers Apache Kafka. Chaque transaction sera un message Kafka, simulant le **cœur du système de traitement transactionnel** d'une banque.
+
+### Architecture Globale
 
 ```mermaid
 flowchart LR
@@ -23,16 +27,67 @@ flowchart LR
         T["📋 banking.transactions"]
     end
 
+    subgraph Consumers["📥 Consumers en aval"]
+        FR["🔍 Détection Fraude"]
+        BAL["💰 Calcul Solde"]
+        NOT["📧 Notifications"]
+        AUD["📋 Audit / Conformité"]
+    end
+
     Web --> TC
     Mobile --> TC
     Swagger --> TC
     TC --> KPS
     KPS --> T
+    T --> FR
+    T --> BAL
+    T --> NOT
+    T --> AUD
 
     style Clients fill:#e3f2fd,stroke:#1976d2
     style API fill:#e8f5e8,stroke:#388e3c
     style Kafka fill:#fff3e0,stroke:#f57c00
+    style Consumers fill:#fce4ec,stroke:#c62828
 ```
+
+### Cycle de Vie d'une Transaction Bancaire
+
+```mermaid
+sequenceDiagram
+    actor Client as 🧑‍💼 Client Bancaire
+    participant App as 📱 App Mobile / Web
+    participant API as 🚀 E-Banking API
+    participant Valid as ✅ Validation
+    participant Kafka as 🔥 Kafka Broker
+    participant Fraud as 🔍 Anti-Fraude
+    participant Ledger as 💰 Grand Livre
+
+    Client->>App: Initier un virement de 250€
+    App->>API: POST /api/transactions
+    API->>Valid: Valider IBAN, montant, devise
+    Valid-->>API: ✅ Transaction valide
+    API->>Kafka: Publier message (TransactionId comme clé)
+    Kafka-->>API: ACK (partition 3, offset 42)
+    API-->>App: 201 Created + métadonnées Kafka
+    App-->>Client: "Virement en cours de traitement"
+
+    Note over Kafka,Fraud: Traitement asynchrone en aval
+    Kafka->>Fraud: Analyser le risque (score: 5/100)
+    Fraud-->>Kafka: ✅ Transaction approuvée
+    Kafka->>Ledger: Débiter FR76...789, Créditer FR76...321
+    Ledger-->>Client: 📧 Notification: "Virement de 250€ effectué"
+```
+
+### Scénarios E-Banking Couverts
+
+| Scénario | Type | Montant | Risque | Description |
+| -------- | ---- | ------- | ------ | ----------- |
+| **Virement mensuel** | Transfer | 250€ - 2000€ | Faible (5) | Loyer, épargne, entre comptes |
+| **Paiement facture** | BillPayment | 30€ - 500€ | Faible (2) | EDF, téléphone, assurance |
+| **Paiement carte** | CardPayment | 5€ - 300€ | Moyen (15) | Restaurant, courses, shopping |
+| **Virement international** | InternationalTransfer | 1000€ - 50000€ | Élevé (75) | SWIFT, conformité AML requise |
+| **Dépôt salaire** | Deposit | 1500€ - 5000€ | Faible (1) | Virement employeur mensuel |
+| **Retrait DAB** | Withdrawal | 20€ - 500€ | Moyen (10) | Retrait espèces distributeur |
 
 ---
 
@@ -706,24 +761,69 @@ flowchart TB
 | `1` | Leader | Faible | Notifications push |
 | `all` | Tous ISR | Plus élevée | **Transactions financières** |
 
-### Cycle de vie d'un message API → Kafka
+### Séquence Détaillée : API → Kafka (Code Expliqué)
+
+Ce diagramme montre exactement ce que fait chaque composant du code :
+
+```mermaid
+sequenceDiagram
+    participant C as 🌐 Client (Swagger)
+    participant Ctrl as � TransactionsController
+    participant Svc as ⚙️ KafkaProducerService
+    participant Ser as � JSON Serializer
+    participant Acc as 📦 RecordAccumulator
+    participant Net as 🌐 Sender Thread
+    participant B as 🔥 Kafka Broker
+
+    C->>Ctrl: POST /api/transactions {fromAccount, toAccount, amount...}
+    Ctrl->>Ctrl: ModelState.IsValid? (DataAnnotations)
+    Ctrl->>Svc: SendTransactionAsync(transaction)
+
+    Note over Svc: Étape 1 - Sérialisation
+    Svc->>Ser: JsonSerializer.Serialize(transaction)
+    Ser-->>Svc: JSON string
+
+    Note over Svc: Étape 2 - Construction du Message
+    Svc->>Svc: new Message<string,string> { Key, Value, Headers, Timestamp }
+    Svc->>Svc: Ajout Headers: correlation-id, event-type, source, customer-id
+
+    Note over Svc,B: Étape 3 - Pipeline d'envoi Kafka
+    Svc->>Acc: ProduceAsync() → message dans le buffer
+    Acc->>Acc: Batch par partition (LingerMs=10, BatchSize=16384)
+    Acc->>Net: Batch prêt → envoi réseau
+    Net->>B: ProduceRequest (Snappy compressed)
+    B->>B: Écriture log + réplication ISR
+    B-->>Net: ACK (Acks.All = tous les ISR)
+    Net-->>Svc: DeliveryResult {Partition, Offset, Timestamp}
+
+    Note over Ctrl: Étape 4 - Réponse API
+    Svc-->>Ctrl: DeliveryResult
+    Ctrl->>Ctrl: Construire TransactionResponse
+    Ctrl-->>C: 201 Created {transactionId, kafkaPartition, kafkaOffset}
+```
+
+### Séquence Batch : Traitement de Plusieurs Transactions
 
 ```mermaid
 sequenceDiagram
     participant C as 🌐 Client
-    participant API as 🚀 Web API
-    participant P as 📤 Producer
+    participant Ctrl as 📋 Controller
+    participant Svc as ⚙️ KafkaProducer
     participant K as 🔥 Kafka
 
-    C->>API: POST /api/transactions
-    API->>API: Validation du modèle
-    API->>P: SendTransactionAsync()
-    P->>P: Sérialisation JSON
-    P->>P: Ajout headers (correlation-id, etc.)
-    P->>K: ProduceAsync()
-    K-->>P: DeliveryResult (partition, offset)
-    P-->>API: Résultat
-    API-->>C: 201 Created + métadonnées Kafka
+    C->>Ctrl: POST /api/transactions/batch [tx1, tx2, tx3]
+
+    loop Pour chaque transaction
+        Ctrl->>Svc: SendTransactionAsync(tx)
+        Svc->>K: ProduceAsync()
+        K-->>Svc: DeliveryResult
+        Svc-->>Ctrl: Résultat ajouté à la liste
+    end
+
+    Ctrl-->>C: 201 Created {processedCount: 3, transactions: [...]}
+
+    Note over K: Les 3 messages sont dans le topic
+    Note over K: Chaque message a sa propre partition et offset
 ```
 
 ---
