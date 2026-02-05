@@ -30,7 +30,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OPENSHIFT_DIR="${SCRIPT_DIR}/openshift"
 
 # Default paths to scripts
-MIGRATE_SCRIPT="${OPENSHIFT_DIR}/openshift/01-migrate-to-networkmanager.sh"
+MIGRATE_SCRIPT="${OPENSHIFT_DIR}/01-migrate-to-networkmanager.sh"
 INSTALL_SCRIPT="${OPENSHIFT_DIR}/openshift/02-install-crc-ubuntu-public.sh"
 MANAGE_SCRIPT="${OPENSHIFT_DIR}/openshift/03-crc-manage.sh"
 VERIFY_SCRIPT="${OPENSHIFT_DIR}/openshift/04-verify-crc-remote-access.sh"

@@ -4,7 +4,67 @@
 
 ## 🏦 Contexte E-Banking
 
+Dans un système bancaire en production, les erreurs sont **inévitables** : pannes réseau, brokers surchargés, timeouts. Une transaction de 10 000€ qui échoue silencieusement peut entraîner une **perte financière**, un **litige client**, ou une **non-conformité réglementaire**. Ce lab implémente les patterns de résilience utilisés dans les vraies banques.
+
 Dans ce lab, vous allez créer une API Web **production-ready** qui gère les erreurs de manière robuste. Les transactions bancaires échouées sont envoyées vers une **Dead Letter Queue (DLQ)** pour analyse et retraitement. Un système de **retry avec exponential backoff** et un **circuit breaker** protègent contre les pannes en cascade.
+
+### Pourquoi la Résilience est Critique en E-Banking
+
+```mermaid
+sequenceDiagram
+    actor Client as 🧑‍💼 Client (Virement 10 000€)
+    participant API as 🚀 E-Banking API
+    participant Kafka as 🔥 Kafka
+    participant DLQ as ☠️ DLQ
+    participant Ops as 📟 Équipe Ops
+    participant Ledger as 💰 Grand Livre
+
+    Client->>API: POST /api/transactions (10 000€)
+
+    alt Scénario 1: Sans gestion d'erreurs
+        API->>Kafka: ProduceAsync()
+        Kafka--xAPI: ❌ BrokerTransportFailure
+        API-->>Client: 500 Internal Server Error
+        Note over Client: 😱 "Mon virement a-t-il été effectué ?"
+        Note over Ledger: ⚠️ Transaction perdue!
+    end
+
+    alt Scénario 2: Avec gestion d'erreurs (ce lab)
+        API->>Kafka: ProduceAsync() - Tentative 1
+        Kafka--xAPI: ❌ Timeout
+        Note over API: ⏳ Backoff 1s
+        API->>Kafka: ProduceAsync() - Tentative 2
+        Kafka--xAPI: ❌ Timeout
+        Note over API: ⏳ Backoff 2s
+        API->>Kafka: ProduceAsync() - Tentative 3
+        Kafka-->>API: ✅ ACK (Partition 2, Offset 99)
+        API-->>Client: 201 Created
+        Note over Client: ✅ "Virement confirmé"
+    end
+
+    alt Scénario 3: Erreur permanente
+        API->>Kafka: ProduceAsync() x3
+        Kafka--xAPI: ❌ RecordTooLarge (permanent)
+        API->>DLQ: SendToDlqAsync() avec headers d'erreur
+        DLQ-->>API: OK
+        API-->>Client: 202 Accepted ("En cours d'analyse")
+        DLQ->>Ops: 🚨 Alerte: Transaction en DLQ
+        Ops->>Ledger: Retraitement manuel après correction
+    end
+```
+
+### Scénarios d'Erreur en E-Banking
+
+| Scénario | Erreur Kafka | Impact Bancaire | Stratégie |
+| -------- | ------------ | --------------- | --------- |
+| **Pic de charge (Black Friday)** | `RequestTimedOut` | Paiements carte en attente | Retry 3x + backoff |
+| **Maintenance broker** | `LeaderNotAvailable` | Virements retardés | Retry auto, transparent |
+| **Message trop gros** | `MsgSizeTooLarge` | Pièce jointe trop volumineuse | DLQ + alerte |
+| **Topic supprimé** | `UnknownTopic` | Toutes les transactions bloquent | DLQ + alerte critique |
+| **Panne complète Kafka** | `Local_Transport` | Aucune transaction ne passe | Circuit breaker + fichier local |
+| **Réseau instable** | `Local_Timeout` | Transactions intermittentes | Retry avec backoff croissant |
+
+### Architecture de Résilience
 
 ```mermaid
 flowchart TB
@@ -16,7 +76,7 @@ flowchart TB
     subgraph ErrorHandling["🔧 Gestion des Erreurs"]
         R["⚡ Retry 3x + Backoff"]
         CB["🔒 Circuit Breaker"]
-        C{"❓ Type d'erreur ?"}
+        C{"??? Type d'erreur ?"}
     end
 
     subgraph Kafka["🔥 Kafka Cluster"]
@@ -28,6 +88,10 @@ flowchart TB
         F["💾 Fichier Local JSON"]
     end
 
+    subgraph Monitoring["📊 Monitoring"]
+        M["📈 Métriques API"]
+    end
+
     TC --> RS
     RS -->|"Succès"| T1
     RS -.->|"Erreur"| R
@@ -37,11 +101,13 @@ flowchart TB
     C -->|"DLQ failed"| F
     RS -.->|"Trop d'échecs"| CB
     CB -.->|"Circuit ouvert"| T2
+    RS -.->|"Stats"| M
 
     style API fill:#e8f5e8,stroke:#388e3c
     style T1 fill:#c8e6c9,stroke:#388e3c
     style T2 fill:#ffcdd2,stroke:#d32f2f
     style F fill:#e1bee7,stroke:#7b1fa2
+    style Monitoring fill:#e3f2fd,stroke:#1976d2
 ```
 
 ---
@@ -893,25 +959,204 @@ sequenceDiagram
     end
 ```
 
+### Séquence Détaillée : Retry avec Exponential Backoff (Code Expliqué)
+
+```mermaid
+sequenceDiagram
+    participant Ctrl as 📋 Controller
+    participant Svc as ⚙️ ResilientKafkaProducer
+    participant CB as 🔒 Circuit Breaker
+    participant K as 🔥 Kafka Broker
+    participant DLQ as ☠️ DLQ Producer
+
+    Ctrl->>Svc: SendTransactionAsync(tx)
+    Svc->>CB: IsCircuitOpen()?
+    CB-->>Svc: false (CLOSED, 2 échecs < seuil 5)
+
+    Note over Svc: Tentative 1/4
+    Svc->>K: ProduceAsync(topic, message)
+    K--xSvc: ❌ ProduceException (Local_Transport)
+    Svc->>Svc: IsRetriableError(Local_Transport) = true
+    Svc->>Svc: TrackError("Local_Transport")
+    Note over Svc: ⏳ Backoff: 2^0 * 1000 = 1000ms
+
+    Note over Svc: Tentative 2/4
+    Svc->>K: ProduceAsync(topic, message)
+    K--xSvc: ❌ ProduceException (Local_Timeout)
+    Svc->>Svc: IsRetriableError(Local_Timeout) = true
+    Note over Svc: ⏳ Backoff: 2^1 * 1000 = 2000ms
+
+    Note over Svc: Tentative 3/4
+    Svc->>K: ProduceAsync(topic, message)
+    K-->>Svc: ✅ DeliveryResult (Partition: 2, Offset: 99)
+
+    Svc->>Svc: _messagesProduced++
+    Svc->>Svc: _consecutiveFailures = 0 (reset)
+    Svc-->>Ctrl: TransactionResult {Status: "Processing", Attempts: 3}
+```
+
+### Séquence : Erreur Permanente → DLQ → Fallback
+
+```mermaid
+sequenceDiagram
+    participant Ctrl as 📋 Controller
+    participant Svc as ⚙️ ResilientKafkaProducer
+    participant K as 🔥 Kafka
+    participant DLQ as ☠️ DLQ Topic
+    participant File as 💾 Fichier Local
+
+    Ctrl->>Svc: SendTransactionAsync(tx)
+
+    Note over Svc: Tentative 1 - Erreur permanente
+    Svc->>K: ProduceAsync()
+    K--xSvc: ❌ MsgSizeTooLarge (permanent)
+    Svc->>Svc: IsRetriableError(MsgSizeTooLarge) = false
+    Svc->>Svc: _messagesFailed++, _consecutiveFailures++
+
+    Note over Svc,DLQ: Envoi vers DLQ avec headers d'erreur
+    Svc->>DLQ: ProduceAsync(dlq-topic, message + error headers)
+    Note over DLQ: Headers: original-topic, error-code,
+    Note over DLQ: error-message, transaction-id, customer-id, amount
+
+    alt DLQ réussit
+        DLQ-->>Svc: ✅ OK
+        Svc->>Svc: _messagesSentToDlq++
+        Svc-->>Ctrl: TransactionResult {Status: "SentToDLQ"}
+        Ctrl-->>Ctrl: return Accepted() (HTTP 202)
+    else DLQ échoue aussi
+        DLQ--xSvc: ❌ Exception
+        Svc->>File: SaveToLocalFileAsync(tx, errors)
+        Note over File: fallback/failed-tx-{id}-{timestamp}.json
+        Svc->>Svc: _messagesSavedToFile++
+        Svc-->>Ctrl: TransactionResult {Status: "Failed"}
+        Ctrl-->>Ctrl: return StatusCode(500)
+    end
+```
+
+### Circuit Breaker : Machine à États
+
+```mermaid
+stateDiagram-v2
+    [*] --> CLOSED
+
+    CLOSED --> CLOSED : Succès (reset compteur)
+    CLOSED --> CLOSED : Échec (compteur < 5)
+    CLOSED --> OPEN : 5 échecs consécutifs
+
+    OPEN --> OPEN : Nouvelles requêtes → DLQ direct
+    OPEN --> HALF_OPEN : Timeout 1 minute expiré
+
+    HALF_OPEN --> CLOSED : Première requête réussit
+    HALF_OPEN --> OPEN : Première requête échoue
+
+    note right of CLOSED
+        Fonctionnement normal
+        consecutiveFailures < 5
+    end note
+
+    note right of OPEN
+        Protection active
+        Toutes les tx → DLQ
+        Attente 1 min avant retry
+    end note
+
+    note right of HALF_OPEN
+        Test de rétablissement
+        1 seule requête testée
+    end note
+```
+
+### Séquence : Circuit Breaker en Action
+
+```mermaid
+sequenceDiagram
+    participant C as 🌐 Client
+    participant Svc as ⚙️ Producer
+    participant CB as 🔒 Circuit Breaker
+    participant K as 🔥 Kafka
+    participant DLQ as ☠️ DLQ
+
+    Note over CB: État: CLOSED (0 échecs)
+
+    loop 5 échecs consécutifs
+        C->>Svc: POST transaction
+        Svc->>K: ProduceAsync()
+        K--xSvc: ❌ Erreur
+        Svc->>Svc: consecutiveFailures++
+        Svc->>DLQ: SendToDlqAsync()
+    end
+
+    Note over CB: État: OPEN (5 échecs)
+
+    C->>Svc: POST transaction
+    Svc->>CB: IsCircuitOpen()? = true
+    Note over Svc: Skip Kafka, envoi direct DLQ
+    Svc->>DLQ: SendToDlqAsync("Circuit breaker open")
+    Svc-->>C: 202 Accepted (SentToDLQ)
+
+    Note over CB: ⏳ Après 1 minute...
+    Note over CB: État: HALF-OPEN
+
+    C->>Svc: POST transaction
+    Svc->>CB: IsCircuitOpen()? = false (timeout expiré)
+    Svc->>K: ProduceAsync()
+    K-->>Svc: ✅ ACK
+    Svc->>Svc: consecutiveFailures = 0
+    Note over CB: État: CLOSED (rétabli)
+    Svc-->>C: 201 Created
+```
+
 ### Classification des erreurs
 
-| Erreur | Type | Retry ? | Action |
-| ------ | ---- | ------- | ------ |
-| `Local_Transport` | Transient | Oui | Retry 3x |
-| `Local_Timeout` | Transient | Oui | Retry 3x |
-| `NotEnoughReplicas` | Transient | Oui | Retry 3x |
-| `LeaderNotAvailable` | Transient | Oui | Retry 3x |
-| `MsgSizeTooLarge` | Permanent | Non | DLQ |
-| `UnknownTopicOrPartition` | Permanent | Non | DLQ |
-| `InvalidTopic` | Permanent | Non | DLQ |
+| Erreur | Type | Retry ? | Action | Exemple E-Banking |
+| ------ | ---- | ------- | ------ | ------------------ |
+| `Local_Transport` | Transient | Oui | Retry 3x | Panne réseau temporaire |
+| `Local_Timeout` | Transient | Oui | Retry 3x | Broker surchargé (pic de charge) |
+| `NotEnoughReplicas` | Transient | Oui | Retry 3x | Réplica en maintenance |
+| `LeaderNotAvailable` | Transient | Oui | Retry 3x | Élection de leader en cours |
+| `RequestTimedOut` | Transient | Oui | Retry 3x | Latence réseau élevée |
+| `MsgSizeTooLarge` | Permanent | Non | DLQ | Transaction avec pièce jointe |
+| `UnknownTopicOrPartition` | Permanent | Non | DLQ | Topic supprimé par erreur |
+| `InvalidTopic` | Permanent | Non | DLQ | Nom de topic invalide |
 
-### Circuit Breaker
+### Circuit Breaker : Résumé
 
-| État | Condition | Comportement |
-| ---- | --------- | ------------ |
-| **CLOSED** | < 5 échecs consécutifs | Envoi normal |
-| **OPEN** | >= 5 échecs consécutifs | Envoi direct en DLQ |
-| **HALF-OPEN** | Après 1 minute de timeout | Tentative de rétablissement |
+| État | Condition | Comportement | Réponse API |
+| ---- | --------- | ------------ | ----------- |
+| **CLOSED** | < 5 échecs consécutifs | Envoi normal vers Kafka | 201 Created |
+| **OPEN** | >= 5 échecs consécutifs | Envoi direct en DLQ (skip Kafka) | 202 Accepted |
+| **HALF-OPEN** | Après 1 minute de timeout | Tentative de rétablissement | 201 ou 202 |
+
+### Séquence : Monitoring en Production
+
+```mermaid
+sequenceDiagram
+    participant Ops as 📟 Équipe Ops
+    participant API as 🚀 API
+    participant Svc as ⚙️ Producer
+    participant Grafana as 📊 Dashboard
+
+    loop Toutes les 30 secondes
+        Ops->>API: GET /api/transactions/metrics
+        API->>Svc: GetMetrics()
+        Svc-->>API: ProducerMetrics
+        API-->>Ops: JSON métriques
+    end
+
+    Note over Ops: Analyse des métriques
+    Ops->>Ops: successRate < 95% ?
+    Ops->>Ops: circuitBreakerOpen == true ?
+    Ops->>Ops: messagesSentToDlq > seuil ?
+
+    alt Alerte déclenchée
+        Ops->>Grafana: 🚨 Alerte: Success rate 87%
+        Ops->>Ops: Vérifier Kafka, réseau, logs
+    end
+
+    Ops->>API: GET /api/transactions/health
+    API-->>Ops: {status: "Degraded", circuitBreaker: "OPEN"}
+    Note over Ops: Action corrective requise
+```
 
 ---
 
