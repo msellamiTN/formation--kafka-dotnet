@@ -48,7 +48,25 @@ flowchart TB
 
 ---
 
-## 📋 Prérequis
+## �️ Quick Start (5 minutes)
+
+Pour une exécution rapide sans lire tout le lab :
+
+```bash
+# 1. Créer et configurer
+cd lab-1.2b-producer-keyed
+dotnet new console -n KafkaProducerKeyed
+cd KafkaProducerKeyed
+dotnet add package Confluent.Kafka --version 2.3.0
+
+# 2. Remplacer Program.cs avec le code fourni
+# 3. Exécuter
+dotnet run
+```
+
+---
+
+## �📋 Prérequis
 
 ### Cluster Kafka et topic créés
 
@@ -278,6 +296,28 @@ kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 
 
 ---
 
+## 🎯 Real-World Use Cases
+
+### Quand utiliser une clé ?
+
+| Scénario | Clé recommandée | Pourquoi ? | Exemple |
+|----------|----------------|------------|---------|
+| **Commandes client** | `customerId` | Ordre garanti par client | `customer-12345` |
+| **Transactions bancaires** | `accountId` | Ordre des opérations | `account-67890` |
+| **Mises à jour de stock** | `productId` | État cohérent par produit | `product-ABC123` |
+| **Logs d'application** | `service-name` | Facilite le debugging | `payment-service` |
+| **Événements IoT** | `deviceId` | Séquence par device | `sensor-456` |
+
+### Anti-patterns à éviter
+
+| Anti-pattern | Problème | Solution |
+|-------------|----------|----------|
+| **Timestamp comme clé** | Tous les messages du même jour sur même partition | Utiliser `entityId + timestamp` |
+| **Clé séquentielle** | Hot partition sur le dernier numéro | Utiliser hash de l'entité |
+| **Clé nulle pour ordre** | Pas de garantie d'ordre | Toujours utiliser une clé si ordre requis |
+
+---
+
 ## 🧪 Exercices Pratiques
 
 ### Exercice 1 : Augmenter le nombre de clients
@@ -397,21 +437,56 @@ Console.WriteLine($"Actual partition: {deliveryResult.Partition.Value}");
 
 ---
 
+## 🔧 Troubleshooting
+
+### Problèmes courants avec les clés
+
+| Symptôme | Cause probable | Solution |
+|----------|---------------|----------|
+| ❌ **Hot partition** : Une partition reçoit 80% des messages | Clé déséquilibrée (ex: date du jour) | Utiliser clé composite ou hash |
+| ❌ **Ordre non respecté** : Messages avec même clé désordonnés | Producer avec `EnableIdempotence = false` | Activer l'idempotence |
+| ❌ **Distribution inégale** : Certaines partitions vides | Nombre limité de clés uniques | Augmenter variété des clés |
+| ❌ **Performance faible** : Latence élevée | Trop de partitions par clé | Optimiser le partitionnement |
+
+### Commandes de diagnostic
+
+```bash
+# Vérifier la distribution par partition
+docker exec kafka /opt/kafka/bin/kafka-run-class.sh kafka.tools.GetOffsetShell \
+  --broker-list localhost:9092 --topic orders.created
+
+# Surveiller en temps réel
+docker exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 --topic orders.created --partition 0 --from-beginning
+```
+
+---
+
+## 📊 Performance Impact
+
+| Stratégie | Distribution | Ordre | Performance | Cas d'usage |
+|-----------|---------------|-------|-------------|-------------|
+| **Sans clé** | Uniforme | Non | Maximale | Logs, métriques |
+| **Clé simple** | Variable | Oui (par clé) | Bonne | Commandes, transactions |
+| **Clé composite** | Excellente | Oui (par entité) | Moyenne | High throughput avec ordre |
+| **Hash de clé** | Excellente | Non | Bonne | Distribution maximale |
+
+---
+
 ## ✅ Validation du Lab
 
 Vous avez réussi ce lab si :
 
-- [ ] Vous comprenez que **Key → Partition** est déterministe
-- [ ] Même clé = même partition = **ordre préservé** pour cette clé
-- [ ] Vous savez observer la distribution des clés sur les partitions
-- [ ] Vous comprenez le problème des hot partitions
-- [ ] Vous savez quand utiliser une clé (ordre, localité, compaction)
+- [ ] **✅ Partitionnement déterministe** : Vous comprenez que Key → Partition est déterministe
+- [ ] **✅ Ordre garanti** : Même clé = même partition = ordre préservé pour cette clé
+- [ ] **✅ Distribution observée** : Vous savez observer la distribution des clés sur les partitions
+- [ ] **✅ Hot partitions comprises** : Vous comprenez le problème des hot partitions
+- [ ] **✅ Cas d'usage identifiés** : Vous savez quand utiliser une clé (ordre, localité, compaction)
+- [ ] **🚀 Bonus** : Vous avez testé les exercices de distribution et prédiction
 
----
+### 🎯 Points Clés à Retenir
 
-## 🎯 Points Clés à Retenir
-
-### 1. Quand utiliser une clé ?
+#### 1. Quand utiliser une clé ?
 
 ✅ **Utilisez une clé si vous avez besoin de** :
 - **Ordre garanti** : Tous les événements d'une entité (client, commande) doivent arriver dans l'ordre
@@ -422,7 +497,7 @@ Vous avez réussi ce lab si :
 - Vous voulez une distribution uniforme sans contrainte d'ordre
 - Vous avez des clés très déséquilibrées (risque de hot partition)
 
-### 2. Formule de partitionnement
+#### 2. Formule de partitionnement
 
 ```
 partition = murmur2_hash(key) % nombre_partitions
@@ -432,7 +507,7 @@ partition = murmur2_hash(key) % nombre_partitions
 - **Uniforme** : Hash Murmur2 distribue bien les clés
 - **Stable** : Ne change pas si nombre de partitions constant
 
-### 3. Hot Partitions
+#### 3. Hot Partitions
 
 **Problème** : Une partition reçoit beaucoup plus de messages que les autres.
 
@@ -446,7 +521,7 @@ partition = murmur2_hash(key) % nombre_partitions
 - Augmenter le nombre de partitions
 - Utiliser une clé composite (ex: `customerId + orderId % 10`)
 
-### 4. Ordre des messages
+#### 4. Ordre des messages
 
 **Avec clé** :
 - Ordre garanti **au sein d'une partition**

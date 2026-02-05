@@ -40,7 +40,25 @@ Ce diagramme illustre le flux de données : votre application .NET crée un prod
 
 ---
 
-## 📋 Prérequis
+## �️ Quick Start (5 minutes)
+
+Pour une exécution rapide sans lire tout le lab :
+
+```bash
+# 1. Créer et configurer
+cd lab-1.2a-producer-basic
+dotnet new console -n KafkaProducerBasic
+cd KafkaProducerBasic
+dotnet add package Confluent.Kafka --version 2.3.0
+
+# 2. Remplacer Program.cs avec le code fourni
+# 3. Exécuter
+dotnet run
+```
+
+---
+
+## �📋 Prérequis
 
 ### Cluster Kafka en fonctionnement
 
@@ -782,20 +800,55 @@ Idéal pour les environnements de production où Kafka peut être temporairement
 
 ---
 
+## 🔧 Troubleshooting
+
+### Problèmes courants
+
+| Symptôme | Cause probable | Solution |
+|----------|---------------|----------|
+| ❌ `Kafka Error: Local: Broker transport failure` | Kafka non démarré | `cd ../../module-01-cluster && ./scripts/up.sh` |
+| ❌ `UnknownTopicOrPartitionException` | Topic non créé | Créer le topic `orders.created` (voir Étape 1) |
+| ❌ Timeout après 30 secondes | Mauvais `BootstrapServers` | Vérifier Docker vs OKD configuration |
+| ❌ `No such file or directory` | Mauvais dossier de travail | `cd lab-1.2a-producer-basic/KafkaProducerBasic` |
+
+### Commandes de diagnostic
+
+```bash
+# Vérifier Kafka (Docker)
+docker ps | grep kafka
+
+# Vérifier le topic
+docker exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+
+# Tester connectivité
+docker exec kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic test
+```
+
+---
+
+## 📊 Performance Comparison
+
+| Configuration | Latence | Throughput | Use Case |
+|---------------|---------|------------|----------|
+| **Default** | 5-10ms | ~100 msg/s | Développement, debugging |
+| **Optimized** | 2-5ms | ~500 msg/s | Production, haute performance |
+| **Batch Mode** | 10-50ms | ~2000 msg/s | Bulk processing |
+
+---
+
 ## ✅ Validation du Lab
 
 Vous avez réussi ce lab si :
 
-- [ ] Le producer se connecte à Kafka sans erreur
-- [ ] Les 10 messages sont envoyés avec succès
-- [ ] Les messages sont visibles dans Kafka UI ou via CLI
-- [ ] Les logs affichent partition et offset pour chaque message
-- [ ] Le producer se ferme proprement avec `Flush()`
-- [ ] Vous comprenez le rôle de `Acks`, `ProduceAsync`, et `DeliveryResult`
+- [ ] **✅ Connexion réussie** : Le producer se connecte à Kafka sans erreur
+- [ ] **✅ Messages envoyés** : Les 10 messages sont envoyés avec succès
+- [ ] **✅ Visibilité** : Les messages sont visibles dans Kafka UI ou via CLI
+- [ ] **✅ Métadonnées** : Les logs affichent partition et offset pour chaque message
+- [ ] **✅ Fermeture propre** : Le producer se ferme avec `Flush()`
+- [ ] **✅ Compréhension** : Vous comprenez le rôle de `Acks`, `ProduceAsync`, et `DeliveryResult`
+- [ ] **🚀 Bonus** : Vous avez testé les exercices de performance
 
----
-
-## 🎯 Points Clés à Retenir
+### 🎯 Points Clés à Retenir
 
 1. **ProduceAsync est non-bloquant** : Le message est mis en buffer et envoyé de manière asynchrone
 2. **Flush() est obligatoire** : Avant fermeture pour éviter perte de messages en attente

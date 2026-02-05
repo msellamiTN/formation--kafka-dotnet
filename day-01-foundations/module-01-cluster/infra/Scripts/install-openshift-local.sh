@@ -37,7 +37,7 @@ print_info() {
 
 # Check if running on Ubuntu
 if [ ! -f /etc/os-release ]; then
-    print_error "Cannot detect OS. This script is for Ubuntu 24.04"
+    print_error "Cannot detect OS. This script is for Ubuntu 25.04"
     exit 1
 fi
 

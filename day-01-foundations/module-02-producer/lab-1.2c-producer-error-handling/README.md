@@ -54,7 +54,28 @@ flowchart TB
 
 ---
 
-## 📋 Prérequis
+## �️ Quick Start (5 minutes)
+
+Pour une exécution rapide sans lire tout le lab :
+
+```bash
+# 1. Créer et configurer
+cd lab-1.2c-producer-error-handling
+dotnet new console -n KafkaProducerErrorHandling
+cd KafkaProducerErrorHandling
+dotnet add package Confluent.Kafka --version 2.3.0
+dotnet add package Microsoft.Extensions.Logging --version 8.0.0
+dotnet add package Microsoft.Extensions.Logging.Console --version 8.0.0
+dotnet add package System.Text.Json --version 8.0.0
+
+# 2. Remplacer Program.cs avec le code fourni
+# 3. Exécuter
+dotnet run
+```
+
+---
+
+## �📋 Prérequis
 
 ### Topics Kafka
 
@@ -374,6 +395,68 @@ kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 
 ```
 original-topic:orders.created,error-timestamp:2026-02-05T12:00:00Z,error-type:ProduceException,...
 {"orderId": "ORD-0001", ...}
+```
+
+---
+
+## 🎯 Error Simulation Scenarios
+
+### Scénarios de test disponibles
+
+| Scénario | Comment déclencher | Comportement attendu | DLQ ? |
+|----------|-------------------|----------------------|-------|
+| **Broker indisponible** | `docker stop kafka` | Retry 3x → échec → DLQ | ✅ |
+| **Topic inexistant** | Envoyer vers `topic.inexistant` | Erreur immédiate → DLQ | ✅ |
+| **Message trop grand** | Message > 1MB | Erreur permanente → DLQ | ✅ |
+| **Serialization error** | JSON invalide | Erreur permanente → DLQ | ✅ |
+| **DLQ pleine** | Simuler DLQ saturée | Fallback fichier local | ❌ |
+
+### Comment tester chaque scénario
+
+```bash
+# Scénario 1 : Broker indisponible
+docker stop kafka
+# Exécuter le producer → Observer les retries
+docker start kafka
+
+# Scénario 2 : Topic inexistant
+# Modifier le code pour envoyer vers 'orders.nonexistent'
+
+# Scénario 3 : Message trop grand
+# Créer un message de 2MB
+
+# Scénario 4 : DLQ échoue
+# Modifier la configuration DLQ pour pointer sur un broker inexistant
+```
+
+---
+
+## 📊 Production Readiness Checklist
+
+### ✅ Configuration Production-Ready
+
+| Élément | Statut | Pourquoi c'est important |
+|---------|--------|---------------------------|
+| **Retry automatique** | ✅ Implémenté | Gère les erreurs transientes (réseau, broker temporairement indisponible) |
+| **DLQ (Dead Letter Queue)** | ✅ Implémenté | Préserve les messages échoués pour analyse manuelle |
+| **Fallback fichier local** | ✅ Implémenté | Dernier recours si DLQ échoue aussi |
+| **Logging structuré** | ✅ Implémenté | Facilite le monitoring et debugging |
+| **Métriques d'erreur** | ✅ Implémenté | Permet de surveiller la santé du producer |
+| **Timeouts configurés** | ✅ Implémenté | Évite les blocages infinis |
+| **Circuit breaker** | 🔄 Optionnel | Protège contre les pannes en cascade |
+
+### 🚀 Monitoring en production
+
+```bash
+# Surveiller les erreurs dans les logs
+docker logs kafka-producer-error-handling | grep "ERROR"
+
+# Vérifier la DLQ
+docker exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 --topic orders.dlq --from-beginning
+
+# Monitorer les métriques Kafka
+curl http://localhost:8080/api/clusters/kafka/brokers
 ```
 
 ---
