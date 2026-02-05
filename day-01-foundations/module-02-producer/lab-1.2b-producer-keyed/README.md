@@ -4,21 +4,78 @@
 
 ## 🏦 Contexte E-Banking
 
-Dans ce lab, vous allez étendre l'API Web du LAB 1.2A pour utiliser le **partitionnement par clé**. Toutes les transactions d'un même client (`CustomerId`) seront envoyées sur la **même partition Kafka**, garantissant l'**ordre chronologique** des opérations bancaires par client.
+Dans un système bancaire, l'**ordre des transactions** est critique. Si un client effectue un dépôt de 500€ puis un paiement de 200€, ces opérations **doivent être traitées dans l'ordre** pour éviter un solde négatif. Kafka garantit l'ordre **uniquement au sein d'une partition**. La solution : utiliser le `CustomerId` comme **clé de partition** pour que toutes les transactions d'un même client atterrissent sur la même partition.
+
+Dans ce lab, vous allez étendre l'API Web du LAB 1.2A pour utiliser le **partitionnement par clé**, garantissant l'**ordre chronologique** des opérations bancaires par client.
+
+### Le Problème : Désordre Sans Clé
+
+```mermaid
+sequenceDiagram
+    participant Client as 🧑‍💼 CUST-001 (Solde: 0€)
+    participant API as 🚀 API
+    participant K as 🔥 Kafka (Sans clé)
+    participant C0 as 📥 Consumer P0
+    participant C1 as 📥 Consumer P3
+    participant C2 as 📥 Consumer P1
+    participant Ledger as 💰 Grand Livre
+
+    Client->>API: 1. Dépôt +500€
+    API->>K: → Partition 0 (round-robin)
+    Client->>API: 2. Paiement -200€
+    API->>K: → Partition 3 (round-robin)
+    Client->>API: 3. Virement -100€
+    API->>K: → Partition 1 (round-robin)
+
+    Note over C0,C2: Les consumers traitent en parallèle, ordre non garanti!
+
+    C1->>Ledger: Paiement -200€ (solde: 0 - 200 = -200€)
+    Note over Ledger: ❌ SOLDE NÉGATIF! Transaction rejetée!
+    C0->>Ledger: Dépôt +500€ (arrive trop tard)
+    C2->>Ledger: Virement -100€
+```
+
+### La Solution : Partitionnement par CustomerId
+
+```mermaid
+sequenceDiagram
+    participant Client as 🧑‍💼 CUST-001 (Solde: 0€)
+    participant API as 🚀 API
+    participant K as 🔥 Kafka (Clé: CUST-001)
+    participant C2 as 📥 Consumer P2
+    participant Ledger as 💰 Grand Livre
+
+    Client->>API: 1. Dépôt +500€
+    API->>K: Clé=CUST-001 → Partition 2
+    Client->>API: 2. Paiement -200€
+    API->>K: Clé=CUST-001 → Partition 2
+    Client->>API: 3. Virement -100€
+    API->>K: Clé=CUST-001 → Partition 2
+
+    Note over K,C2: Un seul consumer traite la partition 2, dans l'ordre!
+
+    C2->>Ledger: 1. Dépôt +500€ (solde: 500€) ✅
+    C2->>Ledger: 2. Paiement -200€ (solde: 300€) ✅
+    C2->>Ledger: 3. Virement -100€ (solde: 200€) ✅
+    Ledger-->>Client: 📧 Solde final: 200€ - Correct!
+```
+
+### Distribution Multi-Clients
 
 ```mermaid
 flowchart TB
-    subgraph "Sans Clé (LAB 1.2A)"
+    subgraph "Sans Clé (LAB 1.2A) - Ordre aléatoire"
         A1["Tx CUST-001: +500€"] --> P1["Partition 0"]
         A2["Tx CUST-001: -200€"] --> P2["Partition 3"]
         A3["Tx CUST-001: -100€"] --> P3["Partition 1"]
     end
 
-    subgraph "Avec Clé CustomerId (LAB 1.2B)"
+    subgraph "Avec Clé CustomerId (LAB 1.2B) - Ordre garanti"
         B1["Tx CUST-001: +500€"] --> Q1["Partition 2"]
         B2["Tx CUST-001: -200€"] --> Q1
         B3["Tx CUST-001: -100€"] --> Q1
         B4["Tx CUST-002: +1000€"] --> Q2["Partition 5"]
+        B5["Tx CUST-003: +750€"] --> Q3["Partition 0"]
     end
 
     style A1 fill:#ffcc80
@@ -28,10 +85,18 @@ flowchart TB
     style B2 fill:#81d4fa
     style B3 fill:#81d4fa
     style B4 fill:#a5d6a7
+    style B5 fill:#ce93d8
 ```
 
-**Problème sans clé** : Les transactions d'un client arrivent dans le désordre → solde incohérent.
-**Solution avec clé** : `CustomerId` comme clé → même partition → ordre garanti par client.
+### Scénarios E-Banking : Pourquoi l'Ordre est Critique
+
+| Scénario | Séquence | Sans clé (risque) | Avec clé (garanti) |
+| -------- | -------- | ------------------ | ------------------- |
+| **Dépôt puis paiement** | +500€, -200€ | Paiement avant dépôt → rejet | Ordre respecté → OK |
+| **Crédit puis débit carte** | +1000€, -950€ | Débit d'abord → solde négatif | Ordre respecté → OK |
+| **Virement + frais** | -500€, -2.50€ frais | Frais avant virement → incohérence | Ordre respecté → OK |
+| **Annulation** | -100€, +100€ annulé | Annulation avant débit → double crédit | Ordre respecté → OK |
+| **Détection fraude** | Tx1, Tx2, Tx3 | Analyse désordonnée → faux positifs | Séquence complète → précis |
 
 ---
 
@@ -105,33 +170,66 @@ dotnet add package Swashbuckle.AspNetCore --version 6.5.0
 
 ### Étape 2 : Comprendre le partitionnement par clé
 
-#### Pourquoi c'est critique en e-banking ?
-
-Considérez cette séquence de transactions pour CUST-001 :
-
-1. Dépôt de 500€ (solde: 500€)
-2. Paiement de 200€ (solde: 300€)
-3. Virement de 100€ (solde: 200€)
-
-**Sans clé** : Ces 3 transactions peuvent arriver sur 3 partitions différentes. Un consumer qui traite la partition du paiement avant le dépôt verra un solde négatif → **erreur**.
-
-**Avec clé `CUST-001`** : Les 3 transactions arrivent sur la même partition, dans l'ordre → **cohérence garantie**.
-
-#### Formule de partitionnement
+#### Algorithme Murmur2 : Comment Kafka Choisit la Partition
 
 ```mermaid
 flowchart LR
-    A["📝 Clé: CUST-001"] --> B["🔢 Hash Murmur2"]
-    B --> C["💻 hash_value"]
-    C --> D["📊 % 6 partitions"]
-    D --> E["📦 Partition 2"]
+    A["📝 Clé: CUST-001"] --> B["🔄 UTF-8 Bytes"]
+    B --> C["🔢 Murmur2 Hash"]
+    C --> D["hash = 0x7A3F..."]
+    D --> E["📊 hash % 6"]
+    E --> F["📦 Partition 2"]
+
+    G["📝 Clé: CUST-002"] --> H["🔄 UTF-8 Bytes"]
+    H --> I["🔢 Murmur2 Hash"]
+    I --> J["hash = 0xB2E1..."]
+    J --> K["📊 hash % 6"]
+    K --> L["📦 Partition 5"]
 
     style A fill:#bbdefb,stroke:#1976d2
-    style B fill:#fff9c4,stroke:#fbc02d
-    style E fill:#c8e6c9,stroke:#388e3c
+    style F fill:#c8e6c9,stroke:#388e3c
+    style G fill:#ffe0b2,stroke:#f57c00
+    style L fill:#c8e6c9,stroke:#388e3c
 ```
 
-**Formule** : `partition = murmur2_hash(key) % nombre_partitions`
+**Formule** : `partition = murmur2_hash(key_bytes) % nombre_partitions`
+
+**Propriétés clés** :
+
+- **Déterministe** : `CUST-001` → toujours la même partition (tant que le nombre de partitions ne change pas)
+- **Rapide** : Murmur2 est un hash non-cryptographique optimisé pour la performance
+- **Bien distribué** : Répartition uniforme des clés sur les partitions
+
+#### Séquence Code : Partitionnement dans le Service
+
+```mermaid
+sequenceDiagram
+    participant Ctrl as 📋 Controller
+    participant Svc as ⚙️ KeyedKafkaProducerService
+    participant Kafka as 🔥 Kafka Client Library
+    participant Part as 📊 Partitioner (Murmur2)
+    participant Broker as 📦 Kafka Broker
+
+    Ctrl->>Svc: SendTransactionAsync(tx)
+    Svc->>Svc: Key = transaction.CustomerId ("CUST-001")
+    Svc->>Svc: Value = JsonSerializer.Serialize(transaction)
+    Svc->>Svc: Headers: correlation-id, partition-key, event-type
+
+    Svc->>Kafka: ProduceAsync(topic, message)
+    Kafka->>Part: Calculer partition pour clé "CUST-001"
+    Part->>Part: bytes = UTF8.GetBytes("CUST-001")
+    Part->>Part: hash = Murmur2(bytes) = 0x7A3F...
+    Part->>Part: partition = hash % 6 = 2
+    Part-->>Kafka: Partition 2
+
+    Kafka->>Broker: ProduceRequest → Partition 2
+    Broker-->>Kafka: ACK (Partition: 2, Offset: 42)
+    Kafka-->>Svc: DeliveryResult
+
+    Svc->>Svc: _partitionStats[2]++ (tracking)
+    Svc->>Svc: _customerPartitionMap["CUST-001"] = 2
+    Svc-->>Ctrl: DeliveryResult {Partition: 2, Offset: 42}
+```
 
 ---
 
@@ -679,6 +777,55 @@ docker exec kafka /opt/kafka/bin/kafka-run-class.sh kafka.tools.GetOffsetShell \
 | **Opérations compte** | `AccountId` | Cohérence du solde |
 | **Paiements carte** | `CardNumber` | Détection fraude séquentielle |
 | **Virements internationaux** | `CustomerId` | Conformité et audit |
+| **Prélèvements** | `MandateId` | Suivi du mandat SEPA |
+| **Notifications** | `CustomerId` | Ordre des alertes par client |
+
+### Séquence : Vérification de la Distribution (Endpoint Stats)
+
+```mermaid
+sequenceDiagram
+    participant C as 🌐 Client (Swagger)
+    participant Ctrl as 📋 Controller
+    participant Svc as ⚙️ KeyedKafkaProducer
+
+    Note over C: Après avoir envoyé 6 transactions
+    C->>Ctrl: GET /api/transactions/stats/partitions
+    Ctrl->>Svc: GetPartitionStats()
+    Svc-->>Ctrl: {2: 4, 5: 1, 0: 1}
+    Ctrl->>Svc: GetCustomerPartitionMap()
+    Svc-->>Ctrl: {CUST-001: 2, CUST-002: 5, CUST-003: 0}
+    Ctrl-->>C: 200 OK
+
+    Note over C: Vérification:
+    Note over C: CUST-001 → 4 messages, tous Partition 2 ✅
+    Note over C: CUST-002 → 1 message, Partition 5 ✅
+    Note over C: CUST-003 → 1 message, Partition 0 ✅
+```
+
+### Hot Partition : Détection et Prévention
+
+```mermaid
+flowchart TB
+    subgraph "Hot Partition (Anti-Pattern)"
+        direction TB
+        HP_A["CUST-VIP-001: 10000 tx/jour"] --> HP_P2["Partition 2: 10000 msg"]
+        HP_B["CUST-002: 5 tx/jour"] --> HP_P5["Partition 5: 5 msg"]
+        HP_C["CUST-003: 3 tx/jour"] --> HP_P0["Partition 0: 3 msg"]
+    end
+
+    subgraph "Solution : Clé Composite"
+        direction TB
+        S_A["CUST-VIP-001-ACC-A: 5000 tx"] --> S_P2["Partition 2: 5000 msg"]
+        S_B["CUST-VIP-001-ACC-B: 5000 tx"] --> S_P4["Partition 4: 5000 msg"]
+        S_C["CUST-002: 5 tx"] --> S_P5["Partition 5: 5 msg"]
+    end
+
+    style HP_P2 fill:#ffcdd2,stroke:#d32f2f
+    style S_P2 fill:#c8e6c9,stroke:#388e3c
+    style S_P4 fill:#c8e6c9,stroke:#388e3c
+```
+
+> **Astuce** : Si un client VIP génère un volume disproportionné, utilisez une clé composite `CustomerId + AccountId` pour répartir la charge.
 
 ### Anti-patterns en e-banking
 
@@ -687,6 +834,8 @@ docker exec kafka /opt/kafka/bin/kafka-run-class.sh kafka.tools.GetOffsetShell \
 | Clé = date du jour | Hot partition (toutes les tx du jour) | Utiliser `CustomerId` |
 | Clé = type de transaction | 80% des tx sont des paiements | Utiliser `CustomerId` |
 | Pas de clé | Ordre des tx non garanti | Toujours utiliser `CustomerId` |
+| Clé = agence | Déséquilibre si une agence est plus active | Utiliser `CustomerId` |
+| Ajout de partitions | Redistribution des clés → ordre cassé | Planifier les partitions dès le départ |
 
 ---
 
