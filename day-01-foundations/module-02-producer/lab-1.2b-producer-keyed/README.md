@@ -1,182 +1,131 @@
-# LAB 1.2B : Producer avec Clé (Partitionnement Déterministe)
+# LAB 1.2B : API Producer avec Clé - Partitionnement par Client
 
-## ⏱️ Durée estimée : 45 minutes
+## ⏱️ Durée estimée : 60 minutes
 
-## 🎯 Objectif
+## 🏦 Contexte E-Banking
 
-Comprendre comment la clé détermine la partition et garantit l'ordre des messages pour une même entité (client, commande, compte bancaire).
-
-### Pourquoi utiliser une clé ?
+Dans ce lab, vous allez étendre l'API Web du LAB 1.2A pour utiliser le **partitionnement par clé**. Toutes les transactions d'un même client (`CustomerId`) seront envoyées sur la **même partition Kafka**, garantissant l'**ordre chronologique** des opérations bancaires par client.
 
 ```mermaid
 flowchart TB
     subgraph "Sans Clé (LAB 1.2A)"
-        A1["Msg 1"] --> P1["Partition 0"]
-        A2["Msg 2"] --> P2["Partition 1"]
-        A3["Msg 3"] --> P3["Partition 2"]
-        A4["Msg 4"] --> P4["Partition 0"]
+        A1["Tx CUST-001: +500€"] --> P1["Partition 0"]
+        A2["Tx CUST-001: -200€"] --> P2["Partition 3"]
+        A3["Tx CUST-001: -100€"] --> P3["Partition 1"]
     end
-    
-    subgraph "Avec Clé (LAB 1.2B)"
-        B1["Key: customer-A"] --> Q1["Partition 0"]
-        B2["Key: customer-A"] --> Q1
-        B3["Key: customer-A"] --> Q1
-        B4["Key: customer-B"] --> Q2["Partition 1"]
+
+    subgraph "Avec Clé CustomerId (LAB 1.2B)"
+        B1["Tx CUST-001: +500€"] --> Q1["Partition 2"]
+        B2["Tx CUST-001: -200€"] --> Q1
+        B3["Tx CUST-001: -100€"] --> Q1
+        B4["Tx CUST-002: +1000€"] --> Q2["Partition 5"]
     end
-    
+
     style A1 fill:#ffcc80
     style A2 fill:#ffcc80
     style A3 fill:#ffcc80
-    style A4 fill:#ffcc80
     style B1 fill:#81d4fa
     style B2 fill:#81d4fa
     style B3 fill:#81d4fa
     style B4 fill:#a5d6a7
 ```
 
-**Sans clé** : Distribution aléatoire → pas d'ordre garanti  
-**Avec clé** : Même clé = même partition → ordre garanti pour cette clé
-
-## 📚 Ce que vous allez apprendre
-
-- Différence entre messages avec et sans clé
-- Partitionnement hash-based (algorithme Murmur2)
-- Garantie d'ordre par clé (même clé = même partition)
-- Distribution des messages sur les partitions
-- Éviter les hot partitions (partitions surchargées)
-- Prédire sur quelle partition une clé atterrira
+**Problème sans clé** : Les transactions d'un client arrivent dans le désordre → solde incohérent.
+**Solution avec clé** : `CustomerId` comme clé → même partition → ordre garanti par client.
 
 ---
 
-## 🛠️ Quick Start (5 minutes)
+## 🎯 Objectifs
 
-Pour une exécution rapide sans lire tout le lab :
+À la fin de ce lab, vous serez capable de :
+
+1. Utiliser le **partitionnement par clé** (`CustomerId`) dans une API Web
+2. Comprendre l'algorithme **Murmur2** et la formule `partition = hash(key) % N`
+3. Garantir l'**ordre des transactions** par client
+4. Détecter et prévenir les **hot partitions**
+5. Tester le partitionnement via **Swagger/OpenAPI**
+6. Observer la **distribution des messages** par partition
+
+---
+
+## 📋 Prérequis
+
+### LAB 1.2A complété
+
+Vous devez avoir complété le LAB 1.2A (API Producer Basique).
+
+### Topic Kafka créé
+
+**Docker** :
 
 ```bash
-# 1. Créer et configurer
-cd lab-1.2b-producer-keyed
-dotnet new console -n KafkaProducerKeyed
-cd KafkaProducerKeyed
-dotnet add package Confluent.Kafka --version 2.3.0
-
-# 2. Remplacer Program.cs avec le code fourni
-# 3. Exécuter
-dotnet run
+docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists \
+  --topic banking.transactions \
+  --partitions 6 \
+  --replication-factor 1
 ```
 
----
+**OKD/K3s** :
 
-## �📋 Prérequis
-
-### Cluster Kafka et topic créés
-
-Si ce n'est pas déjà fait, créez le topic `orders.created` avec 6 partitions (voir LAB 1.2A).
+```bash
+kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
+  --restart=Never -n kafka -- \
+  bin/kafka-topics.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
+  --create --if-not-exists --topic banking.transactions --partitions 6 --replication-factor 3
+```
 
 ---
 
 ## 🚀 Instructions Pas à Pas
 
-### Étape 1 : Créer le projet
+### Étape 1 : Créer le projet API Web
 
 #### 💻 Option A : Visual Studio Code
 
-```mermaid
-flowchart TD
-    A["💻 Visual Studio Code"] --> B["📁 Ouvrir le dossier lab-1.2b-producer-keyed"]
-    B --> C["⚡ Terminal intégré: Ctrl+J"]
-    C --> D["📦 dotnet new console -n KafkaProducerKeyed"]
-    D --> E["📦 dotnet add package Confluent.Kafka --version 2.3.0"]
-    E --> F["📦 dotnet add package Microsoft.Extensions.Logging --version 8.0.0"]
-    F --> G["📦 dotnet add package Microsoft.Extensions.Logging.Console --version 8.0.0"]
-    G --> H["▶️ dotnet run"]
-    
-    style A fill:#007acc,color:#fff
-    style H fill:#4caf50,color:#fff
-```
-
-**Prérequis** : Visual Studio Code + .NET 8.0 SDK
-
-**Commandes** :
-
 ```bash
 cd lab-1.2b-producer-keyed
-dotnet new console -n KafkaProducerKeyed
-cd KafkaProducerKeyed
+dotnet new webapi -n EBankingKeyedProducerAPI
+cd EBankingKeyedProducerAPI
 dotnet add package Confluent.Kafka --version 2.3.0
-dotnet add package Microsoft.Extensions.Logging --version 8.0.0
-dotnet add package Microsoft.Extensions.Logging.Console --version 8.0.0
+dotnet add package Swashbuckle.AspNetCore --version 6.5.0
 ```
-
----
 
 #### 🎨 Option B : Visual Studio 2022
 
-```mermaid
-flowchart TD
-    A["🎨 Visual Studio 2022"] --> B["📁 Fichier → Nouveau → Projet"]
-    B --> C["📋 Application console C#"]
-    C --> D["⚙️ Nom: KafkaProducerKeyed"]
-    D --> E["⚙️ Framework: .NET 8.0"]
-    E --> F["📦 Gérer les packages NuGet"]
-    F --> G["🔍 Confluent.Kafka 2.3.0"]
-    G --> H["🔍 Microsoft.Extensions.Logging 8.0.0"]
-    H --> I["🔍 Microsoft.Extensions.Logging.Console 8.0.0"]
-    I --> J["▶️ F5 pour exécuter"]
-    
-    style A fill:#5c2d91,color:#fff
-    style J fill:#4caf50,color:#fff
-```
-
-**Instructions** :
-
-1.  **Fichier** → **Nouveau** → **Projet** (`Ctrl+Shift+N`)
-2.  Sélectionner **Application console** C#
-3.  Nom : `KafkaProducerKeyed`
-4.  Framework : **.NET 8.0**
-5.  Clic droit projet → **Gérer les packages NuGet** :
-    - ✅ `Confluent.Kafka` version **2.3.0**
-    - ✅ `Microsoft.Extensions.Logging` version **8.0.0**
-    - ✅ `Microsoft.Extensions.Logging.Console` version **8.0.0**
-6.  **F5** pour exécuter avec débogage
+1. **Fichier** → **Nouveau** → **Projet** (`Ctrl+Shift+N`)
+2. Sélectionner **API Web ASP.NET Core**
+3. Nom : `EBankingKeyedProducerAPI`, Framework : **.NET 8.0**
+4. Clic droit projet → **Gérer les packages NuGet** :
+   - `Confluent.Kafka` version **2.3.0**
+   - `Swashbuckle.AspNetCore` version **6.5.0**
 
 ---
 
-### Étape 2 : Comprendre le partitionnement
+### Étape 2 : Comprendre le partitionnement par clé
 
-#### Sans clé (LAB 1.2A)
+#### Pourquoi c'est critique en e-banking ?
 
-```csharp
-// Message sans clé → Sticky Partitioner (round-robin amélioré)
-await producer.ProduceAsync("orders", new Message<Null, string>
-{
-    Value = "{...}"  // Partition choisie automatiquement
-});
-```
+Considérez cette séquence de transactions pour CUST-001 :
 
-**Résultat** : Messages distribués uniformément sur toutes les partitions, mais **pas d'ordre garanti** entre les messages.
+1. Dépôt de 500€ (solde: 500€)
+2. Paiement de 200€ (solde: 300€)
+3. Virement de 100€ (solde: 200€)
 
-#### Avec clé (LAB 1.2B)
+**Sans clé** : Ces 3 transactions peuvent arriver sur 3 partitions différentes. Un consumer qui traite la partition du paiement avant le dépôt verra un solde négatif → **erreur**.
 
-```csharp
-// Message avec clé → Hash-based partitioning
-await producer.ProduceAsync("orders", new Message<string, string>
-{
-    Key = "customer-123",  // Ira TOUJOURS sur la même partition
-    Value = "{...}"
-});
-```
-
-**Résultat** : Tous les messages avec `Key = "customer-123"` vont sur la **même partition**, garantissant l'**ordre**.
+**Avec clé `CUST-001`** : Les 3 transactions arrivent sur la même partition, dans l'ordre → **cohérence garantie**.
 
 #### Formule de partitionnement
 
 ```mermaid
 flowchart LR
-    A["📝 Clé: 'customer-A'"] --> B["🔢 Hash Murmur2"]
-    B --> C["💻 1234567890"]
+    A["📝 Clé: CUST-001"] --> B["🔢 Hash Murmur2"]
+    B --> C["💻 hash_value"]
     C --> D["📊 % 6 partitions"]
-    D --> E["📦 Partition 4"]
-    
+    D --> E["📦 Partition 2"]
+
     style A fill:#bbdefb,stroke:#1976d2
     style B fill:#fff9c4,stroke:#fbc02d
     style E fill:#c8e6c9,stroke:#388e3c
@@ -184,406 +133,593 @@ flowchart LR
 
 **Formule** : `partition = murmur2_hash(key) % nombre_partitions`
 
-**Exemple concret** :
-- Topic avec 6 partitions
-- Clé = "customer-A"
-- Hash Murmur2("customer-A") = 1234567890
-- Partition = 1234567890 % 6 = 4
+---
 
-→ Tous les messages avec clé "customer-A" iront sur **partition 4**.
+### Étape 3 : Créer le modèle Transaction (réutiliser LAB 1.2A)
+
+Copier le fichier `Models/Transaction.cs` du LAB 1.2A ou le recréer identique.
 
 ---
 
-### Étape 3 : Copier et comprendre le code
+### Étape 4 : Créer le service Kafka Producer avec clé
 
-Le code fourni dans `Program.cs` simule 5 clients différents envoyant chacun plusieurs commandes.
-
-#### Points clés du code
-
-**1. Type du Producer**
+Créer le fichier `Services/KeyedKafkaProducerService.cs` :
 
 ```csharp
-// <string, string> = <Type de la clé, Type de la valeur>
-using var producer = new ProducerBuilder<string, string>(config)
-    .Build();
+using Confluent.Kafka;
+using System.Text.Json;
+using EBankingKeyedProducerAPI.Models;
+
+namespace EBankingKeyedProducerAPI.Services;
+
+public class KeyedKafkaProducerService : IDisposable
+{
+    private readonly IProducer<string, string> _producer;
+    private readonly ILogger<KeyedKafkaProducerService> _logger;
+    private readonly string _topic;
+
+    // Statistiques de distribution
+    private readonly Dictionary<int, int> _partitionStats = new();
+    private readonly Dictionary<string, int> _customerPartitionMap = new();
+
+    public KeyedKafkaProducerService(IConfiguration config, ILogger<KeyedKafkaProducerService> logger)
+    {
+        _logger = logger;
+        _topic = config["Kafka:Topic"] ?? "banking.transactions";
+
+        var producerConfig = new ProducerConfig
+        {
+            BootstrapServers = config["Kafka:BootstrapServers"] ?? "localhost:9092",
+            ClientId = config["Kafka:ClientId"] ?? "ebanking-keyed-producer-api",
+            Acks = Acks.All,
+            EnableIdempotence = true,
+            MessageSendMaxRetries = 3,
+            RetryBackoffMs = 1000,
+            LingerMs = 10,
+            BatchSize = 16384,
+            CompressionType = CompressionType.Snappy
+        };
+
+        _producer = new ProducerBuilder<string, string>(producerConfig)
+            .SetErrorHandler((_, error) =>
+                _logger.LogError("Kafka Error: {Reason} (Code: {Code})", error.Reason, error.Code))
+            .SetLogHandler((_, msg) =>
+            {
+                if (msg.Level >= SyslogLevel.Warning)
+                    _logger.LogWarning("Kafka Log: {Message}", msg.Message);
+            })
+            .Build();
+    }
+
+    /// <summary>
+    /// Send transaction with CustomerId as partition key
+    /// </summary>
+    public async Task<DeliveryResult<string, string>> SendTransactionAsync(
+        Transaction transaction, CancellationToken ct = default)
+    {
+        var json = JsonSerializer.Serialize(transaction, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
+
+        // KEY = CustomerId → garantit l'ordre par client
+        var message = new Message<string, string>
+        {
+            Key = transaction.CustomerId,  // PARTITION KEY
+            Value = json,
+            Headers = new Headers
+            {
+                { "correlation-id", System.Text.Encoding.UTF8.GetBytes(Guid.NewGuid().ToString()) },
+                { "event-type", System.Text.Encoding.UTF8.GetBytes("transaction.created") },
+                { "source", System.Text.Encoding.UTF8.GetBytes("ebanking-keyed-api") },
+                { "partition-key", System.Text.Encoding.UTF8.GetBytes(transaction.CustomerId) },
+                { "transaction-type", System.Text.Encoding.UTF8.GetBytes(transaction.Type.ToString()) }
+            },
+            Timestamp = new Timestamp(transaction.Timestamp)
+        };
+
+        var result = await _producer.ProduceAsync(_topic, message, ct);
+
+        // Track partition statistics
+        var partition = result.Partition.Value;
+        _partitionStats[partition] = _partitionStats.GetValueOrDefault(partition, 0) + 1;
+        _customerPartitionMap[transaction.CustomerId] = partition;
+
+        _logger.LogInformation(
+            "✅ Transaction {Id} → Key: {Key}, Partition: {P}, Offset: {O}, Amount: {Amt} {Cur}",
+            transaction.TransactionId, transaction.CustomerId,
+            partition, result.Offset.Value,
+            transaction.Amount, transaction.Currency);
+
+        return result;
+    }
+
+    /// <summary>
+    /// Get current partition distribution statistics
+    /// </summary>
+    public Dictionary<int, int> GetPartitionStats() => new(_partitionStats);
+
+    /// <summary>
+    /// Get customer-to-partition mapping
+    /// </summary>
+    public Dictionary<string, int> GetCustomerPartitionMap() => new(_customerPartitionMap);
+
+    public void Dispose()
+    {
+        _producer?.Flush(TimeSpan.FromSeconds(10));
+        _producer?.Dispose();
+        _logger.LogInformation("Kafka Producer disposed");
+    }
+}
 ```
 
-**2. Envoi avec clé**
+---
+
+### Étape 5 : Créer le contrôleur API
+
+Créer le fichier `Controllers/TransactionsController.cs` :
 
 ```csharp
-var customerId = customers[i % 5];  // customer-A, customer-B, etc.
+using Microsoft.AspNetCore.Mvc;
+using EBankingKeyedProducerAPI.Models;
+using EBankingKeyedProducerAPI.Services;
 
-var deliveryResult = await producer.ProduceAsync(topicName, new Message<string, string>
+namespace EBankingKeyedProducerAPI.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+[Produces("application/json")]
+public class TransactionsController : ControllerBase
 {
-    Key = customerId,  // LA CLÉ DÉTERMINE LA PARTITION
-    Value = messageValue,
-    Timestamp = Timestamp.Default
+    private readonly KeyedKafkaProducerService _kafka;
+    private readonly ILogger<TransactionsController> _logger;
+
+    public TransactionsController(KeyedKafkaProducerService kafka, ILogger<TransactionsController> logger)
+    {
+        _kafka = kafka;
+        _logger = logger;
+    }
+
+    /// <summary>
+    /// Créer une transaction avec partitionnement par CustomerId
+    /// </summary>
+    /// <remarks>
+    /// La clé de partition est le CustomerId.
+    /// Toutes les transactions d'un même client vont sur la même partition Kafka.
+    ///
+    ///     POST /api/transactions
+    ///     {
+    ///         "fromAccount": "FR7630001000123456789",
+    ///         "toAccount":   "FR7630001000987654321",
+    ///         "amount": 250.00,
+    ///         "currency": "EUR",
+    ///         "type": 1,
+    ///         "description": "Virement mensuel loyer",
+    ///         "customerId": "CUST-001"
+    ///     }
+    ///
+    /// </remarks>
+    [HttpPost]
+    [ProducesResponseType(typeof(KeyedTransactionResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<KeyedTransactionResponse>> CreateTransaction(
+        [FromBody] Transaction transaction, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(transaction.TransactionId))
+            transaction.TransactionId = Guid.NewGuid().ToString();
+
+        var result = await _kafka.SendTransactionAsync(transaction, ct);
+
+        return CreatedAtAction(nameof(GetTransaction),
+            new { transactionId = transaction.TransactionId },
+            new KeyedTransactionResponse
+            {
+                TransactionId = transaction.TransactionId,
+                CustomerId = transaction.CustomerId,
+                PartitionKey = transaction.CustomerId,
+                KafkaPartition = result.Partition.Value,
+                KafkaOffset = result.Offset.Value,
+                Timestamp = result.Timestamp.UtcDateTime,
+                Status = "Processing"
+            });
+    }
+
+    /// <summary>
+    /// Envoyer un lot de transactions (partitionnées par client)
+    /// </summary>
+    [HttpPost("batch")]
+    [ProducesResponseType(typeof(BatchKeyedResponse), StatusCodes.Status201Created)]
+    public async Task<ActionResult<BatchKeyedResponse>> CreateBatch(
+        [FromBody] List<Transaction> transactions, CancellationToken ct)
+    {
+        var results = new List<KeyedTransactionResponse>();
+
+        foreach (var tx in transactions)
+        {
+            if (string.IsNullOrEmpty(tx.TransactionId))
+                tx.TransactionId = Guid.NewGuid().ToString();
+
+            var dr = await _kafka.SendTransactionAsync(tx, ct);
+            results.Add(new KeyedTransactionResponse
+            {
+                TransactionId = tx.TransactionId,
+                CustomerId = tx.CustomerId,
+                PartitionKey = tx.CustomerId,
+                KafkaPartition = dr.Partition.Value,
+                KafkaOffset = dr.Offset.Value,
+                Timestamp = dr.Timestamp.UtcDateTime,
+                Status = "Processing"
+            });
+        }
+
+        return Created("", new BatchKeyedResponse
+        {
+            ProcessedCount = results.Count,
+            Transactions = results
+        });
+    }
+
+    /// <summary>
+    /// Obtenir les statistiques de distribution par partition
+    /// </summary>
+    [HttpGet("stats/partitions")]
+    [ProducesResponseType(typeof(PartitionStatsResponse), StatusCodes.Status200OK)]
+    public ActionResult<PartitionStatsResponse> GetPartitionStats()
+    {
+        return Ok(new PartitionStatsResponse
+        {
+            PartitionDistribution = _kafka.GetPartitionStats(),
+            CustomerPartitionMap = _kafka.GetCustomerPartitionMap(),
+            TotalMessages = _kafka.GetPartitionStats().Values.Sum()
+        });
+    }
+
+    /// <summary>
+    /// Obtenir le statut d'une transaction (placeholder)
+    /// </summary>
+    [HttpGet("{transactionId}")]
+    [ProducesResponseType(typeof(KeyedTransactionResponse), StatusCodes.Status200OK)]
+    public ActionResult<KeyedTransactionResponse> GetTransaction(string transactionId)
+    {
+        return Ok(new KeyedTransactionResponse
+        {
+            TransactionId = transactionId,
+            Status = "Processing",
+            Timestamp = DateTime.UtcNow
+        });
+    }
+
+    /// <summary>
+    /// Health check
+    /// </summary>
+    [HttpGet("health")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    public ActionResult GetHealth()
+    {
+        return Ok(new
+        {
+            Status = "Healthy",
+            Service = "EBanking Keyed Producer API",
+            PartitioningStrategy = "CustomerId (Murmur2 Hash)",
+            Timestamp = DateTime.UtcNow
+        });
+    }
+}
+
+// --- Response DTOs ---
+
+public class KeyedTransactionResponse
+{
+    public string TransactionId { get; set; } = string.Empty;
+    public string CustomerId { get; set; } = string.Empty;
+    public string PartitionKey { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public int KafkaPartition { get; set; }
+    public long KafkaOffset { get; set; }
+    public DateTime Timestamp { get; set; }
+}
+
+public class BatchKeyedResponse
+{
+    public int ProcessedCount { get; set; }
+    public List<KeyedTransactionResponse> Transactions { get; set; } = new();
+}
+
+public class PartitionStatsResponse
+{
+    public Dictionary<int, int> PartitionDistribution { get; set; } = new();
+    public Dictionary<string, int> CustomerPartitionMap { get; set; } = new();
+    public int TotalMessages { get; set; }
+}
+```
+
+---
+
+### Étape 6 : Configurer Program.cs
+
+```csharp
+using EBankingKeyedProducerAPI.Services;
+using Microsoft.OpenApi.Models;
+using System.Reflection;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddControllers();
+builder.Services.AddSingleton<KeyedKafkaProducerService>();
+
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "E-Banking Keyed Producer API",
+        Version = "v1",
+        Description = "API de transactions bancaires avec partitionnement par CustomerId.\n\n"
+            + "**Partitionnement** : `partition = murmur2(CustomerId) % 6`\n\n"
+            + "**Endpoints :**\n"
+            + "- `POST /api/transactions` — Transaction avec clé CustomerId\n"
+            + "- `POST /api/transactions/batch` — Lot de transactions\n"
+            + "- `GET /api/transactions/stats/partitions` — Distribution par partition\n"
+            + "- `GET /api/transactions/health` — Health check"
+    });
+
+    var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+        options.IncludeXmlComments(xmlPath);
 });
 
-logger.LogInformation(
-    "✓ Delivered → Key: {Key}, Partition: {Partition}, Offset: {Offset}",
-    customerId,
-    deliveryResult.Partition.Value,
-    deliveryResult.Offset.Value
-);
+var app = builder.Build();
+
+app.UseSwagger();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "E-Banking Keyed Producer API v1");
+    c.RoutePrefix = "swagger";
+});
+
+app.MapControllers();
+
+var logger = app.Services.GetRequiredService<ILogger<Program>>();
+logger.LogInformation("========================================");
+logger.LogInformation("  E-Banking Keyed Producer API");
+logger.LogInformation("  Partitioning: CustomerId (Murmur2)");
+logger.LogInformation("  Swagger UI : https://localhost:5001/swagger");
+logger.LogInformation("========================================");
+
+app.Run();
 ```
-
-**3. Observation de la distribution**
-
-Le code envoie 30 messages (6 messages par client) et affiche sur quelle partition chaque message atterrit.
 
 ---
 
-### Étape 4 : Exécuter et observer
+### Étape 7 : Configurer appsettings.json
+
+```json
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "Kafka": {
+    "BootstrapServers": "localhost:9092",
+    "Topic": "banking.transactions",
+    "ClientId": "ebanking-keyed-producer-api"
+  }
+}
+```
+
+---
+
+### Étape 8 : Exécuter et tester
 
 ```bash
 dotnet run
 ```
 
-#### Logs attendus
-
-```
-info: Sending order ORD-customer-A-0001 for customer customer-A
-info: ✓ Delivered → Key: customer-A, Partition: 3, Offset: 0
-info: Sending order ORD-customer-B-0002 for customer customer-B
-info: ✓ Delivered → Key: customer-B, Partition: 1, Offset: 0
-info: Sending order ORD-customer-C-0003 for customer customer-C
-info: ✓ Delivered → Key: customer-C, Partition: 5, Offset: 0
-info: Sending order ORD-customer-D-0004 for customer customer-D
-info: ✓ Delivered → Key: customer-D, Partition: 2, Offset: 0
-info: Sending order ORD-customer-E-0005 for customer customer-E
-info: ✓ Delivered → Key: customer-E, Partition: 4, Offset: 0
-info: Sending order ORD-customer-A-0006 for customer customer-A
-info: ✓ Delivered → Key: customer-A, Partition: 3, Offset: 1  ← Même partition !
-info: Sending order ORD-customer-B-0007 for customer customer-B
-info: ✓ Delivered → Key: customer-B, Partition: 1, Offset: 1  ← Même partition !
-...
-```
-
-#### Observations clés
-
-✅ **customer-A** → Toujours **partition 3**  
-✅ **customer-B** → Toujours **partition 1**  
-✅ **customer-C** → Toujours **partition 5**  
-✅ **customer-D** → Toujours **partition 2**  
-✅ **customer-E** → Toujours **partition 4**
-
-**Conclusion** : Le partitionnement par clé est **déterministe** et **reproductible**.
+Ouvrir Swagger UI : **<https://localhost:5001/swagger>**
 
 ---
 
-### Étape 5 : Vérifier l'ordre dans Kafka
+## 🧪 Tests OpenAPI (Swagger)
 
-#### Avec CLI Kafka (lire partition spécifique)
+### Test 1 : Transactions du même client (vérifier même partition)
 
-**Docker** :
+Envoyer 3 transactions pour **CUST-001** via **POST /api/transactions** :
+
+**Transaction 1** — Dépôt :
+
+```json
+{
+  "fromAccount": "BANK-DEPOSIT-001",
+  "toAccount": "FR7630001000123456789",
+  "amount": 500.00,
+  "currency": "EUR",
+  "type": 3,
+  "description": "Dépôt salaire janvier",
+  "customerId": "CUST-001"
+}
+```
+
+**Transaction 2** — Paiement :
+
+```json
+{
+  "fromAccount": "FR7630001000123456789",
+  "toAccount": "FR7630001000111222333",
+  "amount": 200.00,
+  "currency": "EUR",
+  "type": 2,
+  "description": "Paiement loyer",
+  "customerId": "CUST-001"
+}
+```
+
+**Transaction 3** — Virement :
+
+```json
+{
+  "fromAccount": "FR7630001000123456789",
+  "toAccount": "FR7630001000444555666",
+  "amount": 100.00,
+  "currency": "EUR",
+  "type": 1,
+  "description": "Virement épargne",
+  "customerId": "CUST-001"
+}
+```
+
+**Vérification** : Les 3 réponses doivent montrer le **même `kafkaPartition`**.
+
+### Test 2 : Transactions de clients différents
+
+Envoyer via **POST /api/transactions/batch** :
+
+```json
+[
+  {
+    "fromAccount": "FR7630001000111111111",
+    "toAccount": "FR7630001000999999999",
+    "amount": 75.00,
+    "currency": "EUR",
+    "type": 2,
+    "description": "Paiement Netflix",
+    "customerId": "CUST-001"
+  },
+  {
+    "fromAccount": "FR7630001000222222222",
+    "toAccount": "FR7630001000888888888",
+    "amount": 1500.00,
+    "currency": "EUR",
+    "type": 1,
+    "description": "Virement investissement",
+    "customerId": "CUST-002"
+  },
+  {
+    "fromAccount": "FR7630001000333333333",
+    "toAccount": "GB29NWBK60161331926819",
+    "amount": 5000.00,
+    "currency": "EUR",
+    "type": 6,
+    "description": "International transfer",
+    "customerId": "CUST-003"
+  }
+]
+```
+
+**Vérification** : Chaque `customerId` a un `kafkaPartition` potentiellement différent.
+
+### Test 3 : Consulter les statistiques de distribution
+
+Appeler **GET /api/transactions/stats/partitions** :
+
+**Réponse attendue** :
+
+```json
+{
+  "partitionDistribution": {
+    "2": 4,
+    "5": 1,
+    "0": 1
+  },
+  "customerPartitionMap": {
+    "CUST-001": 2,
+    "CUST-002": 5,
+    "CUST-003": 0
+  },
+  "totalMessages": 6
+}
+```
+
+**Observation clé** : CUST-001 a 4 messages, tous sur la **même partition** (2).
+
+---
+
+## 📊 Vérifier dans Kafka
+
+### Lire une partition spécifique
+
 ```bash
-# Lire uniquement la partition 3 (customer-A)
+# Lire uniquement la partition 2 (CUST-001)
 docker exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
-  --topic orders.created \
-  --partition 3 \
+  --topic banking.transactions \
+  --partition 2 \
   --from-beginning
 ```
 
-**OKD/K3s** :
+Vous ne verrez que les transactions de **CUST-001**, dans l'ordre chronologique.
+
+### Vérifier la distribution
+
 ```bash
-kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
-  --restart=Never -n kafka -- \
-  bin/kafka-console-consumer.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
-  --topic orders.created --partition 3 --from-beginning
+docker exec kafka /opt/kafka/bin/kafka-run-class.sh kafka.tools.GetOffsetShell \
+  --broker-list localhost:9092 --topic banking.transactions
 ```
 
-**Résultat attendu** : Vous ne verrez que les messages de **customer-A**, dans l'ordre d'envoi.
-
 ---
 
-## 🎯 Real-World Use Cases
+## 🎯 Concepts Clés Expliqués
 
-### Quand utiliser une clé ?
+### Partitionnement Murmur2
 
-| Scénario | Clé recommandée | Pourquoi ? | Exemple |
-|----------|----------------|------------|---------|
-| **Commandes client** | `customerId` | Ordre garanti par client | `customer-12345` |
-| **Transactions bancaires** | `accountId` | Ordre des opérations | `account-67890` |
-| **Mises à jour de stock** | `productId` | État cohérent par produit | `product-ABC123` |
-| **Logs d'application** | `service-name` | Facilite le debugging | `payment-service` |
-| **Événements IoT** | `deviceId` | Séquence par device | `sensor-456` |
+| Élément | Description |
+| ------- | ----------- |
+| **Algorithme** | Murmur2 (non-cryptographique, rapide) |
+| **Formule** | `partition = murmur2(key_bytes) % num_partitions` |
+| **Déterministe** | Même clé → même partition (toujours) |
+| **Stable** | Ne change pas tant que le nombre de partitions est constant |
 
-### Anti-patterns à éviter
+### Quand utiliser une clé en e-banking ?
+
+| Scénario | Clé recommandée | Raison |
+| -------- | --------------- | ------ |
+| **Transactions client** | `CustomerId` | Ordre des opérations par client |
+| **Opérations compte** | `AccountId` | Cohérence du solde |
+| **Paiements carte** | `CardNumber` | Détection fraude séquentielle |
+| **Virements internationaux** | `CustomerId` | Conformité et audit |
+
+### Anti-patterns en e-banking
 
 | Anti-pattern | Problème | Solution |
-|-------------|----------|----------|
-| **Timestamp comme clé** | Tous les messages du même jour sur même partition | Utiliser `entityId + timestamp` |
-| **Clé séquentielle** | Hot partition sur le dernier numéro | Utiliser hash de l'entité |
-| **Clé nulle pour ordre** | Pas de garantie d'ordre | Toujours utiliser une clé si ordre requis |
-
----
-
-## 🧪 Exercices Pratiques
-
-### Exercice 1 : Augmenter le nombre de clients
-
-**Objectif** : Envoyer 60 messages avec 10 clients (customer-A à customer-J).
-
-**Instructions** :
-
-1.  Modifier le code :
-
-    ```csharp
-    var customers = Enumerable.Range(0, 10)
-        .Select(i => $"customer-{(char)('A' + i)}")
-        .ToArray();
-
-    for (int i = 1; i <= 60; i++)
-    {
-        var customerId = customers[i % 10];
-        // ... reste du code
-    }
-    ```
-
-2.  Ajouter un compteur de distribution :
-
-    ```csharp
-    var partitionCounts = new Dictionary<int, int>();
-
-    // Dans la boucle, après ProduceAsync :
-    partitionCounts[deliveryResult.Partition.Value] = 
-        partitionCounts.GetValueOrDefault(deliveryResult.Partition.Value, 0) + 1;
-
-    // Après la boucle :
-    Console.WriteLine("\n=== Distribution des messages par partition ===");
-    foreach (var kvp in partitionCounts.OrderBy(x => x.Key))
-    {
-        Console.WriteLine($"Partition {kvp.Key}: {kvp.Value} messages");
-    }
-    ```
-
-3.  Exécuter et observer la distribution.
-
-**Question** : La distribution est-elle uniforme ? Pourquoi ?
-
-<details>
-<summary>💡 Solution</summary>
-
-Avec 10 clients et 6 partitions, la distribution dépend du hash de chaque clé. Elle ne sera pas parfaitement uniforme (certaines partitions peuvent avoir 1 client, d'autres 2), mais sur un grand nombre de clés, la distribution converge vers l'uniformité.
-
-</details>
-
----
-
-### Exercice 2 : Simuler une hot partition
-
-**Objectif** : Observer le problème des hot partitions.
-
-**Instructions** :
-
-1.  Modifier le code pour que 80% des messages aient la même clé :
-
-    ```csharp
-    for (int i = 1; i <= 100; i++)
-    {
-        // 80% des messages avec customer-A, 20% avec les autres
-        var customerId = (i % 10 < 8) ? "customer-A" : $"customer-{(char)('B' + (i % 4))}";
-        // ... reste du code
-    }
-    ```
-
-2.  Observer la distribution.
-
-**Question** : Quelle partition reçoit le plus de messages ? Quel est le problème ?
-
-<details>
-<summary>💡 Solution</summary>
-
-La partition de "customer-A" reçoit 80 messages, les autres se partagent les 20 restants. C'est une **hot partition** : elle est surchargée, ce qui peut causer :
-- Latence accrue pour les consumers de cette partition
-- Déséquilibre de charge entre brokers
-- Risque de saturation du disque sur le broker hébergeant cette partition
-
-**Solution** : Utiliser une clé composite ou un hash de la clé pour mieux distribuer.
-
-</details>
-
----
-
-### Exercice 3 : Prédire la partition d'une clé
-
-**Objectif** : Calculer sur quelle partition une clé atterrira avant de l'envoyer.
-
-**Instructions** :
-
-1.  Ajouter cette méthode :
-
-    ```csharp
-    static int PredictPartition(string key, int numPartitions)
-    {
-        // Simuler le hash Murmur2 (simplifié)
-        var hash = key.GetHashCode();
-        return Math.Abs(hash) % numPartitions;
-    }
-    ```
-
-2.  Avant d'envoyer un message, prédire sa partition :
-
-    ```csharp
-    var predictedPartition = PredictPartition(customerId, 6);
-    Console.WriteLine($"Predicted partition for {customerId}: {predictedPartition}");
-
-    var deliveryResult = await producer.ProduceAsync(...);
-
-    Console.WriteLine($"Actual partition: {deliveryResult.Partition.Value}");
-    ```
-
-**Note** : La prédiction peut ne pas être exacte car `GetHashCode()` n'est pas Murmur2, mais elle donne une idée.
+| ------------ | -------- | -------- |
+| Clé = date du jour | Hot partition (toutes les tx du jour) | Utiliser `CustomerId` |
+| Clé = type de transaction | 80% des tx sont des paiements | Utiliser `CustomerId` |
+| Pas de clé | Ordre des tx non garanti | Toujours utiliser `CustomerId` |
 
 ---
 
 ## 🔧 Troubleshooting
 
-### Problèmes courants avec les clés
-
 | Symptôme | Cause probable | Solution |
-|----------|---------------|----------|
-| ❌ **Hot partition** : Une partition reçoit 80% des messages | Clé déséquilibrée (ex: date du jour) | Utiliser clé composite ou hash |
-| ❌ **Ordre non respecté** : Messages avec même clé désordonnés | Producer avec `EnableIdempotence = false` | Activer l'idempotence |
-| ❌ **Distribution inégale** : Certaines partitions vides | Nombre limité de clés uniques | Augmenter variété des clés |
-| ❌ **Performance faible** : Latence élevée | Trop de partitions par clé | Optimiser le partitionnement |
-
-### Commandes de diagnostic
-
-```bash
-# Vérifier la distribution par partition
-docker exec kafka /opt/kafka/bin/kafka-run-class.sh kafka.tools.GetOffsetShell \
-  --broker-list localhost:9092 --topic orders.created
-
-# Surveiller en temps réel
-docker exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
-  --bootstrap-server localhost:9092 --topic orders.created --partition 0 --from-beginning
-```
-
----
-
-## 📊 Performance Impact
-
-| Stratégie | Distribution | Ordre | Performance | Cas d'usage |
-|-----------|---------------|-------|-------------|-------------|
-| **Sans clé** | Uniforme | Non | Maximale | Logs, métriques |
-| **Clé simple** | Variable | Oui (par clé) | Bonne | Commandes, transactions |
-| **Clé composite** | Excellente | Oui (par entité) | Moyenne | High throughput avec ordre |
-| **Hash de clé** | Excellente | Non | Bonne | Distribution maximale |
+| -------- | -------------- | -------- |
+| Même client sur partitions différentes | Clé inconsistante | Vérifier que `CustomerId` est identique (casse) |
+| Hot partition (80%+ sur une partition) | Un client domine le trafic | Clé composite `CustomerId + AccountId` |
+| Distribution inégale | Peu de clients uniques | Normal avec peu de clés, augmenter les clients |
+| Ordre non respecté | `EnableIdempotence = false` | Activer l'idempotence |
 
 ---
 
 ## ✅ Validation du Lab
 
-Vous avez réussi ce lab si :
-
-- [ ] **✅ Partitionnement déterministe** : Vous comprenez que Key → Partition est déterministe
-- [ ] **✅ Ordre garanti** : Même clé = même partition = ordre préservé pour cette clé
-- [ ] **✅ Distribution observée** : Vous savez observer la distribution des clés sur les partitions
-- [ ] **✅ Hot partitions comprises** : Vous comprenez le problème des hot partitions
-- [ ] **✅ Cas d'usage identifiés** : Vous savez quand utiliser une clé (ordre, localité, compaction)
-- [ ] **🚀 Bonus** : Vous avez testé les exercices de distribution et prédiction
-
-### 🎯 Points Clés à Retenir
-
-1.  **Quand utiliser une clé ?
-
-    ✅ **Utilisez une clé si vous avez besoin de** :
-    - **Ordre garanti** : Tous les événements d'une entité (client, commande) doivent arriver dans l'ordre
-    - **Localité** : Un consumer doit voir tous les événements d'une entité ensemble
-    - **Compaction** : Topic compacté (dernière valeur par clé conservée)
-
-    ❌ **N'utilisez pas de clé si** :
-    - Vous voulez une distribution uniforme sans contrainte d'ordre
-    - Vous avez des clés très déséquilibrées (risque de hot partition)
-
-#### 2. Formule de partitionnement
-
-```
-partition = murmur2_hash(key) % nombre_partitions
-```
-
-- **Déterministe** : Même clé → même partition (toujours)
-- **Uniforme** : Hash Murmur2 distribue bien les clés
-- **Stable** : Ne change pas si nombre de partitions constant
-
-3.  **Hot Partitions**
-
-    **Problème** : Une partition reçoit beaucoup plus de messages que les autres.
-
-    **Causes** :
-    - Clés déséquilibrées (ex: 80% des messages avec même clé)
-    - Clés mal choisies (ex: date du jour → tous les messages du jour sur même partition)
-
-    **Solutions** :
-    - Choisir des clés bien distribuées
-    - Utiliser un hash de la clé si nécessaire
-    - Augmenter le nombre de partitions
-    - Utiliser une clé composite (ex: `customerId + orderId % 10`)
-
-4.  **Ordre des messages**
-
-    **Avec clé** :
-    - Ordre garanti **au sein d'une partition**
-    - Tous les messages avec même clé arrivent dans l'ordre
-
-    **Sans clé** :
-    - Aucune garantie d'ordre global
-    - Sticky partitioner groupe les messages par batch
-
----
-
-## 📖 Concepts Théoriques
-
-### Algorithme Murmur2
-
-Kafka utilise l'algorithme de hash **Murmur2** pour calculer la partition à partir de la clé :
-
-```java
-// Pseudo-code simplifié
-int partition = murmur2(key.getBytes()) % numPartitions;
-```
-
-**Propriétés** :
-- Rapide (plus rapide que MD5, SHA)
-- Bonne distribution (pas de collisions fréquentes)
-- Non-cryptographique (pas sécurisé, mais ce n'est pas le but)
-
-### Sticky Partitioner (sans clé)
-
-Depuis Kafka 2.4, le partitionnement sans clé utilise le **sticky partitioner** :
-
-1. Choisir une partition aléatoire
-2. Envoyer tous les messages du batch sur cette partition
-3. Quand le batch est plein, choisir une nouvelle partition
-
-**Avantage** : Moins de requêtes réseau, meilleure performance.
-
-### Compaction de Topic
-
-Avec une clé, vous pouvez activer la **compaction** :
-
-```bash
---config cleanup.policy=compact
-```
-
-Kafka conserve uniquement la **dernière valeur** pour chaque clé. Utile pour :
-- Event Sourcing (état actuel d'une entité)
-- CDC (Change Data Capture)
-- Cache distribué
+- [ ] L'API démarre et Swagger UI est accessible
+- [ ] `POST /api/transactions` retourne la partition dans la réponse
+- [ ] 3 transactions du même client vont sur la **même partition**
+- [ ] 3 transactions de clients différents montrent des partitions (potentiellement) différentes
+- [ ] `GET /api/transactions/stats/partitions` affiche la distribution correcte
+- [ ] Le `customerPartitionMap` montre un mapping client → partition stable
+- [ ] Vous comprenez la formule `partition = murmur2(key) % N`
 
 ---
 
 ## 🚀 Prochaine Étape
 
-Vous maîtrisez maintenant le partitionnement par clé !
+👉 **[LAB 1.2C : API Producer avec Gestion d'Erreurs et DLQ](../lab-1.2c-producer-error-handling/README.md)**
 
-👉 **Passez au [LAB 1.2C : Producer avec Gestion d'Erreurs et DLQ](../lab-1.2c-producer-error-handling/README.md)**
+Dans le prochain lab :
 
-Dans le prochain lab, vous apprendrez :
 - Classification des erreurs (retriable vs permanent)
-- Pattern Dead Letter Queue (DLQ)
+- Pattern Dead Letter Queue (DLQ) pour les transactions échouées
 - Retry avec exponential backoff
-- Logging et monitoring production-ready
+- Fallback fichier local si DLQ échoue

@@ -1,174 +1,55 @@
-# 🎓 Expert Instructor's Guide
+# LAB 1.2A : API Producer Basique - E-Banking Transactions
 
-## 📋 Course Structure Overview
+## ⏱️ Durée estimée : 45 minutes
 
-This module is designed as a **progressive learning journey** from basic concepts to production-ready implementations. Each lab builds upon the previous one, ensuring students master fundamental concepts before advancing to complex scenarios.
+## 🏦 Contexte E-Banking
 
-### 🎯 Learning Pathway
+Dans ce lab, vous allez créer une **API Web ASP.NET Core** qui expose des endpoints REST pour traiter des **transactions bancaires** et les envoyer vers Apache Kafka. Chaque transaction (virement, paiement, retrait) sera publiée comme message Kafka, simulant un système de traitement de transactions en temps réel.
 
 ```mermaid
-flowchart TD
-    A["📘 LAB 1.2A<br/>Producer Basics<br/>30 min"] --> B["📗 LAB 1.2B<br/>Keyed Partitioning<br/>45 min"]
-    B --> C["📙 LAB 1.2C<br/>Error Handling & DLQ<br/>45 min"]
-    
-    A --> D["🎯 Core Concepts<br/>Configuration, Sending, Monitoring"]
-    B --> E["🎯 Advanced Concepts<br/>Partitioning, Ordering, Performance"]
-    C --> F["🎯 Production Concepts<br/>Resilience, DLQ, Circuit Breakers"]
-    
-    style A fill:#e3f2fd,stroke:#1976d2
-    style B fill:#e8f5e8,stroke:#388e3c
-    style C fill:#fff3e0,stroke:#f57c00
+flowchart LR
+    subgraph Clients["🏦 Clients Bancaires"]
+        Web["🌐 Web Banking"]
+        Mobile["📱 Mobile App"]
+        Swagger["🧪 Swagger/OpenAPI"]
+    end
+
+    subgraph API["🚀 ASP.NET Core Web API"]
+        TC["TransactionsController"]
+        KPS["KafkaProducerService"]
+    end
+
+    subgraph Kafka["🔥 Kafka"]
+        T["📋 banking.transactions"]
+    end
+
+    Web --> TC
+    Mobile --> TC
+    Swagger --> TC
+    TC --> KPS
+    KPS --> T
+
+    style Clients fill:#e3f2fd,stroke:#1976d2
+    style API fill:#e8f5e8,stroke:#388e3c
+    style Kafka fill:#fff3e0,stroke:#f57c00
 ```
 
 ---
 
-# LAB 1.2A : Producer Synchrone Basique
+## 🎯 Objectifs
 
-## ⏱️ Durée estimée : 30 minutes
+À la fin de ce lab, vous serez capable de :
 
-## 🎯 Learning Objectives
-
-### Primary Goals
-
-By the end of this lab, students will be able to:
-
-1. ✅ **Configure a Kafka Producer** - Understand essential configuration parameters
-2. ✅ **Send Messages** - Master `ProduceAsync()` and handle delivery results
-3. ✅ **Handle Basic Errors** - Implement error handlers and log handlers
-4. ✅ **Understand Metadata** - Extract partition, offset, and timestamp information
-5. ✅ **Proper Resource Management** - Use `Flush()` and `Dispose()` correctly
-6. ✅ **Add Custom Headers** - Implement correlation IDs and tracing metadata
-
-### Success Metrics
-
-- **Functional**: Producer successfully sends 10 messages to Kafka
-- **Observable**: Messages visible in Kafka UI with correct metadata
-- **Robust**: Proper error handling and resource cleanup
-- **Performant**: Understanding of latency vs throughput trade-offs
-
-## 🏗️ Lab Architecture
-
-### System Components
-
-```mermaid
-flowchart TB
-    subgraph StudentWorkstation["👨‍💻 Student Environment"]
-        VSCode["VS Code / Visual Studio"]
-        DotNet["📦 .NET 8.0 Runtime"]
-        KafkaLib["📚 Confluent.Kafka Library"]
-    end
-    
-    subgraph ProducerApp["🚀 Producer Application"]
-        Config["⚙️ ProducerConfig"]
-        Builder["🔧 ProducerBuilder"]
-        Handlers["🛡️ Error/Log Handlers"]
-        Sender["📤 ProduceAsync"]
-    end
-    
-    subgraph KafkaCluster["🔥 Kafka Cluster"]
-        Broker["📡 Kafka Broker"]
-        Topic["📋 Topic: orders.created"]
-        Partitions["📦 Partitions 0-5"]
-    end
-    
-    VSCode --> DotNet
-    DotNet --> KafkaLib
-    KafkaLib --> ProducerApp
-    
-    Config --> Builder
-    Builder --> Handlers
-    Builder --> Sender
-    
-    Sender --> Broker
-    Broker --> Topic
-    Topic --> Partitions
-    
-    style StudentWorkstation fill:#f3e5f5,stroke:#4a148c
-    style ProducerApp fill:#e8f5e8,stroke:#1b5e20
-    style KafkaCluster fill:#fff3e0,stroke:#e65100
-```
-
-### Data Flow
-
-```mermaid
-sequenceDiagram
-    participant Student as 👨‍💻 Student
-    participant Producer as 🚀 Producer App
-    participant Kafka as 🔥 Kafka Broker
-    participant Topic as 📋 orders.created
-    
-    Student->>Producer: dotnet run
-    Producer->>Producer: Configure ProducerBuilder
-    Producer->>Producer: Set Error/Log Handlers
-    
-    loop Send 10 Messages
-        Producer->>Kafka: ProduceAsync(message)
-        Kafka->>Topic: Write to partition
-        Topic-->>Kafka: ACK (partition, offset)
-        Kafka-->>Producer: DeliveryResult
-        Producer-->>Student: Log success
-    end
-    
-    Producer->>Producer: Flush(10s)
-    Producer->>Producer: Dispose()
-    Producer-->>Student: Completion message
-```
-
-## 📚 Learning Outcomes
-
-### Technical Skills
-
-- **Producer Configuration**: Bootstrap servers, client ID, acknowledgments
-- **Message Sending**: Synchronous vs asynchronous patterns
-- **Error Handling**: Fatal vs non-fatal errors, logging strategies
-- **Resource Management**: Proper disposal and flushing techniques
-- **Metadata Handling**: Headers, correlation IDs, tracing information
-
-### Conceptual Understanding
-
-- **Message Lifecycle**: From application to Kafka broker
-- **Delivery Guarantees**: Acks levels and their implications
-- **Partitioning Basics**: How messages are distributed
-- **Performance Trade-offs**: Latency vs throughput considerations
-- **Best Practices**: Production-ready patterns and anti-patterns
+1. Créer une **API Web ASP.NET Core** avec intégration Kafka
+2. Configurer un **Kafka Producer** avec `ProducerConfig`
+3. Envoyer des **transactions bancaires** via `ProduceAsync()`
+4. Exploiter les **métadonnées de livraison** (partition, offset, timestamp)
+5. Tester tous les endpoints via **Swagger/OpenAPI**
+6. Gérer les **erreurs de base** et le cycle de vie du producer
 
 ---
 
-## 🛠️ Quick Start (5 minutes)
-
-Pour une exécution rapide sans lire tout le lab :
-
-```bash
-# 1. Créer et configurer
-cd lab-1.2a-producer-basic
-dotnet new console -n KafkaProducerBasic
-cd KafkaProducerBasic
-dotnet add package Confluent.Kafka --version 2.3.0
-```
-
-**Commandes** :
-
-```bash
-# Naviguer vers le dossier du lab
-cd lab-1.2a-producer-basic
-
-# Créer le projet console
-dotnet new console -n KafkaProducerBasic
-
-# Naviguer dans le projet
-cd KafkaProducerBasic
-
-# Ajouter le package Confluent.Kafka
-dotnet add package Confluent.Kafka --version 2.3.0
-
-# Ajouter les packages de logging
-dotnet add package Microsoft.Extensions.Logging --version 8.0.0
-dotnet add package Microsoft.Extensions.Logging.Console --version 8.0.0
-```
-
----
-
-## � Prérequis
+## 📋 Prérequis
 
 ### Cluster Kafka en fonctionnement
 
@@ -195,7 +76,7 @@ kubectl get kafka -n kafka
 docker exec kafka /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --create --if-not-exists \
-  --topic orders.created \
+  --topic banking.transactions \
   --partitions 6 \
   --replication-factor 1
 ```
@@ -206,826 +87,677 @@ docker exec kafka /opt/kafka/bin/kafka-topics.sh \
 kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
   --restart=Never -n kafka -- \
   bin/kafka-topics.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
-  --create --if-not-exists --topic orders.created --partitions 6 --replication-factor 3
+  --create --if-not-exists --topic banking.transactions --partitions 6 --replication-factor 3
 ```
 
 ---
 
 ## 🚀 Instructions Pas à Pas
 
-### Étape 1 : Créer le projet
+### Étape 1 : Créer le projet API Web
 
-#### 💻 Option A : Visual Studio Code (Recommandé pour débutants)
-
-Visual Studio Code est un éditeur léger, gratuit et multiplateforme. Idéal pour les labs Kafka.
-
-**Prérequis** :
-
-- [Visual Studio Code](https://code.visualstudio.com/download) installé
-- [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) installé
-- Extension C# Dev Kit (optionnel mais recommandé)
-
-```mermaid
-flowchart TD
-    A["💻 Visual Studio Code"] --> B["📁 Ouvrir le dossier lab-1.2a-producer-basic"]
-    B --> C["⚡ Terminal: dotnet new console -n KafkaProducerBasic"]
-    C --> D["📦 dotnet add package Confluent.Kafka"]
-    D --> E["▶️ dotnet run"]
-    
-    style A fill:#007acc,color:#fff
-    style E fill:#4caf50,color:#fff
-```
-
-**Commandes** :
+#### 💻 Option A : Visual Studio Code
 
 ```bash
-# Naviguer vers le dossier du lab
 cd lab-1.2a-producer-basic
-
-# Créer le projet console
-dotnet new console -n KafkaProducerBasic
-
-# Naviguer dans le projet
-cd KafkaProducerBasic
-
-# Ajouter le package Confluent.Kafka
+dotnet new webapi -n EBankingProducerAPI
+cd EBankingProducerAPI
 dotnet add package Confluent.Kafka --version 2.3.0
-
-# Ajouter les packages de logging
-dotnet add package Microsoft.Extensions.Logging --version 8.0.0
-dotnet add package Microsoft.Extensions.Logging.Console --version 8.0.0
+dotnet add package Swashbuckle.AspNetCore --version 6.5.0
 ```
 
-**Dans VS Code** :
-1. `Ctrl+J` pour ouvrir le terminal intégré
-2. `F5` pour déboguer ou `Ctrl+F5` pour exécuter sans débogage
-3. `Ctrl+Shift+P` → ".NET: Generate Assets for Build and Debug" (pour créer launch.json)
+#### 🎨 Option B : Visual Studio 2022
+
+1. **Fichier** → **Nouveau** → **Projet** (`Ctrl+Shift+N`)
+2. Sélectionner **API Web ASP.NET Core**
+3. Nom : `EBankingProducerAPI`, Framework : **.NET 8.0**
+4. Clic droit projet → **Gérer les packages NuGet** :
+   - `Confluent.Kafka` version **2.3.0**
+   - `Swashbuckle.AspNetCore` version **6.5.0**
 
 ---
 
-#### 🎨 Option B : Visual Studio 2022 (IDE complet)
+### Étape 2 : Créer le modèle Transaction
 
-Visual Studio 2022 offre une expérience IDE complète avec IntelliSense avancé, débogage graphique et designers visuels.
-
-**Prérequis** :
-- [Visual Studio 2022](https://visualstudio.microsoft.com/vs/) installé
-- Workload **"Développement .NET Desktop"** sélectionné lors de l'installation
-
-```mermaid
-flowchart TD
-    A["🎨 Visual Studio 2022"] --> B["📁 Fichier → Nouveau → Projet"]
-    B --> C["📋 Sélectionner 'Application console'"]
-    C --> D["⚙️ Framework: .NET 8.0"]
-    D --> E["📦 Gérer les packages NuGet"]
-    E --> F["▶️ F5 pour exécuter"]
-    
-    style A fill:#5c2d91,color:#fff
-    style F fill:#4caf50,color:#fff
-```
-
-**Instructions détaillées** :
-
-1.  **Fichier** → **Nouveau** → **Projet** (`Ctrl+Shift+N`)
-
-2.  Sélectionner **Application console** (pas "Application console (.NET Framework)")
-
-    ```
-    Modèles > C# > Application console
-    ```
-
-3.  Configuration du projet :
-
-    | Paramètre | Valeur |
-    |-----------|--------|
-    | Nom du projet | `KafkaProducerBasic` |
-    | Emplacement | `lab-1.2a-producer-basic` |
-    | Framework | **.NET 8.0** |
-
-4.  Ajouter les packages NuGet :
-
-    - Clic droit sur le projet → **Gérer les packages NuGet**
-    - Onglet **Parcourir**, rechercher et installer :
-      - ✅ `Confluent.Kafka` version **2.3.0**
-      - ✅ `Microsoft.Extensions.Logging` version **8.0.0**
-      - ✅ `Microsoft.Extensions.Logging.Console` version **8.0.0**
-
-5.  Exécuter le projet :
-
-    - **F5** : Exécuter avec débogage (breakpoints, inspection variables)
-    - **Ctrl+F5** : Exécuter sans débogage (plus rapide)
-
----
-
-#### 📊 Comparaison VS Code vs Visual Studio
-
-| Critère | VS Code | Visual Studio 2022 |
-|---------|---------|---------------------|
-| **Poids** | Léger (~300MB) | Lourd (~2-3GB) |
-| **Prix** | Gratuit | Gratuit (Community) |
-| **Débogage** | Basique | Avancé (points d'arrêt conditionnels, visualization) |
-| **IntelliSense** | Bon | Excellent |
-| **Idéal pour** | Labs, scripts | Projets complexes, équipes |
-| **Multiplateforme** | ✅ Windows/Mac/Linux | ⚠️ Windows uniquement |
-
----
-
-### Étape 2 : Copier le code
-
-Remplacez le contenu de `Program.cs` par le code fourni dans ce dossier.
-
-**Fichiers fournis** :
-- ✅ `Program.cs` - Code principal du producer
-- ✅ `KafkaProducerBasic.csproj` - Configuration du projet
-- ✅ `appsettings.json` - Configuration (optionnel)
-
----
-
-### Étape 3 : Comprendre le code
-
-#### 🎯 Concepts Fondamentaux du Producer
-
-##### 3.1 Architecture du Producer
-
-```mermaid
-flowchart TB
-    subgraph Producer["📤 Kafka Producer"]
-        subgraph Config["Configuration"]
-            BS["bootstrap.servers<br/>localhost:9092"]
-            AC["acks<br/>all"]
-            RE["retries<br/>3"]
-            RT["request.timeout.ms<br/>30000"]
-        end
-        
-        subgraph Pipeline["Pipeline d'envoi"]
-            SER["🔄 Serializer<br/>Key + Value"]
-            ACC["📦 RecordAccumulator<br/>Batching"]
-            SND["🌐 Sender Thread<br/>Network I/O"]
-        end
-        
-        SER --> ACC --> SND
-    end
-    
-    SND -->|"ProduceRequest"| K["📦 Kafka Broker"]
-    K -->|"ACK"| SND
-    
-    style Config fill:#e3f2fd
-    style Pipeline fill:#f3e5f5
-```
-
-##### 3.2 Niveaux de Confirmation (ACK Levels)
-
-```mermaid
-flowchart TB
-    subgraph acks0["acks=0 (Fire & Forget)"]
-        P0["Producer"] -->|"Envoie"| B0["Broker"]
-        P0 -.->|"N'attend pas"| X0["❌"]
-        Note0["⚡ Latence minimale<br/>❌ Aucune garantie"]
-    end
-    
-    subgraph acks1["acks=1 (Leader Only)"]
-        P1["Producer"] -->|"Envoie"| L1["Leader"]
-        L1 -->|"ACK"| P1
-        L1 -.->|"Réplique après"| F1["Follower"]
-        Note1["⚡ Latence faible<br/>⚠️ Fiabilité moyenne"]
-    end
-    
-    subgraph acksAll["acks=all (Toutes les ISR)"]
-        P2["Producer"] -->|"Envoie"| L2["Leader"]
-        L2 -->|"Réplique"| F2["Follower 1"]
-        L2 -->|"Réplique"| F3["Follower 2"]
-        F2 -->|"ACK"| L2
-        F3 -->|"ACK"| L2
-        L2 -->|"ACK"| P2
-        Note2["🐥 Latence élevée<br/>✅ Fiabilité maximale"]
-    end
-    
-    style acks0 fill:#ffebee
-    style acks1 fill:#fff3e0
-    style acksAll fill:#e8f5e8
-```
-
-**Dans notre code** : `Acks = Acks.All` pour une fiabilité maximale.
-
-##### 3.3 Idempotence : Garantie d'Exact-Once
-
-```mermaid
-sequenceDiagram
-    participant P as Producer
-    participant K as Kafka Broker
-    participant R as Replica
-    
-    Note over P: Envoi Message (PID:123, Seq:1)
-    P->>K: Envoi Message (PID:123, Seq:1)
-    K->>R: Replication
-    R-->>K: ACK
-    
-    Note over P: Timeout ! Réessai
-    P->>K: Envoi Message (PID:123, Seq:1)
-    K->>K: Détection duplicata
-    K-->>P: ACK (sans duplication)
-    
-    Note over K: ✅ 1 seul message
-```
-
-**Configuration pour idempotence** (non activée dans ce lab) :
-```csharp
-EnableIdempotence = true,  // Active déduplication automatique
-Acks = Acks.All,           // Requis pour idempotence
-MaxInFlight = 5             // Max 5 requêtes simultanées
-```
-
-##### 3.4 Cycle de vie d'un message
-
-```mermaid
-sequenceDiagram
-    participant App as Application
-    participant Prod as Producer
-    participant Ser as Serializer
-    participant Batch as RecordAccumulator
-    participant Net as NetworkClient
-    participant Broker as Kafka Broker
-    
-    App->>Prod: send(record)
-    Prod->>Ser: serialize(key, value)
-    Ser-->>Prod: byte[]
-    Prod->>Batch: append to batch
-    Note over Batch: Attend linger.ms ou batch.size
-    Batch->>Net: send batch
-    Net->>Broker: ProduceRequest
-    Broker->>Broker: Write to log
-    Broker-->>Net: ProduceResponse (offset)
-    Net-->>Prod: RecordMetadata
-    Prod-->>App: Future/Callback
-```
-
-#### Configuration du Producer
+Créer le fichier `Models/Transaction.cs` :
 
 ```csharp
-var config = new ProducerConfig
+using System.ComponentModel.DataAnnotations;
+
+namespace EBankingProducerAPI.Models;
+
+public class Transaction
 {
-    // Adresse du cluster Kafka
-    BootstrapServers = "localhost:9092",  // Docker
-    // BootstrapServers = "bhf-kafka-kafka-bootstrap:9092",  // OKD/K3s
-    
-    // Identification du client (pour logs et monitoring)
-    ClientId = "dotnet-basic-producer",
-    
-    // Garantie de livraison : attendre confirmation de tous les ISR
-    Acks = Acks.All,
-    
-    // Retry automatique en cas d'erreur retriable
-    MessageSendMaxRetries = 3,
-    RetryBackoffMs = 1000,
-    RequestTimeoutMs = 30000
-};
-```
+    [Required]
+    public string TransactionId { get; set; } = Guid.NewGuid().ToString();
 
-**Points clés** :
-- `BootstrapServers` : Adresse du cluster (adapter selon votre environnement)
-- `Acks.All` : Garantie maximale (tous les réplicas synchronisés)
-- Retry automatique pour erreurs transientes
+    [Required]
+    [StringLength(20, MinimumLength = 10)]
+    public string FromAccount { get; set; } = string.Empty;
 
-#### Création du Producer avec Handlers
+    [Required]
+    [StringLength(20, MinimumLength = 10)]
+    public string ToAccount { get; set; } = string.Empty;
 
-```csharp
-using var producer = new ProducerBuilder<Null, string>(config)
-    .SetErrorHandler((_, e) => 
-    {
-        // Gestion des erreurs fatales et non-fatales
-        logger.LogError("Producer error: Code={Code}, Reason={Reason}", 
-            e.Code, e.Reason);
-        if (e.IsFatal)
-        {
-            Environment.Exit(1);  // Arrêt si erreur fatale
-        }
-    })
-    .SetLogHandler((_, logMessage) => 
-    {
-        // Logs internes de Kafka
-        logger.Log(logLevel, "Kafka internal log: {Message}", logMessage.Message);
-    })
-    .Build();
-```
+    [Required]
+    [Range(0.01, 1_000_000.00)]
+    public decimal Amount { get; set; }
 
-**Points clés** :
-- `<Null, string>` : Type de la clé (Null = pas de clé) et valeur (string)
-- `SetErrorHandler` : Callback pour erreurs
-- `SetLogHandler` : Logs internes de librdkafka
+    [Required]
+    [StringLength(3, MinimumLength = 3)]
+    public string Currency { get; set; } = "EUR";
 
-#### Envoi de Messages
+    [Required]
+    public TransactionType Type { get; set; }
 
-```mermaid
-sequenceDiagram
-    participant App as Application .NET
-    participant Producer as Kafka Producer
-    participant Buffer as Buffer Mémoire
-    participant Broker as Kafka Broker
-    participant Topic as Topic orders.created
+    [StringLength(500)]
+    public string? Description { get; set; }
 
-    App->>Producer: ProduceAsync(message)
-    Producer->>Buffer: Queue message
-    Producer-->>App: Task (async)
-    
-    Note over Buffer: Batch & Linger.ms
-    
-    Buffer->>Broker: Send batch
-    Broker->>Topic: Write to partition
-    Broker-->>Buffer: Ack (partition, offset)
-    Buffer-->>App: DeliveryResult
-    
-    App->>App: Log Partition + Offset
-```
+    [Required]
+    public string CustomerId { get; set; } = string.Empty;
 
-Ce diagramme montre le flux asynchrone : l'application envoie un message, il est mis en buffer, envoyé au broker, et la confirmation arrive avec les métadonnées (partition, offset).
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 
-```csharp
-var deliveryResult = await producer.ProduceAsync(topicName, new Message<Null, string>
+    [Range(0, 100)]
+    public int RiskScore { get; set; } = 0;
+
+    public TransactionStatus Status { get; set; } = TransactionStatus.Pending;
+}
+
+public enum TransactionType
 {
-    Value = messageValue,
-    Headers = new Headers
-    {
-        { "correlation-id", Encoding.UTF8.GetBytes(Guid.NewGuid().ToString()) },
-        { "source", Encoding.UTF8.GetBytes("dotnet-producer") }
-    }
-});
+    Transfer = 1,
+    Payment = 2,
+    Deposit = 3,
+    Withdrawal = 4,
+    CardPayment = 5,
+    InternationalTransfer = 6,
+    BillPayment = 7
+}
 
-// Confirmation de livraison
-logger.LogInformation(
-    "✓ Message delivered → Partition: {Partition}, Offset: {Offset}",
-    deliveryResult.Partition.Value,
-    deliveryResult.Offset.Value
-);
-```
-
-**Points clés** :
-- `ProduceAsync` : Envoi asynchrone (non-bloquant)
-- `DeliveryResult` : Confirmation avec partition, offset, timestamp
-- `Headers` : Métadonnées optionnelles (correlation ID, tracing)
-
-#### Fermeture Propre
-
-```csharp
-finally
+public enum TransactionStatus
 {
-    // IMPORTANT : Flush des messages en attente
-    producer.Flush(TimeSpan.FromSeconds(10));
-    logger.LogInformation("Producer closed gracefully.");
+    Pending = 1,
+    Processing = 2,
+    Completed = 3,
+    Failed = 4,
+    Rejected = 5
 }
 ```
 
-**Points clés** :
-- `Flush()` : Envoie tous les messages en buffer avant fermeture
-- Timeout de 10 secondes pour éviter blocage infini
+---
+
+### Étape 3 : Créer le service Kafka Producer
+
+Créer le fichier `Services/KafkaProducerService.cs` :
+
+```csharp
+using Confluent.Kafka;
+using System.Text.Json;
+using EBankingProducerAPI.Models;
+
+namespace EBankingProducerAPI.Services;
+
+public class KafkaProducerService : IDisposable
+{
+    private readonly IProducer<string, string> _producer;
+    private readonly ILogger<KafkaProducerService> _logger;
+    private readonly string _topic;
+
+    public KafkaProducerService(IConfiguration config, ILogger<KafkaProducerService> logger)
+    {
+        _logger = logger;
+        _topic = config["Kafka:Topic"] ?? "banking.transactions";
+
+        var producerConfig = new ProducerConfig
+        {
+            BootstrapServers = config["Kafka:BootstrapServers"] ?? "localhost:9092",
+            ClientId = config["Kafka:ClientId"] ?? "ebanking-producer-api",
+            Acks = Acks.All,
+            EnableIdempotence = true,
+            MessageSendMaxRetries = 3,
+            RetryBackoffMs = 1000,
+            LingerMs = 10,
+            BatchSize = 16384,
+            CompressionType = CompressionType.Snappy
+        };
+
+        _producer = new ProducerBuilder<string, string>(producerConfig)
+            .SetErrorHandler((_, error) =>
+                _logger.LogError("Kafka Error: {Reason} (Code: {Code})", error.Reason, error.Code))
+            .SetLogHandler((_, msg) =>
+            {
+                if (msg.Level >= SyslogLevel.Warning)
+                    _logger.LogWarning("Kafka Log: {Message}", msg.Message);
+            })
+            .Build();
+
+        _logger.LogInformation("Kafka Producer initialized → {Servers}, Topic: {Topic}",
+            producerConfig.BootstrapServers, _topic);
+    }
+
+    public async Task<DeliveryResult<string, string>> SendTransactionAsync(
+        Transaction transaction, CancellationToken ct = default)
+    {
+        var json = JsonSerializer.Serialize(transaction, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
+
+        var message = new Message<string, string>
+        {
+            Key = transaction.TransactionId,
+            Value = json,
+            Headers = new Headers
+            {
+                { "correlation-id", System.Text.Encoding.UTF8.GetBytes(Guid.NewGuid().ToString()) },
+                { "event-type", System.Text.Encoding.UTF8.GetBytes("transaction.created") },
+                { "source", System.Text.Encoding.UTF8.GetBytes("ebanking-api") },
+                { "customer-id", System.Text.Encoding.UTF8.GetBytes(transaction.CustomerId) },
+                { "transaction-type", System.Text.Encoding.UTF8.GetBytes(transaction.Type.ToString()) }
+            },
+            Timestamp = new Timestamp(transaction.Timestamp)
+        };
+
+        var result = await _producer.ProduceAsync(_topic, message, ct);
+
+        _logger.LogInformation(
+            "✅ Transaction {Id} → Partition: {P}, Offset: {O}, Type: {Type}, Amount: {Amt} {Cur}",
+            transaction.TransactionId, result.Partition.Value, result.Offset.Value,
+            transaction.Type, transaction.Amount, transaction.Currency);
+
+        return result;
+    }
+
+    public void Dispose()
+    {
+        _producer?.Flush(TimeSpan.FromSeconds(10));
+        _producer?.Dispose();
+        _logger.LogInformation("Kafka Producer disposed");
+    }
+}
+```
 
 ---
 
-### Étape 4 : Configurer l'environnement
+### Étape 4 : Créer le contrôleur API
 
-#### Docker (localhost)
-
-Modifier `Program.cs` ligne 11 :
+Créer le fichier `Controllers/TransactionsController.cs` :
 
 ```csharp
-BootstrapServers = "localhost:9092"
-```
+using Microsoft.AspNetCore.Mvc;
+using EBankingProducerAPI.Models;
+using EBankingProducerAPI.Services;
 
-#### OKD/K3s
+namespace EBankingProducerAPI.Controllers;
 
-Modifier `Program.cs` ligne 11 :
+[ApiController]
+[Route("api/[controller]")]
+[Produces("application/json")]
+public class TransactionsController : ControllerBase
+{
+    private readonly KafkaProducerService _kafka;
+    private readonly ILogger<TransactionsController> _logger;
 
-```csharp
-BootstrapServers = "bhf-kafka-kafka-bootstrap:9092"
-```
+    public TransactionsController(KafkaProducerService kafka, ILogger<TransactionsController> logger)
+    {
+        _kafka = kafka;
+        _logger = logger;
+    }
 
-Ou utiliser une variable d'environnement :
+    /// <summary>
+    /// Créer une transaction bancaire et l'envoyer à Kafka
+    /// </summary>
+    /// <remarks>
+    /// Exemple de requête :
+    ///
+    ///     POST /api/transactions
+    ///     {
+    ///         "fromAccount": "FR76300010001234567890",
+    ///         "toAccount":   "FR76300010009876543210",
+    ///         "amount": 250.00,
+    ///         "currency": "EUR",
+    ///         "type": 1,
+    ///         "description": "Virement mensuel loyer",
+    ///         "customerId": "CUST-001"
+    ///     }
+    ///
+    /// </remarks>
+    [HttpPost]
+    [ProducesResponseType(typeof(TransactionResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<TransactionResponse>> CreateTransaction(
+        [FromBody] Transaction transaction, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(transaction.TransactionId))
+            transaction.TransactionId = Guid.NewGuid().ToString();
 
-```csharp
-BootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") 
-                   ?? "localhost:9092"
+        var result = await _kafka.SendTransactionAsync(transaction, ct);
+
+        var response = new TransactionResponse
+        {
+            TransactionId = transaction.TransactionId,
+            Status = "Processing",
+            KafkaPartition = result.Partition.Value,
+            KafkaOffset = result.Offset.Value,
+            Timestamp = result.Timestamp.UtcDateTime
+        };
+
+        return CreatedAtAction(nameof(GetTransaction),
+            new { transactionId = transaction.TransactionId }, response);
+    }
+
+    /// <summary>
+    /// Envoyer un lot de transactions bancaires
+    /// </summary>
+    [HttpPost("batch")]
+    [ProducesResponseType(typeof(BatchResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<BatchResponse>> CreateBatch(
+        [FromBody] List<Transaction> transactions, CancellationToken ct)
+    {
+        var results = new List<TransactionResponse>();
+
+        foreach (var tx in transactions)
+        {
+            if (string.IsNullOrEmpty(tx.TransactionId))
+                tx.TransactionId = Guid.NewGuid().ToString();
+
+            var dr = await _kafka.SendTransactionAsync(tx, ct);
+            results.Add(new TransactionResponse
+            {
+                TransactionId = tx.TransactionId,
+                Status = "Processing",
+                KafkaPartition = dr.Partition.Value,
+                KafkaOffset = dr.Offset.Value,
+                Timestamp = dr.Timestamp.UtcDateTime
+            });
+        }
+
+        return Created("", new BatchResponse
+        {
+            ProcessedCount = results.Count,
+            Transactions = results
+        });
+    }
+
+    /// <summary>
+    /// Obtenir le statut d'une transaction (placeholder)
+    /// </summary>
+    [HttpGet("{transactionId}")]
+    [ProducesResponseType(typeof(TransactionResponse), StatusCodes.Status200OK)]
+    public ActionResult<TransactionResponse> GetTransaction(string transactionId)
+    {
+        return Ok(new TransactionResponse
+        {
+            TransactionId = transactionId,
+            Status = "Processing",
+            Timestamp = DateTime.UtcNow
+        });
+    }
+
+    /// <summary>
+    /// Health check du service
+    /// </summary>
+    [HttpGet("health")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    public ActionResult GetHealth()
+    {
+        return Ok(new { Status = "Healthy", Service = "EBanking Producer API", Timestamp = DateTime.UtcNow });
+    }
+}
+
+// --- Response DTOs ---
+
+public class TransactionResponse
+{
+    public string TransactionId { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public int KafkaPartition { get; set; }
+    public long KafkaOffset { get; set; }
+    public DateTime Timestamp { get; set; }
+}
+
+public class BatchResponse
+{
+    public int ProcessedCount { get; set; }
+    public List<TransactionResponse> Transactions { get; set; } = new();
+}
 ```
 
 ---
 
-### Étape 5 : Exécuter le producer
+### Étape 5 : Configurer Program.cs
 
-#### Avec Visual Studio Code
+Remplacer le contenu de `Program.cs` :
+
+```csharp
+using EBankingProducerAPI.Services;
+using Microsoft.OpenApi.Models;
+using System.Reflection;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddControllers();
+builder.Services.AddSingleton<KafkaProducerService>();
+
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "E-Banking Producer API",
+        Version = "v1",
+        Description = "API de traitement de transactions bancaires avec Apache Kafka.\n\n"
+            + "**Endpoints disponibles :**\n"
+            + "- `POST /api/transactions` — Créer une transaction\n"
+            + "- `POST /api/transactions/batch` — Envoyer un lot\n"
+            + "- `GET /api/transactions/{id}` — Statut d'une transaction\n"
+            + "- `GET /api/transactions/health` — Health check",
+        Contact = new OpenApiContact { Name = "E-Banking Team" }
+    });
+
+    var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+        options.IncludeXmlComments(xmlPath);
+});
+
+var app = builder.Build();
+
+app.UseSwagger();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "E-Banking Producer API v1");
+    c.RoutePrefix = "swagger";
+});
+
+app.MapControllers();
+
+var logger = app.Services.GetRequiredService<ILogger<Program>>();
+logger.LogInformation("========================================");
+logger.LogInformation("  E-Banking Producer API");
+logger.LogInformation("  Swagger UI : https://localhost:5001/swagger");
+logger.LogInformation("  Kafka      : {Servers}", builder.Configuration["Kafka:BootstrapServers"] ?? "localhost:9092");
+logger.LogInformation("  Topic      : {Topic}", builder.Configuration["Kafka:Topic"] ?? "banking.transactions");
+logger.LogInformation("========================================");
+
+app.Run();
+```
+
+---
+
+### Étape 6 : Configurer appsettings.json
+
+```json
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "Kafka": {
+    "BootstrapServers": "localhost:9092",
+    "Topic": "banking.transactions",
+    "ClientId": "ebanking-producer-api"
+  }
+}
+```
+
+> **OKD/K3s** : Remplacer `localhost:9092` par `bhf-kafka-kafka-bootstrap:9092`
+
+---
+
+### Étape 7 : Exécuter et tester
+
+#### Lancer l'API
 
 ```bash
 dotnet run
 ```
 
-#### Avec Visual Studio 2022
+L'API démarre sur `https://localhost:5001` (ou le port configuré).
 
-1.  Appuyer sur **F5** (ou **Ctrl+F5** sans debugger)
-2.  Observer les logs dans la console
+#### Ouvrir Swagger UI
 
----
+Naviguer vers : **<https://localhost:5001/swagger>**
 
-### Étape 6 : Observer les résultats
-
-#### Logs attendus
-
-```
-info: Program[0]
-      Producer started. Connecting to localhost:9092
-info: Program[0]
-      Sending message 1: {"orderId": "ORD-0001", "timestamp": "2026-02-05T11:30:00Z", "amount": 110}
-info: Program[0]
-      ✓ Message 1 delivered → Topic: orders.created, Partition: 3, Offset: 0, Timestamp: 2026-02-05 11:30:00
-info: Program[0]
-      Sending message 2: {"orderId": "ORD-0002", "timestamp": "2026-02-05T11:30:01Z", "amount": 120}
-info: Program[0]
-      ✓ Message 2 delivered → Topic: orders.created, Partition: 1, Offset: 0, Timestamp: 2026-02-05 11:30:01
-...
-info: Program[0]
-      All messages sent successfully!
-info: Program[0]
-      Flushing pending messages...
-info: Program[0]
-      Producer closed gracefully.
-```
-
-**Points à noter** :
-- ✅ Messages répartis sur les 6 partitions (round-robin car pas de clé)
-- ✅ Offset commence à 0 pour chaque partition (si topic vide)
-- ✅ Pas d'erreurs de connexion
-- ✅ Latence d'envoi : ~5-10ms par message
+Vous verrez l'interface OpenAPI avec tous les endpoints documentés.
 
 ---
 
-### Étape 7 : Vérifier dans Kafka
+## 🧪 Tests OpenAPI (Swagger)
 
-#### Avec Kafka UI
+### Test 1 : Créer un virement bancaire
 
-**Docker** : http://localhost:8080  
-**OKD/K3s** : http://<NODE_IP>:30808
+Dans Swagger UI, cliquer sur **POST /api/transactions** → **Try it out** :
 
-1. Aller dans **Topics** → **orders.created**
+```json
+{
+  "fromAccount": "FR7630001000123456789",
+  "toAccount": "FR7630001000987654321",
+  "amount": 250.00,
+  "currency": "EUR",
+  "type": 1,
+  "description": "Virement mensuel loyer",
+  "customerId": "CUST-001",
+  "riskScore": 5
+}
+```
+
+**Réponse attendue** (201 Created) :
+
+```json
+{
+  "transactionId": "a1b2c3d4-...",
+  "status": "Processing",
+  "kafkaPartition": 3,
+  "kafkaOffset": 0,
+  "timestamp": "2026-02-06T00:00:00Z"
+}
+```
+
+### Test 2 : Paiement de facture
+
+```json
+{
+  "fromAccount": "FR7630001000123456789",
+  "toAccount": "FR7630001000111222333",
+  "amount": 89.99,
+  "currency": "EUR",
+  "type": 7,
+  "description": "Facture électricité EDF",
+  "customerId": "CUST-001",
+  "riskScore": 2
+}
+```
+
+### Test 3 : Virement international (risque élevé)
+
+```json
+{
+  "fromAccount": "FR7630001000123456789",
+  "toAccount": "GB29NWBK60161331926819",
+  "amount": 15000.00,
+  "currency": "EUR",
+  "type": 6,
+  "description": "International transfer to UK",
+  "customerId": "CUST-002",
+  "riskScore": 75
+}
+```
+
+### Test 4 : Lot de transactions (batch)
+
+Cliquer sur **POST /api/transactions/batch** → **Try it out** :
+
+```json
+[
+  {
+    "fromAccount": "FR7630001000123456789",
+    "toAccount": "FR7630001000111111111",
+    "amount": 50.00,
+    "currency": "EUR",
+    "type": 2,
+    "description": "Paiement abonnement Netflix",
+    "customerId": "CUST-001"
+  },
+  {
+    "fromAccount": "FR7630001000123456789",
+    "toAccount": "FR7630001000222222222",
+    "amount": 120.00,
+    "currency": "EUR",
+    "type": 2,
+    "description": "Paiement assurance auto",
+    "customerId": "CUST-001"
+  },
+  {
+    "fromAccount": "FR7630001000123456789",
+    "toAccount": "FR7630001000333333333",
+    "amount": 35.00,
+    "currency": "EUR",
+    "type": 5,
+    "description": "Paiement carte restaurant",
+    "customerId": "CUST-001"
+  }
+]
+```
+
+### Test 5 : Health check
+
+Cliquer sur **GET /api/transactions/health** → **Try it out** → **Execute**
+
+**Réponse attendue** :
+
+```json
+{
+  "status": "Healthy",
+  "service": "EBanking Producer API",
+  "timestamp": "2026-02-06T00:00:00Z"
+}
+```
+
+---
+
+## 📊 Vérifier dans Kafka
+
+### Avec Kafka UI
+
+**Docker** : <http://localhost:8080>
+
+1. Aller dans **Topics** → **banking.transactions**
 2. Cliquer sur **Messages**
-3. Vous devez voir les 10 messages produits
+3. Vérifier les transactions envoyées avec leurs headers
 
-#### Avec CLI Kafka
-
-**Docker** :
+### Avec CLI Kafka
 
 ```bash
 docker exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
-  --topic orders.created \
+  --topic banking.transactions \
   --from-beginning \
   --max-messages 10
-```
-
-**OKD/K3s** :
-
-```bash
-kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
-  --restart=Never -n kafka -- \
-  bin/kafka-console-consumer.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
-  --topic orders.created --from-beginning --max-messages 10
 ```
 
 **Résultat attendu** :
 
 ```json
-{"orderId": "ORD-0001", "timestamp": "2026-02-05T11:30:00Z", "amount": 110}
-{"orderId": "ORD-0002", "timestamp": "2026-02-05T11:30:01Z", "amount": 120}
-...
+{"transactionId":"a1b2c3d4-...","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":250.00,"currency":"EUR","type":1,"description":"Virement mensuel loyer","customerId":"CUST-001","timestamp":"2026-02-06T00:00:00Z","riskScore":5,"status":1}
 ```
 
 ---
 
-## 🧪 Exercices Pratiques
+## 🎯 Concepts Clés Expliqués
 
-### Exercice 1 : Modifier le nombre de messages
+### Architecture du Producer Kafka
 
-**Objectif** : Envoyer 50 messages au lieu de 10.
+```mermaid
+flowchart TB
+    subgraph Producer["📤 Kafka Producer"]
+        subgraph Config["Configuration"]
+            BS["bootstrap.servers"]
+            AC["acks = all"]
+            ID["enable.idempotence = true"]
+        end
 
-**Instructions** :
+        subgraph Pipeline["Pipeline d'envoi"]
+            SER["🔄 Serializer"]
+            ACC["📦 RecordAccumulator"]
+            SND["🌐 Sender Thread"]
+        end
 
-1.  Modifier la ligne `for (int i = 1; i <= 10; i++)` → `for (int i = 1; i <= 50; i++)`
-2.  Relancer le producer
-3.  Observer la distribution sur les partitions
+        SER --> ACC --> SND
+    end
 
-**Question** : Combien de messages par partition en moyenne ?
+    SND -->|"ProduceRequest"| K["📦 Kafka Broker"]
+    K -->|"ACK"| SND
 
-<details>
-<summary>💡 Solution</summary>
+    style Config fill:#e3f2fd
+    style Pipeline fill:#f3e5f5
+```
 
-Avec 50 messages et 6 partitions, distribution attendue : ~8-9 messages par partition (peut varier légèrement avec sticky partitioner).
+### Niveaux de Confirmation (ACK)
 
-</details>
+| Acks | Garantie | Latence | Cas d'usage E-Banking |
+| ---- | -------- | ------- | --------------------- |
+| `0` | Aucune | Très faible | Logs d'audit non-critiques |
+| `1` | Leader | Faible | Notifications push |
+| `all` | Tous ISR | Plus élevée | **Transactions financières** |
 
----
+### Cycle de vie d'un message API → Kafka
 
-### Exercice 2 : Ajouter un header personnalisé
+```mermaid
+sequenceDiagram
+    participant C as 🌐 Client
+    participant API as 🚀 Web API
+    participant P as 📤 Producer
+    participant K as 🔥 Kafka
 
-**Objectif** : Ajouter un header `environment` avec la valeur `dev`.
-
-**Instructions** :
-
-1.  Ajouter dans les headers :
-
-    ```csharp
-    { "environment", Encoding.UTF8.GetBytes("dev") }
-    ```
-
-2.  Relancer et vérifier dans Kafka UI (onglet Headers)
-
----
-
-### Exercice 3 : Tester la gestion d'erreurs
-
-**Objectif** : Observer le comportement en cas d'erreur de connexion.
-
-**Instructions** :
-
-1.  Arrêter Kafka : `docker stop kafka` (Docker) ou `kubectl scale kafka bhf-kafka --replicas=0 -n kafka` (K8s)
-2.  Relancer le producer
-3.  Observer les logs d'erreur et les retries
-
-**Question** : Combien de retries avant échec final ?
-
-<details>
-<summary>💡 Solution</summary>
-
-Le producer tentera 3 retries (configuré via `MessageSendMaxRetries = 3`) avec 1 seconde entre chaque (`RetryBackoffMs = 1000`).
-
-</details>
-
-4.  Redémarrer Kafka : `docker start kafka` ou `kubectl scale kafka bhf-kafka --replicas=3 -n kafka`
-
----
-
-### Exercice 4 : Activer l'Idempotence (Avancé)
-
-**Objectif** : Activer l'idempotence pour garantir exactly-once semantics.
-
-**Instructions** :
-
-1.  Modifier la configuration pour activer l'idempotence :
-
-    ```csharp
-    var config = new ProducerConfig
-    {
-        BootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") 
-                           ?? "localhost:9092",
-        ClientId = "dotnet-idempotent-producer",
-        Acks = Acks.All,
-        
-        // 🔑 Activation de l'idempotence
-        EnableIdempotence = true,
-        MaxInFlight = 5,  // Requis pour idempotence
-        
-        MessageSendMaxRetries = 3,
-        RetryBackoffMs = 1000,
-        RequestTimeoutMs = 30000
-    };
-    ```
-
-2.  Envoyer le même message deux fois avec le même clé :
-
-    ```csharp
-    for (int i = 1; i <= 2; i++)
-    {
-        var messageValue = $"{{\"orderId\": \"ORD-123\", \"attempt\": {i}}}";
-        var deliveryResult = await producer.ProduceAsync(topicName, new Message<string, string>
-        {
-            Key = "customer-123",  // Même clé
-            Value = messageValue
-        });
-        
-        logger.LogInformation("Attempt {Index}: Partition {Partition}, Offset {Offset}", 
-            i, deliveryResult.Partition.Value, deliveryResult.Offset.Value);
-    }
-    ```
-
-3.  Observer que seul le premier message est écrit (le second est détecté comme duplicata).
-
-<details>
-<summary>💡 Explication</summary>
-
-Avec l'idempotence activée, Kafka utilise un PID (Producer ID) et des numéros de séquence pour détecter les doublons. Le second envoi avec le même PID et numéro de séquence est ignoré.
-
-</details>
-
----
-
-### Exercice 5 : Optimisation Performance (Production-Ready)
-
-**Objectif** : Optimiser le producer pour haute performance.
-
-**Instructions** :
-
-1.  Ajouter les paramètres de performance :
-
-    ```csharp
-    var config = new ProducerConfig
-    {
-        BootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") 
-                           ?? "localhost:9092",
-        ClientId = "dotnet-optimized-producer",
-        Acks = Acks.All,
-        
-        // 🚀 Optimisations performance
-        BatchSize = 32768,              // 32KB batch size
-        LingerMs = 5,                     // Attendre 5ms pour batcher
-        CompressionType = CompressionType.Snappy,  // Compression
-        
-        MessageSendMaxRetries = 3,
-        RetryBackoffMs = 1000,
-        RequestTimeoutMs = 30000
-    };
-    ```
-
-2.  Envoyer 1000 messages et mesurer le temps total :
-
-    ```csharp
-    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-    for (int i = 1; i <= 1000; i++)
-    {
-        var messageValue = $"{{\"orderId\": \"ORD-{i:D4}\", \"timestamp\": \"{DateTime.UtcNow:o}\"}}";
-        await producer.ProduceAsync(topicName, new Message<Null, string>
-        {
-            Value = messageValue
-        });
-    }
-
-    stopwatch.Stop();
-    logger.LogInformation("Sent 1000 messages in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
-    logger.LogInformation("Throughput: {Throughput:F2} messages/sec", 1000.0 / stopwatch.Elapsed.TotalSeconds);
-    ```
-
-3.  Comparer avec la version non optimisée.
-
-<details>
-<summary>💡 Résultats attendus</summary>
-
-Avec optimisation :
-- **Batch size 32KB** : Groupement plus efficace
-- **Linger 5ms** : Meilleur batching sans trop de latence  
-- **Compression Snappy** : Réduction bande passante
-- **Expected** : 2-5x plus rapide que la version basique
-
-</details>
-
----
-
-### Exercice 6 : Circuit Breaker Pattern (Expert)
-
-**Objectif** : Implémenter un circuit breaker pour éviter les cascades d'échecs.
-
-**Instructions** :
-
-1.  Ajouter une classe CircuitBreaker :
-
-    ```csharp
-    public class CircuitBreakerProducer
-    {
-        private int _failureCount = 0;
-        private DateTime _lastFailure = DateTime.MinValue;
-        private readonly int _threshold = 5;
-        private readonly TimeSpan _timeout = TimeSpan.FromMinutes(1);
-        
-        public async Task<DeliveryResult<Null, string>> SendAsync(
-            IProducer<Null, string> producer, 
-            string topic,
-            Message<Null, string> message)
-        {
-            if (IsCircuitOpen())
-                throw new InvalidOperationException("Circuit breaker is open");
-                
-            try
-            {
-                var result = await producer.ProduceAsync(topic, message);
-                ResetCircuit();
-                return result;
-            }
-            catch (Exception ex)
-            {
-                RecordFailure();
-                throw;
-            }
-        }
-        
-        private bool IsCircuitOpen() => 
-            _failureCount >= _threshold && 
-            DateTime.UtcNow - _lastFailure < _timeout;
-            
-        private void RecordFailure()
-        {
-            _failureCount++;
-            _lastFailure = DateTime.UtcNow;
-        }
-        
-        private void ResetCircuit() => _failureCount = 0;
-    }
-    ```
-
-2.  Utiliser le circuit breaker dans le producer principal.
-
-<details>
-<summary>💡 Pattern avancé</summary>
-
-Le circuit breaker protège contre les pannes en cascade :
-- **5 échecs consécutifs** → Circuit ouvert
-- **1 minute** → Tentative de rétablissement
-- **Succès** → Circuit fermé immédiatement
-
-Idéal pour les environnements de production où Kafka peut être temporairement indisponible.
-
-</details>
+    C->>API: POST /api/transactions
+    API->>API: Validation du modèle
+    API->>P: SendTransactionAsync()
+    P->>P: Sérialisation JSON
+    P->>P: Ajout headers (correlation-id, etc.)
+    P->>K: ProduceAsync()
+    K-->>P: DeliveryResult (partition, offset)
+    P-->>API: Résultat
+    API-->>C: 201 Created + métadonnées Kafka
+```
 
 ---
 
 ## 🔧 Troubleshooting
 
-### Problèmes courants
-
 | Symptôme | Cause probable | Solution |
-|----------|---------------|----------|
-| ❌ `Kafka Error: Local: Broker transport failure` | Kafka non démarré | `cd ../../module-01-cluster && ./scripts/up.sh` |
-| ❌ `UnknownTopicOrPartitionException` | Topic non créé | Créer le topic `orders.created` (voir Étape 1) |
-| ❌ Timeout après 30 secondes | Mauvais `BootstrapServers` | Vérifier Docker vs OKD configuration |
-| ❌ `No such file or directory` | Mauvais dossier de travail | `cd lab-1.2a-producer-basic/KafkaProducerBasic` |
-
-### Commandes de diagnostic
-
-```bash
-# Vérifier Kafka (Docker)
-docker ps | grep kafka
-
-# Vérifier le topic
-docker exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
-
-# Tester connectivité
-docker exec kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic test
-```
-
----
-
-## 📊 Performance Comparison
-
-| Configuration | Latence | Throughput | Use Case |
-|---------------|---------|------------|----------|
-| **Default** | 5-10ms | ~100 msg/s | Développement, debugging |
-| **Optimized** | 2-5ms | ~500 msg/s | Production, haute performance |
-| **Batch Mode** | 10-50ms | ~2000 msg/s | Bulk processing |
+| -------- | -------------- | -------- |
+| `Broker transport failure` | Kafka non démarré | `cd ../../module-01-cluster && ./scripts/up.sh` |
+| `UnknownTopicOrPartition` | Topic non créé | Créer `banking.transactions` (voir Prérequis) |
+| Swagger ne s'affiche pas | Mauvais URL | Vérifier le port dans la console de démarrage |
+| 400 Bad Request | Validation échouée | Vérifier les champs requis dans le body JSON |
+| Timeout 30s | Mauvais bootstrap servers | Vérifier `appsettings.json` |
 
 ---
 
 ## ✅ Validation du Lab
 
-Vous avez réussi ce lab si :
-
-- [ ] **✅ Connexion réussie** : Le producer se connecte à Kafka sans erreur
-- [ ] **✅ Messages envoyés** : Les 10 messages sont envoyés avec succès
-- [ ] **✅ Visibilité** : Les messages sont visibles dans Kafka UI ou via CLI
-- [ ] **✅ Métadonnées** : Les logs affichent partition et offset pour chaque message
-- [ ] **✅ Fermeture propre** : Le producer se ferme avec `Flush()`
-- [ ] **✅ Compréhension** : Vous comprenez le rôle de `Acks`, `ProduceAsync`, et `DeliveryResult`
-- [ ] **🚀 Bonus** : Vous avez testé les exercices de performance
-
-### 🎯 Points Clés à Retenir
-
-1.  **ProduceAsync est non-bloquant** : Le message est mis en buffer et envoyé de manière asynchrone
-2.  **Flush() est obligatoire** : Avant fermeture pour éviter perte de messages en attente
-3.  **DeliveryResult contient les métadonnées** : Partition, offset, timestamp de livraison
-4.  **Acks.All garantit durabilité** : Tous les réplicas synchronisés avant confirmation
-5.  **Retry automatique** : Kafka gère les erreurs transientes automatiquement
-6.  **Headers pour métadonnées** : Correlation ID, tracing, source, etc.
-
----
-
-## 📖 Concepts Théoriques
-
-### Sticky Partitioner (Kafka 2.4+)
-
-Sans clé, Kafka utilise le **sticky partitioner** au lieu du round-robin classique :
-- Messages groupés par batch sur la même partition
-- Meilleure performance (moins de requêtes réseau)
-- Distribution reste équilibrée sur le long terme
-
-### Acks : Garanties de Livraison
-
-| Acks | Garantie | Latence | Cas d'usage |
-|------|----------|---------|-------------|
-| `None (0)` | Aucune | Très faible | Métriques, logs non-critiques |
-| `Leader (1)` | Leader uniquement | Faible | Logs applicatifs |
-| `All (-1)` | Tous les ISR | Plus élevée | Transactions, commandes |
-
-**ISR** (In-Sync Replicas) : Réplicas synchronisés avec le leader.
+- [ ] L'API démarre sans erreur et Swagger UI est accessible
+- [ ] `POST /api/transactions` retourne 201 avec les métadonnées Kafka
+- [ ] `POST /api/transactions/batch` traite un lot de 3+ transactions
+- [ ] `GET /api/transactions/health` retourne "Healthy"
+- [ ] Les messages sont visibles dans Kafka UI / CLI
+- [ ] Les headers Kafka contiennent `correlation-id`, `event-type`, `customer-id`
+- [ ] Vous comprenez le rôle de `Acks.All`, `ProduceAsync()`, et `DeliveryResult`
 
 ---
 
 ## 🚀 Prochaine Étape
 
-Vous maîtrisez maintenant les bases du Producer Kafka !
+👉 **[LAB 1.2B : API Producer avec Clé - Partitionnement par Client](../lab-1.2b-producer-keyed/README.md)**
 
-👉 **Passez au [LAB 1.2B : Producer avec Clé](../lab-1.2b-producer-keyed/README.md)**
+Dans le prochain lab :
 
-Dans le prochain lab, vous apprendrez :
-- Comment utiliser une clé pour contrôler le partitionnement
-- Garantir l'ordre des messages pour une même entité
-- Éviter les hot partitions
+- Partitionnement déterministe par `CustomerId`
+- Garantie d'ordre des transactions par client
+- Détection et prévention des hot partitions
