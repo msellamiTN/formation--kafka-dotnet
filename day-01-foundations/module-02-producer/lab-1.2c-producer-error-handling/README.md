@@ -6,6 +6,43 @@
 
 Implémenter un pattern production-ready avec classification des erreurs, retry automatique, et Dead Letter Queue (DLQ) pour les messages échoués.
 
+### Architecture du Pattern DLQ
+
+```mermaid
+flowchart TB
+    subgraph App["📦 .NET Producer Application"]
+        P["Producer Principal"] 
+    end
+    
+    subgraph ErrorHandling["🔧 Gestion des Erreurs"]
+        R["⚡ Retry 3x"]
+        C{"❓ Type d'erreur ?"}
+        D["📤 DLQ Producer"]
+        F["📄 Fichier Local"]
+    end
+    
+    subgraph Kafka["🔥 Kafka Cluster"]
+        T1["Topic: orders.created"]
+        T2["Topic: orders.dlq"]
+    end
+    
+    P -->|Send message| T1
+    P -.->|Erreur| R
+    R -.->|Épuisé| C
+    C -->|Retriable| R
+    C -->|Permanent| D
+    C -->|DLQ failed| F
+    D -->|Send to DLQ| T2
+    
+    style P fill:#bbdefb,stroke:#1976d2
+    style T1 fill:#c8e6c9,stroke:#388e3c
+    style T2 fill:#ffcdd2,stroke:#d32f2f
+    style D fill:#fff9c4,stroke:#fbc02d
+    style F fill:#e1bee7,stroke:#7b1fa2
+```
+
+**Flux complet** : Le producer envoie un message → En cas d'échec, retry 3 fois → Si échec persistant, analyse du type d'erreur → Erreurs permanentes vers DLQ → Si DLQ échoue aussi, fallback vers fichier local.
+
 ## 📚 Ce que vous allez apprendre
 
 - Classification des erreurs Kafka (retriable vs permanent vs configuration)
