@@ -16,7 +16,23 @@
 
 ---
 
-## 📖 Structure du Module
+## �️ Parcours d'Apprentissage
+
+```mermaid
+flowchart LR
+    A["📘 LAB 1.2A\nProducer Basique\n30 min"] --> B["📗 LAB 1.2B\nPartitionnement\n45 min"]
+    B --> C["📙 LAB 1.2C\nGestion d'Erreurs\n45 min"]
+    
+    style A fill:#bbdefb,stroke:#1976d2
+    style B fill:#c8e6c9,stroke:#388e3c
+    style C fill:#fff9c4,stroke:#fbc02d
+```
+
+**Progression** : Basique → Intermédiaire → Avancé
+
+---
+
+## �📖 Structure du Module
 
 Ce module contient 3 labs progressifs :
 

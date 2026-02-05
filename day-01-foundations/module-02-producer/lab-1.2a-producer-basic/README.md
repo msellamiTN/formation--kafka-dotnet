@@ -204,6 +204,122 @@ Remplacez le contenu de `Program.cs` par le code fourni dans ce dossier.
 
 ### Étape 3 : Comprendre le code
 
+#### 🎯 Concepts Fondamentaux du Producer
+
+##### 3.1 Architecture du Producer
+
+```mermaid
+flowchart TB
+    subgraph Producer["📤 Kafka Producer"]
+        subgraph Config["Configuration"]
+            BS["bootstrap.servers<br/>localhost:9092"]
+            AC["acks<br/>all"]
+            RE["retries<br/>3"]
+            RT["request.timeout.ms<br/>30000"]
+        end
+        
+        subgraph Pipeline["Pipeline d'envoi"]
+            SER["🔄 Serializer<br/>Key + Value"]
+            ACC["📦 RecordAccumulator<br/>Batching"]
+            SND["🌐 Sender Thread<br/>Network I/O"]
+        end
+        
+        SER --> ACC --> SND
+    end
+    
+    SND -->|"ProduceRequest"| K["📦 Kafka Broker"]
+    K -->|"ACK"| SND
+    
+    style Config fill:#e3f2fd
+    style Pipeline fill:#f3e5f5
+```
+
+##### 3.2 Niveaux de Confirmation (ACK Levels)
+
+```mermaid
+flowchart TB
+    subgraph acks0["acks=0 (Fire & Forget)"]
+        P0["Producer"] -->|"Envoie"| B0["Broker"]
+        P0 -.->|"N'attend pas"| X0["❌"]
+        Note0["⚡ Latence minimale<br/>❌ Aucune garantie"]
+    end
+    
+    subgraph acks1["acks=1 (Leader Only)"]
+        P1["Producer"] -->|"Envoie"| L1["Leader"]
+        L1 -->|"ACK"| P1
+        L1 -.->|"Réplique après"| F1["Follower"]
+        Note1["⚡ Latence faible<br/>⚠️ Fiabilité moyenne"]
+    end
+    
+    subgraph acksAll["acks=all (Toutes les ISR)"]
+        P2["Producer"] -->|"Envoie"| L2["Leader"]
+        L2 -->|"Réplique"| F2["Follower 1"]
+        L2 -->|"Réplique"| F3["Follower 2"]
+        F2 -->|"ACK"| L2
+        F3 -->|"ACK"| L2
+        L2 -->|"ACK"| P2
+        Note2["🐥 Latence élevée<br/>✅ Fiabilité maximale"]
+    end
+    
+    style acks0 fill:#ffebee
+    style acks1 fill:#fff3e0
+    style acksAll fill:#e8f5e8
+```
+
+**Dans notre code** : `Acks = Acks.All` pour une fiabilité maximale.
+
+##### 3.3 Idempotence : Garantie d'Exact-Once
+
+```mermaid
+sequenceDiagram
+    participant P as Producer
+    participant K as Kafka Broker
+    participant R as Replica
+    
+    Note over P: Envoi Message (PID:123, Seq:1)
+    P->>K: Envoi Message (PID:123, Seq:1)
+    K->>R: Replication
+    R-->>K: ACK
+    
+    Note over P: Timeout ! Réessai
+    P->>K: Envoi Message (PID:123, Seq:1)
+    K->>K: Détection duplicata
+    K-->>P: ACK (sans duplication)
+    
+    Note over K: ✅ 1 seul message
+```
+
+**Configuration pour idempotence** (non activée dans ce lab) :
+```csharp
+EnableIdempotence = true,  // Active déduplication automatique
+Acks = Acks.All,           // Requis pour idempotence
+MaxInFlight = 5             // Max 5 requêtes simultanées
+```
+
+##### 3.4 Cycle de vie d'un message
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant Prod as Producer
+    participant Ser as Serializer
+    participant Batch as RecordAccumulator
+    participant Net as NetworkClient
+    participant Broker as Kafka Broker
+    
+    App->>Prod: send(record)
+    Prod->>Ser: serialize(key, value)
+    Ser-->>Prod: byte[]
+    Prod->>Batch: append to batch
+    Note over Batch: Attend linger.ms ou batch.size
+    Batch->>Net: send batch
+    Net->>Broker: ProduceRequest
+    Broker->>Broker: Write to log
+    Broker-->>Net: ProduceResponse (offset)
+    Net-->>Prod: RecordMetadata
+    Prod-->>App: Future/Callback
+```
+
 #### Configuration du Producer
 
 ```csharp
@@ -489,6 +605,180 @@ Le producer tentera 3 retries (configuré via `MessageSendMaxRetries = 3`) avec 
 </details>
 
 4. Redémarrer Kafka : `docker start kafka` ou `kubectl scale kafka bhf-kafka --replicas=3 -n kafka`
+
+---
+
+### Exercice 4 : Activer l'Idempotence (Avancé)
+
+**Objectif** : Activer l'idempotence pour garantir exactly-once semantics.
+
+**Instructions** :
+1. Modifier la configuration pour activer l'idempotence :
+```csharp
+var config = new ProducerConfig
+{
+    BootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") 
+                       ?? "localhost:9092",
+    ClientId = "dotnet-idempotent-producer",
+    Acks = Acks.All,
+    
+    // 🔑 Activation de l'idempotence
+    EnableIdempotence = true,
+    MaxInFlight = 5,  // Requis pour idempotence
+    
+    MessageSendMaxRetries = 3,
+    RetryBackoffMs = 1000,
+    RequestTimeoutMs = 30000
+};
+```
+
+2. Envoyer le même message deux fois avec le même clé :
+```csharp
+for (int i = 1; i <= 2; i++)
+{
+    var messageValue = $"{{\"orderId\": \"ORD-123\", \"attempt\": {i}}}";
+    var deliveryResult = await producer.ProduceAsync(topicName, new Message<string, string>
+    {
+        Key = "customer-123",  // Même clé
+        Value = messageValue
+    });
+    
+    logger.LogInformation("Attempt {Index}: Partition {Partition}, Offset {Offset}", 
+        i, deliveryResult.Partition.Value, deliveryResult.Offset.Value);
+}
+```
+
+3. Observer que seul le premier message est écrit (le second est détecté comme duplicata).
+
+<details>
+<summary>💡 Explication</summary>
+
+Avec l'idempotence activée, Kafka utilise un PID (Producer ID) et des numéros de séquence pour détecter les doublons. Le second envoi avec le même PID et numéro de séquence est ignoré.
+
+</details>
+
+---
+
+### Exercice 5 : Optimisation Performance (Production-Ready)
+
+**Objectif** : Optimiser le producer pour haute performance.
+
+**Instructions** :
+1. Ajouter les paramètres de performance :
+```csharp
+var config = new ProducerConfig
+{
+    BootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") 
+                       ?? "localhost:9092",
+    ClientId = "dotnet-optimized-producer",
+    Acks = Acks.All,
+    
+    // 🚀 Optimisations performance
+    BatchSize = 32768,              // 32KB batch size
+    LingerMs = 5,                     // Attendre 5ms pour batcher
+    CompressionType = CompressionType.Snappy,  // Compression
+    
+    MessageSendMaxRetries = 3,
+    RetryBackoffMs = 1000,
+    RequestTimeoutMs = 30000
+};
+```
+
+2. Envoyer 1000 messages et mesurer le temps total :
+```csharp
+var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+for (int i = 1; i <= 1000; i++)
+{
+    var messageValue = $"{{\"orderId\": \"ORD-{i:D4}\", \"timestamp\": \"{DateTime.UtcNow:o}\"}}";
+    await producer.ProduceAsync(topicName, new Message<Null, string>
+    {
+        Value = messageValue
+    });
+}
+
+stopwatch.Stop();
+logger.LogInformation("Sent 1000 messages in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+logger.LogInformation("Throughput: {Throughput:F2} messages/sec", 1000.0 / stopwatch.Elapsed.TotalSeconds);
+```
+
+3. Comparer avec la version non optimisée.
+
+<details>
+<summary>💡 Résultats attendus</summary>
+
+Avec optimisation :
+- **Batch size 32KB** : Groupement plus efficace
+- **Linger 5ms** : Meilleur batching sans trop de latence  
+- **Compression Snappy** : Réduction bande passante
+- **Expected** : 2-5x plus rapide que la version basique
+
+</details>
+
+---
+
+### Exercice 6 : Circuit Breaker Pattern (Expert)
+
+**Objectif** : Implémenter un circuit breaker pour éviter les cascades d'échecs.
+
+**Instructions** :
+1. Ajouter une classe CircuitBreaker :
+```csharp
+public class CircuitBreakerProducer
+{
+    private int _failureCount = 0;
+    private DateTime _lastFailure = DateTime.MinValue;
+    private readonly int _threshold = 5;
+    private readonly TimeSpan _timeout = TimeSpan.FromMinutes(1);
+    
+    public async Task<DeliveryResult<Null, string>> SendAsync(
+        IProducer<Null, string> producer, 
+        string topic,
+        Message<Null, string> message)
+    {
+        if (IsCircuitOpen())
+            throw new InvalidOperationException("Circuit breaker is open");
+            
+        try
+        {
+            var result = await producer.ProduceAsync(topic, message);
+            ResetCircuit();
+            return result;
+        }
+        catch (Exception ex)
+        {
+            RecordFailure();
+            throw;
+        }
+    }
+    
+    private bool IsCircuitOpen() => 
+        _failureCount >= _threshold && 
+        DateTime.UtcNow - _lastFailure < _timeout;
+        
+    private void RecordFailure()
+    {
+        _failureCount++;
+        _lastFailure = DateTime.UtcNow;
+    }
+    
+    private void ResetCircuit() => _failureCount = 0;
+}
+```
+
+2. Utiliser le circuit breaker dans le producer principal.
+
+<details>
+<summary>💡 Pattern avancé</summary>
+
+Le circuit breaker protège contre les pannes en cascade :
+- **5 échecs consécutifs** → Circuit ouvert
+- **1 minute** → Tentative de rétablissement
+- **Succès** → Circuit fermé immédiatement
+
+Idéal pour les environnements de production où Kafka peut être temporairement indisponible.
+
+</details>
 
 ---
 

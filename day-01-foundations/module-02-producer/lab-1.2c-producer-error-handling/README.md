@@ -98,6 +98,24 @@ kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 
 
 ### Étape 1 : Créer le projet
 
+#### 💻 Option A : Visual Studio Code
+
+```mermaid
+flowchart TD
+    A["💻 Visual Studio Code"] --> B["📁 Ouvrir le dossier lab-1.2c-producer-error-handling"]
+    B --> C["⚡ Terminal: Ctrl+J"]
+    C --> D["📦 dotnet new console -n KafkaProducerErrorHandling"]
+    D --> E["📦 dotnet add package Confluent.Kafka --version 2.3.0"]
+    E --> F["📦 dotnet add package Microsoft.Extensions.Logging --version 8.0.0"]
+    F --> G["📦 dotnet add package Microsoft.Extensions.Logging.Console --version 8.0.0"]
+    G --> H["📦 dotnet add package System.Text.Json --version 8.0.0"]
+    H --> I["▶️ dotnet run"]
+    
+    style A fill:#007acc,color:#fff
+    style I fill:#4caf50,color:#fff
+```
+
+**Commandes** :
 ```bash
 cd lab-1.2c-producer-error-handling
 dotnet new console -n KafkaProducerErrorHandling
@@ -107,6 +125,39 @@ dotnet add package Microsoft.Extensions.Logging --version 8.0.0
 dotnet add package Microsoft.Extensions.Logging.Console --version 8.0.0
 dotnet add package System.Text.Json --version 8.0.0
 ```
+
+---
+
+#### 🎨 Option B : Visual Studio 2022
+
+```mermaid
+flowchart TD
+    A["🎨 Visual Studio 2022"] --> B["📁 Fichier → Nouveau → Projet"]
+    B --> C["📋 Application console C#"]
+    C --> D["⚙️ Nom: KafkaProducerErrorHandling"]
+    D --> E["⚙️ Framework: .NET 8.0"]
+    E --> F["📦 Gérer les packages NuGet"]
+    F --> G["🔍 Confluent.Kafka 2.3.0"]
+    G --> H["🔍 Microsoft.Extensions.Logging 8.0.0"]
+    H --> I["🔍 Microsoft.Extensions.Logging.Console 8.0.0"]
+    I --> J["🔍 System.Text.Json 8.0.0"]
+    J --> K["▶️ F5 pour exécuter"]
+    
+    style A fill:#5c2d91,color:#fff
+    style K fill:#4caf50,color:#fff
+```
+
+**Instructions** :
+1. **Fichier** → **Nouveau** → **Projet** (`Ctrl+Shift+N`)
+2. Sélectionner **Application console** C#
+3. Nom : `KafkaProducerErrorHandling`
+4. Framework : **.NET 8.0**
+5. Clic droit projet → **Gérer les packages NuGet** :
+   - ✅ `Confluent.Kafka` version **2.3.0**
+   - ✅ `Microsoft.Extensions.Logging` version **8.0.0**
+   - ✅ `Microsoft.Extensions.Logging.Console` version **8.0.0**
+   - ✅ `System.Text.Json` version **8.0.0**
+6. **F5** pour exécuter avec débogage
 
 ---
 
