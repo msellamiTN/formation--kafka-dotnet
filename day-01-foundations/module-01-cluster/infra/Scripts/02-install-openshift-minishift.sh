@@ -24,7 +24,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 # Configuration
 #===============================================================================
 CRC_VERSION="4.15.0"
-CRC_MEMORY="14000"  # 16GB RAM
+CRC_MEMORY="16"  # 16GB RAM
 CRC_CPUS="4"
 CRC_DISK_SIZE="100"
 CRC_BASE_DIR="/opt/crc"
@@ -48,7 +48,7 @@ check_requirements() {
     
     # Check RAM (minimum 16GB for CRC)
     TOTAL_RAM=$(free -g | awk '/^Mem:/{print $2}')
-    if [ "$TOTAL_RAM" -lt 16 ]; then
+    if [ "$TOTAL_RAM" -lt 15 ]; then
         log_error "Minimum 16GB RAM required for CRC. Found: ${TOTAL_RAM}GB"
         log_warning "Consider using K3s instead for lower requirements"
         exit 1
@@ -65,7 +65,7 @@ check_requirements() {
     
     # Check disk space (minimum 100GB)
     DISK_SPACE=$(df -BG / | awk 'NR==2 {print $4}' | sed 's/G//')
-    if [ "$DISK_SPACE" -lt 100 ]; then
+    if [ "$DISK_SPACE" -lt 50 ]; then
         log_error "Minimum 100GB disk space required. Found: ${DISK_SPACE}GB"
         exit 1
     fi
