@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 500">
+  <defs>
+    <linearGradient id="kafkaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#16213e;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="producerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4ade80;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#22c55e;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="consumerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#60a5fa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="900" height="500" fill="#f8fafc"/>
+  
+  <!-- Title -->
+  <text x="450" y="40" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#1e293b">
+    Architecture Event-Driven avec Apache Kafka
+  </text>
+  
+  <!-- Producers Section -->
+  <g transform="translate(50, 80)">
+    <text x="60" y="0" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#166534">PRODUCERS</text>
+    
+    <!-- Order Service -->
+    <rect x="0" y="20" width="120" height="70" rx="8" fill="url(#producerGrad)" filter="url(#shadow)"/>
+    <text x="60" y="50" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white" font-weight="bold">🛒 Order</text>
+    <text x="60" y="70" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white">Service</text>
+    
+    <!-- Payment Service -->
+    <rect x="0" y="110" width="120" height="70" rx="8" fill="url(#producerGrad)" filter="url(#shadow)"/>
+    <text x="60" y="140" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white" font-weight="bold">💳 Payment</text>
+    <text x="60" y="160" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white">Service</text>
+    
+    <!-- Inventory Service -->
+    <rect x="0" y="200" width="120" height="70" rx="8" fill="url(#producerGrad)" filter="url(#shadow)"/>
+    <text x="60" y="230" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white" font-weight="bold">📦 Inventory</text>
+    <text x="60" y="250" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white">Service</text>
+    
+    <!-- User Service -->
+    <rect x="0" y="290" width="120" height="70" rx="8" fill="url(#producerGrad)" filter="url(#shadow)"/>
+    <text x="60" y="320" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white" font-weight="bold">👤 User</text>
+    <text x="60" y="340" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white">Service</text>
+  </g>
+  
+  <!-- Arrows to Kafka -->
+  <g stroke="#22c55e" stroke-width="2" fill="none" marker-end="url(#arrowGreen)">
+    <path d="M180,135 L300,200"/>
+    <path d="M180,195 L300,220"/>
+    <path d="M180,265 L300,240"/>
+    <path d="M180,345 L300,260"/>
+  </g>
+  
+  <!-- Arrow markers -->
+  <defs>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#22c55e"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#3b82f6"/>
+    </marker>
+  </defs>
+  
+  <!-- Kafka Cluster -->
+  <g transform="translate(300, 100)">
+    <rect x="0" y="0" width="300" height="280" rx="12" fill="url(#kafkaGrad)" filter="url(#shadow)"/>
+    <text x="150" y="30" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="white">
+      ⚡ APACHE KAFKA
+    </text>
+    
+    <!-- Topics -->
+    <rect x="20" y="50" width="260" height="50" rx="6" fill="#312e81" opacity="0.8"/>
+    <text x="150" y="80" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#a5b4fc">📁 orders-topic</text>
+    
+    <rect x="20" y="110" width="260" height="50" rx="6" fill="#312e81" opacity="0.8"/>
+    <text x="150" y="140" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#a5b4fc">📁 payments-topic</text>
+    
+    <rect x="20" y="170" width="260" height="50" rx="6" fill="#312e81" opacity="0.8"/>
+    <text x="150" y="200" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#a5b4fc">📁 inventory-topic</text>
+    
+    <rect x="20" y="230" width="260" height="40" rx="6" fill="#312e81" opacity="0.8"/>
+    <text x="150" y="255" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#a5b4fc">📁 notifications-topic</text>
+  </g>
+  
+  <!-- Arrows from Kafka -->
+  <g stroke="#3b82f6" stroke-width="2" fill="none" marker-end="url(#arrowBlue)">
+    <path d="M610,200 L720,135"/>
+    <path d="M610,220 L720,195"/>
+    <path d="M610,240 L720,265"/>
+    <path d="M610,260 L720,345"/>
+  </g>
+  
+  <!-- Consumers Section -->
+  <g transform="translate(730, 80)">
+    <text x="60" y="0" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#1e40af">CONSUMERS</text>
+    
+    <!-- Analytics Service -->
+    <rect x="0" y="20" width="120" height="70" rx="8" fill="url(#consumerGrad)" filter="url(#shadow)"/>
+    <text x="60" y="50" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white" font-weight="bold">📊 Analytics</text>
+    <text x="60" y="70" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white">Service</text>
+    
+    <!-- Notification Service -->
+    <rect x="0" y="110" width="120" height="70" rx="8" fill="url(#consumerGrad)" filter="url(#shadow)"/>
+    <text x="60" y="140" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white" font-weight="bold">🔔 Notification</text>
+    <text x="60" y="160" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white">Service</text>
+    
+    <!-- Shipping Service -->
+    <rect x="0" y="200" width="120" height="70" rx="8" fill="url(#consumerGrad)" filter="url(#shadow)"/>
+    <text x="60" y="230" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white" font-weight="bold">🚚 Shipping</text>
+    <text x="60" y="250" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white">Service</text>
+    
+    <!-- Fraud Detection -->
+    <rect x="0" y="290" width="120" height="70" rx="8" fill="url(#consumerGrad)" filter="url(#shadow)"/>
+    <text x="60" y="320" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white" font-weight="bold">🛡️ Fraud</text>
+    <text x="60" y="340" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="white">Detection</text>
+  </g>
+  
+  <!-- Benefits footer -->
+  <g transform="translate(0, 450)">
+    <rect x="50" y="0" width="180" height="40" rx="6" fill="#dcfce7"/>
+    <text x="140" y="25" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#166534">✅ Découplage total</text>
+    
+    <rect x="250" y="0" width="180" height="40" rx="6" fill="#dbeafe"/>
+    <text x="340" y="25" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#1e40af">✅ Scalabilité indépendante</text>
+    
+    <rect x="450" y="0" width="180" height="40" rx="6" fill="#fef3c7"/>
+    <text x="540" y="25" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#92400e">✅ Résilience aux pannes</text>
+    
+    <rect x="650" y="0" width="180" height="40" rx="6" fill="#f3e8ff"/>
+    <text x="740" y="25" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#7c3aed">✅ Event Sourcing</text>
+  </g>
+</svg>
