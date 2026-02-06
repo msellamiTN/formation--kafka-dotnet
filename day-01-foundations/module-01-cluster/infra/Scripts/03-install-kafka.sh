@@ -127,16 +127,27 @@ detect_platform() {
 check_prerequisites() {
     log_info "Checking prerequisites..."
     
-    # Check kubectl
-    if ! command -v kubectl &> /dev/null; then
-        log_error "kubectl is not installed"
-        exit 1
-    fi
-    
-    # Check cluster connectivity
-    if ! kubectl cluster-info &> /dev/null; then
-        log_error "Cannot connect to Kubernetes cluster"
-        exit 1
+    # Check kubectl/oc
+    if [[ "$PLATFORM" == "openshift" ]]; then
+        if ! command -v oc &> /dev/null; then
+            log_error "oc is not installed"
+            exit 1
+        fi
+        # Check cluster connectivity with oc
+        if ! oc cluster-info &> /dev/null; then
+            log_error "Cannot connect to OpenShift cluster"
+            exit 1
+        fi
+    else
+        if ! command -v kubectl &> /dev/null; then
+            log_error "kubectl is not installed"
+            exit 1
+        fi
+        # Check cluster connectivity with kubectl
+        if ! kubectl cluster-info &> /dev/null; then
+            log_error "Cannot connect to Kubernetes cluster"
+            exit 1
+        fi
     fi
     
     # Check helm
