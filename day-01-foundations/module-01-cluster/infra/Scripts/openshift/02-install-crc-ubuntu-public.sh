@@ -193,12 +193,12 @@ info "Configuring CRC parameters..."
 crc config set consent-telemetry no 2>/dev/null || true
 
 # Set resource limits
-crc config set cpus "${CRC_CPUS}" 2>/dev/null
-crc config set memory "${CRC_MEMORY_MB}" 2>/dev/null
-crc config set disk-size "${CRC_DISK_GB}" 2>/dev/null
+crc config set cpus "${CRC_CPUS}" 2>/dev/null || true
+crc config set memory "${CRC_MEMORY_MB}" 2>/dev/null || true
+crc config set disk-size "${CRC_DISK_GB}" 2>/dev/null || true
 
 # CRITICAL: Use system networking mode for remote/public access
-crc config set network-mode system 2>/dev/null
+crc config set network-mode system 2>/dev/null || true
 
 ok "CRC configured: ${CRC_CPUS} CPUs, ${CRC_MEMORY_MB} MB RAM, ${CRC_DISK_GB} GB disk"
 
