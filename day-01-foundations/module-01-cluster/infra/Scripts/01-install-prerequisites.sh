@@ -58,7 +58,10 @@ install_base_tools() {
         software-properties-common \
         apt-transport-https \
         unzip \
-        bash-completion
+        bash-completion \
+        qemu-kvm \
+        libvirt-daemon-system  \
+        virtiofsd
     log_success "Base tools installed"
 }
 

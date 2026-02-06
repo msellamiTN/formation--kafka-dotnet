@@ -779,7 +779,7 @@ dotnet run --urls "https://localhost:5010"
 
 **Logs attendus** :
 
-```
+```text
 ✅ [balance-worker-xxx] Partitions ASSIGNED: [0, 1, 2, 3, 4, 5]
 💰 [balance-worker-xxx] CUST-001: +500EUR (Deposit) → Solde: 500EUR | P2:O0
 ```
@@ -797,14 +797,14 @@ dotnet run --urls "https://localhost:5011"
 
 **Logs instance 1** :
 
-```
+```text
 ⚠️ [balance-worker-xxx] Partitions REVOKED: [0, 1, 2, 3, 4, 5]
 ✅ [balance-worker-xxx] Partitions ASSIGNED: [0, 1, 2]
 ```
 
 **Logs instance 2** :
 
-```
+```text
 ✅ [balance-worker-yyy] Partitions ASSIGNED: [3, 4, 5]
 ```
 
@@ -814,7 +814,7 @@ dotnet run --urls "https://localhost:5011"
 
 **Logs instance 1** (après ~10 secondes) :
 
-```
+```text
 ⚠️ [balance-worker-xxx] Partitions REVOKED: [0, 1, 2]
 ✅ [balance-worker-xxx] Partitions ASSIGNED: [0, 1, 2, 3, 4, 5]
 ```

@@ -788,7 +788,7 @@ dotnet run
 
 #### 4. Observer les logs
 
-```
+```text
 info: EBankingFraudDetectionAPI.Services.KafkaConsumerService
       Starting Fraud Detection Consumer. Group: fraud-detection-service, Topic: banking.transactions
 info: EBankingFraudDetectionAPI.Services.KafkaConsumerService
