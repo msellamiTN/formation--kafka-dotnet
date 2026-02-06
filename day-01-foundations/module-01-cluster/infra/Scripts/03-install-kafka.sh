@@ -1,7 +1,7 @@
 #!/bin/bash
 #===============================================================================
 # Script: 03-install-kafka.sh
-# Description: Install Apache Kafka with Strimzi Operator on K3s
+# Description: Install Apache Kafka with Strimzi Operator on K3s/OpenShift
 # Author: Data2AI Academy - BHF Kafka Training
 # Usage: ./03-install-kafka.sh
 #===============================================================================
@@ -24,10 +24,72 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 KAFKA_NAMESPACE="${KAFKA_NAMESPACE:-kafka}"
 KAFKA_CLUSTER_NAME="${KAFKA_CLUSTER_NAME:-bhf-kafka}"
 KAFKA_VERSION="${KAFKA_VERSION:-4.0.0}"
-KAFKA_REPLICAS="${KAFKA_REPLICAS:-3}"
 STRIMZI_VERSION="${STRIMZI_VERSION:-latest}"
+PLATFORM="${PLATFORM:-auto}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+#===============================================================================
+# Detect platform (K3s or OpenShift)
+#===============================================================================
+detect_platform() {
+    if [[ "$PLATFORM" != "auto" ]]; then
+        log_info "Platform forced: $PLATFORM"
+    elif command -v oc &> /dev/null && oc whoami &> /dev/null 2>&1; then
+        PLATFORM="openshift"
+    elif systemctl is-active --quiet k3s 2>/dev/null; then
+        PLATFORM="k3s"
+    else
+        PLATFORM="k3s"
+        log_warning "Could not auto-detect platform, defaulting to k3s"
+    fi
+
+    case "$PLATFORM" in
+        openshift)
+            KAFKA_REPLICAS="${KAFKA_REPLICAS:-1}"
+            CONTROLLER_REPLICAS=1
+            MIN_ISR=1
+            BROKER_STORAGE_YAML="    type: ephemeral"
+            CONTROLLER_STORAGE_YAML="    type: ephemeral"
+            EXTERNAL_LISTENER_YAML="      - name: external
+        port: 9094
+        type: route
+        tls: true"
+            KAFKA_UI_SVC_TYPE="ClusterIP"
+            KAFKA_UI_SVC_EXTRA=""
+            log_info "Platform: OpenShift | Replicas: $KAFKA_REPLICAS | Storage: ephemeral"
+            ;;
+        k3s|*)
+            KAFKA_REPLICAS="${KAFKA_REPLICAS:-3}"
+            CONTROLLER_REPLICAS=3
+            MIN_ISR=2
+            BROKER_STORAGE_YAML="    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 10Gi
+        deleteClaim: false
+        class: local-path"
+            CONTROLLER_STORAGE_YAML="    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 5Gi
+        deleteClaim: false
+        class: local-path"
+            EXTERNAL_LISTENER_YAML="      - name: external
+        port: 9094
+        type: nodeport
+        tls: false
+        configuration:
+          bootstrap:
+            nodePort: 32092"
+            KAFKA_UI_SVC_TYPE="NodePort"
+            KAFKA_UI_SVC_EXTRA="      nodePort: 30808"
+            log_info "Platform: K3s | Replicas: $KAFKA_REPLICAS | Storage: persistent (local-path)"
+            ;;
+    esac
+}
 
 #===============================================================================
 # Check prerequisites
@@ -62,7 +124,11 @@ check_prerequisites() {
 create_namespace() {
     log_info "Creating namespace '$KAFKA_NAMESPACE'..."
     
-    kubectl create namespace "$KAFKA_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+    if [[ "$PLATFORM" == "openshift" ]]; then
+        oc new-project "$KAFKA_NAMESPACE" 2>/dev/null || oc project "$KAFKA_NAMESPACE"
+    else
+        kubectl create namespace "$KAFKA_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+    fi
     
     log_success "Namespace '$KAFKA_NAMESPACE' ready"
 }
@@ -127,13 +193,7 @@ spec:
   roles:
     - broker
   storage:
-    type: jbod
-    volumes:
-      - id: 0
-        type: persistent-claim
-        size: 10Gi
-        deleteClaim: false
-        class: local-path
+${BROKER_STORAGE_YAML}
   resources:
     requests:
       memory: 1Gi
@@ -153,17 +213,11 @@ metadata:
   labels:
     strimzi.io/cluster: $KAFKA_CLUSTER_NAME
 spec:
-  replicas: 3
+  replicas: $CONTROLLER_REPLICAS
   roles:
     - controller
   storage:
-    type: jbod
-    volumes:
-      - id: 0
-        type: persistent-claim
-        size: 5Gi
-        deleteClaim: false
-        class: local-path
+${CONTROLLER_STORAGE_YAML}
   resources:
     requests:
       memory: 512Mi
@@ -195,19 +249,13 @@ spec:
         port: 9093
         type: internal
         tls: true
-      - name: external
-        port: 9094
-        type: nodeport
-        tls: false
-        configuration:
-          bootstrap:
-            nodePort: 32092
+${EXTERNAL_LISTENER_YAML}
     config:
       offsets.topic.replication.factor: $KAFKA_REPLICAS
       transaction.state.log.replication.factor: $KAFKA_REPLICAS
-      transaction.state.log.min.isr: 2
+      transaction.state.log.min.isr: $MIN_ISR
       default.replication.factor: $KAFKA_REPLICAS
-      min.insync.replicas: 2
+      min.insync.replicas: $MIN_ISR
       log.retention.hours: 168
       log.segment.bytes: 1073741824
       num.partitions: 6
@@ -426,11 +474,30 @@ spec:
   ports:
     - port: 8080
       targetPort: 8080
-      nodePort: 30808
-  type: NodePort
+${KAFKA_UI_SVC_EXTRA}
+  type: $KAFKA_UI_SVC_TYPE
 EOF
 
-    log_success "Kafka UI deployed at http://localhost:30808"
+    # Create OpenShift Route for Kafka UI
+    if [[ "$PLATFORM" == "openshift" ]]; then
+        cat <<EOF | kubectl apply -n "$KAFKA_NAMESPACE" -f -
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: kafka-ui
+spec:
+  to:
+    kind: Service
+    name: kafka-ui
+  port:
+    targetPort: 8080
+EOF
+        local ui_host
+        ui_host=$(kubectl get route kafka-ui -n "$KAFKA_NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "kafka-ui-$KAFKA_NAMESPACE.apps-crc.testing")
+        log_success "Kafka UI deployed at http://$ui_host"
+    else
+        log_success "Kafka UI deployed at http://localhost:30808"
+    fi
 }
 
 #===============================================================================
@@ -459,13 +526,13 @@ verify_installation() {
 #===============================================================================
 print_summary() {
     BOOTSTRAP_INTERNAL="$KAFKA_CLUSTER_NAME-kafka-bootstrap.$KAFKA_NAMESPACE.svc:9092"
-    BOOTSTRAP_EXTERNAL="localhost:32092"
     
     echo ""
     echo "============================================================"
-    echo "  Kafka Installation Summary"
+    echo "  Kafka Installation Summary ($PLATFORM)"
     echo "============================================================"
     echo ""
+    echo "  Platform:          $PLATFORM"
     echo "  Cluster Name:      $KAFKA_CLUSTER_NAME"
     echo "  Namespace:         $KAFKA_NAMESPACE"
     echo "  Kafka Version:     $KAFKA_VERSION"
@@ -473,12 +540,24 @@ print_summary() {
     echo ""
     echo "  Bootstrap Servers:"
     echo "    Internal: $BOOTSTRAP_INTERNAL"
-    echo "    External: $BOOTSTRAP_EXTERNAL"
-    echo ""
-    echo "  Kafka UI:          http://localhost:30808"
+    
+    if [[ "$PLATFORM" == "openshift" ]]; then
+        local bootstrap_route
+        bootstrap_route=$(kubectl get route "$KAFKA_CLUSTER_NAME-kafka-bootstrap" -n "$KAFKA_NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "N/A (use internal)")
+        echo "    External: $bootstrap_route"
+        local ui_host
+        ui_host=$(kubectl get route kafka-ui -n "$KAFKA_NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "kafka-ui-$KAFKA_NAMESPACE.apps-crc.testing")
+        echo ""
+        echo "  Kafka UI:          http://$ui_host"
+    else
+        echo "    External: localhost:32092"
+        echo ""
+        echo "  Kafka UI:          http://localhost:30808"
+    fi
+    
     echo ""
     echo "  Test connectivity:"
-    echo "    kubectl run kafka-test -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \\"
+    echo "    kubectl run kafka-test -it --rm --image=quay.io/strimzi/kafka:latest-kafka-$KAFKA_VERSION \\"
     echo "      --restart=Never -- bin/kafka-topics.sh --bootstrap-server $BOOTSTRAP_INTERNAL --list"
     echo ""
     echo "============================================================"
@@ -491,10 +570,11 @@ main() {
     echo ""
     echo "============================================================"
     echo "  Apache Kafka Installation with Strimzi"
-    echo "  K3s - BHF Kafka Training"
+    echo "  K3s/OpenShift - BHF Kafka Training"
     echo "============================================================"
     echo ""
     
+    detect_platform
     check_prerequisites
     create_namespace
     create_metrics_config

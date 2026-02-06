@@ -1,7 +1,7 @@
 #!/bin/bash
 #===============================================================================
 # Script: 06-cleanup-openshift.sh
-# Description: Cleanup OpenShift/OKD/CRC installations on Ubuntu
+# Description: Cleanup K3s/OpenShift/CRC installations and Kafka resources on Ubuntu
 # Author: Data2AI Academy - BHF Kafka Training
 # Usage: sudo ./06-cleanup-openshift.sh [okd|crc|all]
 #===============================================================================
@@ -26,6 +26,8 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 OKD_BASE_DIR="/opt/okd"
 CRC_BASE_DIR="/opt/crc"
 K3S_BASE_DIR="/var/lib/rancher"
+KAFKA_NAMESPACE="${KAFKA_NAMESPACE:-kafka}"
+MONITORING_NAMESPACE="${MONITORING_NAMESPACE:-monitoring}"
 
 #===============================================================================
 # Check if running as root
@@ -134,11 +136,25 @@ cleanup_crc() {
         rm -f /etc/profile.d/crc-aliases.sh
     fi
     
+    # Clean up user CRC directory
+    local crc_user_dir="${HOME}/.crc"
+    if [ -d "${crc_user_dir}" ]; then
+        log_info "Removing CRC user directory (${crc_user_dir})..."
+        rm -rf "${crc_user_dir}"
+    fi
+    
     # Clean up libvirt networks (if any)
     if command -v virsh &> /dev/null; then
         log_info "Cleaning up libvirt networks..."
         virsh net-destroy crc 2>/dev/null || true
         virsh net-undefine crc 2>/dev/null || true
+    fi
+    
+    # Clean up HAProxy config
+    if [ -f /etc/haproxy/haproxy.cfg ]; then
+        log_info "Removing HAProxy CRC configuration..."
+        rm -f /etc/haproxy/haproxy.cfg
+        systemctl stop haproxy 2>/dev/null || true
     fi
     
     log_success "CRC cleanup completed"
@@ -175,6 +191,69 @@ cleanup_k3s() {
     fi
     
     log_success "K3s cleanup completed"
+}
+
+#===============================================================================
+# Cleanup Kafka and Monitoring
+#===============================================================================
+cleanup_kafka_monitoring() {
+    log_info "Cleaning up Kafka and Monitoring resources..."
+    
+    # Check if kubectl is available
+    if ! command -v kubectl &> /dev/null; then
+        log_warning "kubectl not found, skipping Kafka/Monitoring cleanup"
+        return 0
+    fi
+    
+    # Check cluster connectivity
+    if ! kubectl cluster-info &> /dev/null; then
+        log_warning "Cannot connect to cluster, skipping Kafka/Monitoring cleanup"
+        return 0
+    fi
+    
+    # Delete Kafka resources
+    if kubectl get namespace "$KAFKA_NAMESPACE" &> /dev/null; then
+        log_info "Deleting Kafka resources in namespace '$KAFKA_NAMESPACE'..."
+        kubectl delete kafka --all -n "$KAFKA_NAMESPACE" 2>/dev/null || true
+        kubectl delete kafkatopic --all -n "$KAFKA_NAMESPACE" 2>/dev/null || true
+        kubectl delete kafkanodepool --all -n "$KAFKA_NAMESPACE" 2>/dev/null || true
+        kubectl delete deployment kafka-ui -n "$KAFKA_NAMESPACE" 2>/dev/null || true
+        kubectl delete svc kafka-ui -n "$KAFKA_NAMESPACE" 2>/dev/null || true
+        kubectl delete route kafka-ui -n "$KAFKA_NAMESPACE" 2>/dev/null || true
+        
+        # Uninstall Strimzi operator
+        kubectl delete -f "https://strimzi.io/install/latest?namespace=$KAFKA_NAMESPACE" -n "$KAFKA_NAMESPACE" 2>/dev/null || true
+        
+        # Delete PVCs
+        kubectl delete pvc --all -n "$KAFKA_NAMESPACE" 2>/dev/null || true
+        
+        # Delete namespace
+        kubectl delete namespace "$KAFKA_NAMESPACE" 2>/dev/null || true
+        log_success "Kafka namespace '$KAFKA_NAMESPACE' deleted"
+    else
+        log_info "Kafka namespace '$KAFKA_NAMESPACE' not found, skipping"
+    fi
+    
+    # Delete Monitoring resources
+    if kubectl get namespace "$MONITORING_NAMESPACE" &> /dev/null; then
+        log_info "Deleting Monitoring resources in namespace '$MONITORING_NAMESPACE'..."
+        
+        # Uninstall Helm release
+        if command -v helm &> /dev/null; then
+            helm uninstall prometheus -n "$MONITORING_NAMESPACE" 2>/dev/null || true
+        fi
+        
+        # Delete routes
+        kubectl delete route --all -n "$MONITORING_NAMESPACE" 2>/dev/null || true
+        
+        # Delete namespace
+        kubectl delete namespace "$MONITORING_NAMESPACE" 2>/dev/null || true
+        log_success "Monitoring namespace '$MONITORING_NAMESPACE' deleted"
+    else
+        log_info "Monitoring namespace '$MONITORING_NAMESPACE' not found, skipping"
+    fi
+    
+    log_success "Kafka and Monitoring cleanup completed"
 }
 
 #===============================================================================
@@ -304,17 +383,19 @@ verify_cleanup() {
 # Display Usage
 #===============================================================================
 show_usage() {
-    echo "Usage: $0 [okd|crc|k3s|all]"
+    echo "Usage: $0 [okd|crc|k3s|kafka|all]"
     echo ""
     echo "Options:"
     echo "  okd   - Clean up OKD Full Cluster only"
     echo "  crc   - Clean up OpenShift CRC only"
     echo "  k3s   - Clean up K3s only"
+    echo "  kafka - Clean up Kafka and Monitoring namespaces only"
     echo "  all   - Clean up all OpenShift/Kubernetes installations"
     echo ""
     echo "Examples:"
     echo "  sudo $0 okd      # Clean up OKD only"
     echo "  sudo $0 crc      # Clean up CRC only"
+    echo "  sudo $0 kafka    # Clean up Kafka + Monitoring only"
     echo "  sudo $0 all      # Clean up everything"
 }
 
@@ -334,21 +415,28 @@ main() {
     
     case "$target" in
         okd)
+            cleanup_kafka_monitoring
             cleanup_okd
             cleanup_common
             reset_firewall
             ;;
         crc)
+            cleanup_kafka_monitoring
             cleanup_crc
             cleanup_common
             reset_firewall
             ;;
         k3s)
+            cleanup_kafka_monitoring
             cleanup_k3s
             cleanup_common
             reset_firewall
             ;;
+        kafka)
+            cleanup_kafka_monitoring
+            ;;
         all)
+            cleanup_kafka_monitoring
             cleanup_okd
             cleanup_crc
             cleanup_k3s

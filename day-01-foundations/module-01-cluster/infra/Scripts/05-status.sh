@@ -1,7 +1,7 @@
 #!/bin/bash
 #===============================================================================
 # Script: 05-status.sh
-# Description: Check status of OKD/K3s and Kafka installation
+# Description: Check status of K3s/OpenShift and Kafka installation
 # Author: Data2AI Academy - BHF Kafka Training
 # Usage: ./05-status.sh
 #===============================================================================
@@ -17,6 +17,22 @@ NC='\033[0m'
 # Configuration
 KAFKA_NAMESPACE="${KAFKA_NAMESPACE:-kafka}"
 MONITORING_NAMESPACE="${MONITORING_NAMESPACE:-monitoring}"
+PLATFORM="${PLATFORM:-auto}"
+
+#===============================================================================
+# Detect platform (K3s or OpenShift)
+#===============================================================================
+detect_platform() {
+    if [[ "$PLATFORM" != "auto" ]]; then
+        true
+    elif command -v oc &> /dev/null && oc whoami &> /dev/null 2>&1; then
+        PLATFORM="openshift"
+    elif systemctl is-active --quiet k3s 2>/dev/null; then
+        PLATFORM="k3s"
+    else
+        PLATFORM="k3s"
+    fi
+}
 
 print_header() {
     echo ""
@@ -47,18 +63,28 @@ check_status() {
 # System Status
 #===============================================================================
 check_system() {
-    print_header "System Status"
+    print_header "System Status (Platform: $PLATFORM)"
     
     print_section "Services"
     check_status "Docker" "systemctl is-active docker"
-    check_status "K3s" "systemctl is-active k3s"
-    check_status "Local Registry" "docker ps | grep -q registry"
+    if [[ "$PLATFORM" == "openshift" ]]; then
+        check_status "CRC VM" "crc status 2>/dev/null | grep -q Running"
+        check_status "libvirtd" "systemctl is-active libvirtd"
+        check_status "NetworkManager" "systemctl is-active NetworkManager"
+    else
+        check_status "K3s" "systemctl is-active k3s"
+        check_status "Local Registry" "docker ps | grep -q registry"
+    fi
     
     print_section "Tools"
     check_status "kubectl" "command -v kubectl"
     check_status "helm" "command -v helm"
     check_status "docker" "command -v docker"
     check_status "dotnet" "command -v dotnet"
+    if [[ "$PLATFORM" == "openshift" ]]; then
+        check_status "oc" "command -v oc"
+        check_status "crc" "command -v crc"
+    fi
 }
 
 #===============================================================================
@@ -171,21 +197,36 @@ check_monitoring() {
 # Access URLs
 #===============================================================================
 print_access_urls() {
-    print_header "Access URLs"
+    print_header "Access URLs ($PLATFORM)"
     
     echo ""
     echo "  Kafka Bootstrap (internal): bhf-kafka-kafka-bootstrap.kafka.svc:9092"
-    echo "  Kafka Bootstrap (external): localhost:32092"
-    echo ""
-    echo "  Kafka UI:        http://localhost:30808"
-    echo "  Prometheus:      http://localhost:30090"
-    echo "  Grafana:         http://localhost:30030"
-    echo "  Alertmanager:    http://localhost:30093"
-    echo ""
-    echo "  Ingress HTTP:    http://localhost:30080"
-    echo "  Ingress HTTPS:   https://localhost:30443"
-    echo ""
-    echo "  Local Registry:  localhost:5000"
+    
+    if [[ "$PLATFORM" == "openshift" ]]; then
+        local kafka_ui prom graf alert
+        kafka_ui=$(kubectl get route kafka-ui -n "$KAFKA_NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "N/A")
+        prom=$(kubectl get route prometheus -n "$MONITORING_NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "N/A")
+        graf=$(kubectl get route grafana -n "$MONITORING_NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "N/A")
+        alert=$(kubectl get route alertmanager -n "$MONITORING_NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "N/A")
+        echo ""
+        echo "  OpenShift Console: https://console-openshift-console.apps-crc.testing"
+        echo "  Kafka UI:          http://$kafka_ui"
+        echo "  Prometheus:        http://$prom"
+        echo "  Grafana:           http://$graf"
+        echo "  Alertmanager:      http://$alert"
+    else
+        echo "  Kafka Bootstrap (external): localhost:32092"
+        echo ""
+        echo "  Kafka UI:        http://localhost:30808"
+        echo "  Prometheus:      http://localhost:30090"
+        echo "  Grafana:         http://localhost:30030"
+        echo "  Alertmanager:    http://localhost:30093"
+        echo ""
+        echo "  Ingress HTTP:    http://localhost:30080"
+        echo "  Ingress HTTPS:   https://localhost:30443"
+        echo ""
+        echo "  Local Registry:  localhost:5000"
+    fi
 }
 
 #===============================================================================
@@ -207,10 +248,11 @@ check_resources() {
 main() {
     echo ""
     echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║     OKD/K3s & Kafka Infrastructure Status                  ║${NC}"
+    echo -e "${CYAN}║     K3s/OpenShift & Kafka Infrastructure Status            ║${NC}"
     echo -e "${CYAN}║     BHF Kafka Training - Data2AI Academy                   ║${NC}"
     echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
     
+    detect_platform
     check_system
     check_kubernetes
     check_kafka

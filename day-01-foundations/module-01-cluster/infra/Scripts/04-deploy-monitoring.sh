@@ -1,7 +1,7 @@
 #!/bin/bash
 #===============================================================================
 # Script: 04-deploy-monitoring.sh
-# Description: Deploy Prometheus and Grafana for Kafka monitoring
+# Description: Deploy Prometheus and Grafana for Kafka monitoring on K3s/OpenShift
 # Author: Data2AI Academy - BHF Kafka Training
 # Usage: ./04-deploy-monitoring.sh
 #===============================================================================
@@ -24,6 +24,24 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 MONITORING_NAMESPACE="${MONITORING_NAMESPACE:-monitoring}"
 KAFKA_NAMESPACE="${KAFKA_NAMESPACE:-kafka}"
 GRAFANA_PASSWORD="${GRAFANA_PASSWORD:-admin123}"
+PLATFORM="${PLATFORM:-auto}"
+
+#===============================================================================
+# Detect platform (K3s or OpenShift)
+#===============================================================================
+detect_platform() {
+    if [[ "$PLATFORM" != "auto" ]]; then
+        log_info "Platform forced: $PLATFORM"
+    elif command -v oc &> /dev/null && oc whoami &> /dev/null 2>&1; then
+        PLATFORM="openshift"
+    elif systemctl is-active --quiet k3s 2>/dev/null; then
+        PLATFORM="k3s"
+    else
+        PLATFORM="k3s"
+        log_warning "Could not auto-detect platform, defaulting to k3s"
+    fi
+    log_info "Platform detected: $PLATFORM"
+}
 
 #===============================================================================
 # Check prerequisites
@@ -54,7 +72,11 @@ check_prerequisites() {
 #===============================================================================
 create_namespace() {
     log_info "Creating namespace '$MONITORING_NAMESPACE'..."
-    kubectl create namespace "$MONITORING_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+    if [[ "$PLATFORM" == "openshift" ]]; then
+        oc new-project "$MONITORING_NAMESPACE" 2>/dev/null || oc project "$MONITORING_NAMESPACE"
+    else
+        kubectl create namespace "$MONITORING_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+    fi
     log_success "Namespace '$MONITORING_NAMESPACE' ready"
 }
 
@@ -68,19 +90,54 @@ install_prometheus() {
     helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
     helm repo update
     
-    # Install kube-prometheus-stack
-    helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
-        --namespace "$MONITORING_NAMESPACE" \
-        --set prometheus.service.type=NodePort \
-        --set prometheus.service.nodePort=30090 \
-        --set grafana.service.type=NodePort \
-        --set grafana.service.nodePort=30030 \
-        --set grafana.adminPassword="$GRAFANA_PASSWORD" \
-        --set alertmanager.service.type=NodePort \
-        --set alertmanager.service.nodePort=30093 \
-        --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
-        --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false \
-        --wait --timeout 10m
+    if [[ "$PLATFORM" == "openshift" ]]; then
+        # OpenShift: use ClusterIP services + Routes
+        helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
+            --namespace "$MONITORING_NAMESPACE" \
+            --set prometheus.service.type=ClusterIP \
+            --set grafana.service.type=ClusterIP \
+            --set grafana.adminPassword="$GRAFANA_PASSWORD" \
+            --set alertmanager.service.type=ClusterIP \
+            --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
+            --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false \
+            --set prometheusOperator.admissionWebhooks.patch.enabled=false \
+            --set prometheusOperator.admissionWebhooks.enabled=false \
+            --wait --timeout 10m
+        
+        # Create OpenShift Routes
+        log_info "Creating OpenShift Routes for monitoring..."
+        for svc_name in "prometheus-kube-prometheus-prometheus:prometheus" "prometheus-grafana:grafana" "prometheus-kube-prometheus-alertmanager:alertmanager"; do
+            local svc="${svc_name%%:*}"
+            local route="${svc_name##*:}"
+            cat <<EOF | kubectl apply -n "$MONITORING_NAMESPACE" -f -
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: $route
+spec:
+  to:
+    kind: Service
+    name: $svc
+  port:
+    targetPort: http-web
+EOF
+        done
+        log_success "OpenShift Routes created for monitoring"
+    else
+        # K3s: use NodePort services
+        helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
+            --namespace "$MONITORING_NAMESPACE" \
+            --set prometheus.service.type=NodePort \
+            --set prometheus.service.nodePort=30090 \
+            --set grafana.service.type=NodePort \
+            --set grafana.service.nodePort=30030 \
+            --set grafana.adminPassword="$GRAFANA_PASSWORD" \
+            --set alertmanager.service.type=NodePort \
+            --set alertmanager.service.nodePort=30093 \
+            --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
+            --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false \
+            --wait --timeout 10m
+    fi
     
     log_success "Prometheus stack installed"
 }
@@ -401,12 +458,24 @@ verify_installation() {
 print_summary() {
     echo ""
     echo "============================================================"
-    echo "  Monitoring Installation Summary"
+    echo "  Monitoring Installation Summary ($PLATFORM)"
     echo "============================================================"
     echo ""
-    echo "  Prometheus:     http://localhost:30090"
-    echo "  Grafana:        http://localhost:30030"
-    echo "  Alertmanager:   http://localhost:30093"
+    
+    if [[ "$PLATFORM" == "openshift" ]]; then
+        local prom_url graf_url alert_url
+        prom_url=$(kubectl get route prometheus -n "$MONITORING_NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "prometheus-$MONITORING_NAMESPACE.apps-crc.testing")
+        graf_url=$(kubectl get route grafana -n "$MONITORING_NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "grafana-$MONITORING_NAMESPACE.apps-crc.testing")
+        alert_url=$(kubectl get route alertmanager -n "$MONITORING_NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "alertmanager-$MONITORING_NAMESPACE.apps-crc.testing")
+        echo "  Prometheus:     http://$prom_url"
+        echo "  Grafana:        http://$graf_url"
+        echo "  Alertmanager:   http://$alert_url"
+    else
+        echo "  Prometheus:     http://localhost:30090"
+        echo "  Grafana:        http://localhost:30030"
+        echo "  Alertmanager:   http://localhost:30093"
+    fi
+    
     echo ""
     echo "  Grafana Credentials:"
     echo "    Username: admin"
@@ -423,10 +492,11 @@ main() {
     echo ""
     echo "============================================================"
     echo "  Monitoring Stack Installation"
-    echo "  Prometheus + Grafana - BHF Kafka Training"
+    echo "  Prometheus + Grafana - K3s/OpenShift - BHF Kafka Training"
     echo "============================================================"
     echo ""
     
+    detect_platform
     check_prerequisites
     create_namespace
     install_prometheus
