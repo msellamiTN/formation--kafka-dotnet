@@ -30,9 +30,42 @@ PLATFORM="${PLATFORM:-auto}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 #===============================================================================
+# Setup CRC/OpenShift environment (handles sudo)
+#===============================================================================
+setup_crc_env() {
+    # If oc is already available, nothing to do
+    if command -v oc &> /dev/null; then
+        return 0
+    fi
+
+    # When running under sudo, look for oc in the original user's CRC path
+    local real_user="${SUDO_USER:-$USER}"
+    local real_home
+    real_home=$(eval echo "~${real_user}" 2>/dev/null || echo "/home/${real_user}")
+
+    local crc_oc="${real_home}/.crc/bin/oc"
+    if [[ -x "$crc_oc" ]]; then
+        export PATH="${real_home}/.crc/bin:$PATH"
+        log_info "Found CRC oc binary at $crc_oc (added to PATH)"
+    fi
+
+    # Also set KUBECONFIG if running under sudo
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        local crc_kubeconfig="${real_home}/.crc/machines/crc/kubeconfig"
+        if [[ -f "$crc_kubeconfig" ]]; then
+            export KUBECONFIG="$crc_kubeconfig"
+            log_info "Using CRC kubeconfig: $crc_kubeconfig"
+        fi
+    fi
+}
+
+#===============================================================================
 # Detect platform (K3s or OpenShift)
 #===============================================================================
 detect_platform() {
+    # Setup CRC env first (in case running under sudo)
+    setup_crc_env
+
     if [[ "$PLATFORM" != "auto" ]]; then
         log_info "Platform forced: $PLATFORM"
     elif command -v oc &> /dev/null && oc whoami &> /dev/null 2>&1; then

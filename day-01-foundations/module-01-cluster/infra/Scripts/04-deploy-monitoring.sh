@@ -27,9 +27,35 @@ GRAFANA_PASSWORD="${GRAFANA_PASSWORD:-admin123}"
 PLATFORM="${PLATFORM:-auto}"
 
 #===============================================================================
+# Setup CRC/OpenShift environment (handles sudo)
+#===============================================================================
+setup_crc_env() {
+    if command -v oc &> /dev/null; then
+        return 0
+    fi
+    local real_user="${SUDO_USER:-$USER}"
+    local real_home
+    real_home=$(eval echo "~${real_user}" 2>/dev/null || echo "/home/${real_user}")
+    local crc_oc="${real_home}/.crc/bin/oc"
+    if [[ -x "$crc_oc" ]]; then
+        export PATH="${real_home}/.crc/bin:$PATH"
+        log_info "Found CRC oc binary at $crc_oc (added to PATH)"
+    fi
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        local crc_kubeconfig="${real_home}/.crc/machines/crc/kubeconfig"
+        if [[ -f "$crc_kubeconfig" ]]; then
+            export KUBECONFIG="$crc_kubeconfig"
+            log_info "Using CRC kubeconfig: $crc_kubeconfig"
+        fi
+    fi
+}
+
+#===============================================================================
 # Detect platform (K3s or OpenShift)
 #===============================================================================
 detect_platform() {
+    setup_crc_env
+
     if [[ "$PLATFORM" != "auto" ]]; then
         log_info "Platform forced: $PLATFORM"
     elif command -v oc &> /dev/null && oc whoami &> /dev/null 2>&1; then
