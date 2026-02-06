@@ -23,17 +23,16 @@ PLATFORM="${PLATFORM:-auto}"
 # Setup CRC/OpenShift environment (handles sudo)
 #===============================================================================
 setup_crc_env() {
-    if command -v oc &> /dev/null; then
-        return 0
-    fi
     local real_user="${SUDO_USER:-$USER}"
     local real_home
     real_home=$(eval echo "~${real_user}" 2>/dev/null || echo "/home/${real_user}")
-    local crc_oc="${real_home}/.crc/bin/oc"
-    if [[ -x "$crc_oc" ]]; then
-        export PATH="${real_home}/.crc/bin:$PATH"
+    if ! command -v oc &> /dev/null; then
+        local crc_oc="${real_home}/.crc/bin/oc"
+        if [[ -x "$crc_oc" ]]; then
+            export PATH="${real_home}/.crc/bin:$PATH"
+        fi
     fi
-    if [[ -n "${SUDO_USER:-}" ]]; then
+    if [[ -z "${KUBECONFIG:-}" ]]; then
         local crc_kubeconfig="${real_home}/.crc/machines/crc/kubeconfig"
         if [[ -f "$crc_kubeconfig" ]]; then
             export KUBECONFIG="$crc_kubeconfig"

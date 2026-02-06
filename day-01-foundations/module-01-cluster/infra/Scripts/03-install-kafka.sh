@@ -33,24 +33,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Setup CRC/OpenShift environment (handles sudo)
 #===============================================================================
 setup_crc_env() {
-    # If oc is already available, nothing to do
-    if command -v oc &> /dev/null; then
-        return 0
-    fi
-
-    # When running under sudo, look for oc in the original user's CRC path
     local real_user="${SUDO_USER:-$USER}"
     local real_home
     real_home=$(eval echo "~${real_user}" 2>/dev/null || echo "/home/${real_user}")
 
-    local crc_oc="${real_home}/.crc/bin/oc"
-    if [[ -x "$crc_oc" ]]; then
-        export PATH="${real_home}/.crc/bin:$PATH"
-        log_info "Found CRC oc binary at $crc_oc (added to PATH)"
+    # Add CRC oc binary to PATH if not already available
+    if ! command -v oc &> /dev/null; then
+        local crc_oc="${real_home}/.crc/bin/oc"
+        if [[ -x "$crc_oc" ]]; then
+            export PATH="${real_home}/.crc/bin:$PATH"
+            log_info "Found CRC oc binary at $crc_oc (added to PATH)"
+        fi
     fi
 
-    # Also set KUBECONFIG if running under sudo
-    if [[ -n "${SUDO_USER:-}" ]]; then
+    # Always set KUBECONFIG to CRC kubeconfig if it exists and not already set
+    if [[ -z "${KUBECONFIG:-}" ]]; then
         local crc_kubeconfig="${real_home}/.crc/machines/crc/kubeconfig"
         if [[ -f "$crc_kubeconfig" ]]; then
             export KUBECONFIG="$crc_kubeconfig"
