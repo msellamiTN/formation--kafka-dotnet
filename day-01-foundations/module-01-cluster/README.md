@@ -808,7 +808,7 @@ kafka-ui-xxxx                                1/1     Running
 strimzi-cluster-operator-xxxx                1/1     Running
 ```
 
-> 📝 **Note** : Si le cluster n'est pas déployé, exécutez `sudo ./infra/Scripts/03-install-kafka.sh`
+> 📝 **Note** : Si le cluster n'est pas déployé, exécutez `sudo ./infra/scripts/03-install-kafka.sh`
 
 </details>
 
