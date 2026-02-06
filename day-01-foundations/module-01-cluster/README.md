@@ -529,11 +529,11 @@ flowchart TB
     style UIContainer fill:#fff3e0
 ```
 
-#### Option B : OKD/K3s (Production-like)
+#### Option B : K3s/OpenShift (Production-like)
 
 ```mermaid
 flowchart TB
-    subgraph K8s["☸️ Kubernetes (K3s/OKD)"]
+    subgraph K8s["☸️ Kubernetes (K3s)"]
         subgraph KafkaNS["Namespace: kafka"]
             subgraph Strimzi["Strimzi Operator"]
                 SO["🔧 Cluster Operator"]
@@ -573,6 +573,48 @@ flowchart TB
     style Strimzi fill:#fff3e0
 ```
 
+#### Option C : OpenShift Local (CRC)
+
+```mermaid
+flowchart TB
+    subgraph OCP["🔴 OpenShift (CRC)"]
+        subgraph KafkaNS2["Project: kafka"]
+            subgraph Strimzi2["Strimzi Operator"]
+                SO2["🔧 Cluster Operator"]
+            end
+            
+            subgraph KafkaCluster2["Kafka Cluster: bhf-kafka"]
+                B02["Broker 0"]
+                C02["Controller 0"]
+            end
+            
+            subgraph Routes["Routes (*.apps-crc.testing)"]
+                KafkaRoute["kafka-bootstrap Route"]
+                UIRoute["kafka-ui Route"]
+            end
+            
+            KUI2["Kafka UI<br/>ClusterIP"]
+        end
+    end
+    
+    subgraph Host2["💻 Votre Machine"]
+        OC["🖥️ oc / kubectl"]
+        Browser2["🌐 Navigateur"]
+    end
+    
+    SO2 -->|"manages"| KafkaCluster2
+    OC -->|"TLS Route"| KafkaRoute
+    Browser2 -->|"http://kafka-ui-kafka.apps-crc.testing"| UIRoute
+    UIRoute --> KUI2
+    KUI2 --> B02
+    
+    style OCP fill:#fce4ec
+    style KafkaNS2 fill:#e3f2fd
+    style Strimzi2 fill:#fff3e0
+```
+
+> 📝 **Note** : Sur OpenShift CRC (single-node), le cluster Kafka utilise 1 broker et 1 controller avec du stockage **éphémère**. Les scripts détectent automatiquement la plateforme et adaptent la configuration.
+
 ## Ports et URLs
 
 ### 🐳 Mode Docker
@@ -583,13 +625,26 @@ flowchart TB
 | Kafka (interne Docker) | 29092 | `kafka:29092` |
 | Kafka UI | 8080 | http://localhost:8080 |
 
-### ☸️ Mode OKD/K3s
+### ☸️ Mode K3s
 
 | Service | Port | URL |
 |---------|------|-----|
 | Kafka Bootstrap (interne) | 9092 | `bhf-kafka-kafka-bootstrap.kafka.svc:9092` |
 | Kafka Bootstrap (externe) | 32092 | `<NODE_IP>:32092` |
-| Kafka UI | 30808 | http://<NODE_IP>:30808 |
+| Kafka UI | 30808 | `http://<NODE_IP>:30808` |
+
+### 🔴 Mode OpenShift (CRC)
+
+| Service | URL |
+|---------|-----|
+| OpenShift Console | `https://console-openshift-console.apps-crc.testing` |
+| Kafka Bootstrap (interne) | `bhf-kafka-kafka-bootstrap.kafka.svc:9092` |
+| Kafka Bootstrap (externe) | Route TLS via `*.apps-crc.testing` |
+| Kafka UI | `http://kafka-ui-kafka.apps-crc.testing` |
+| Prometheus | `http://prometheus-monitoring.apps-crc.testing` |
+| Grafana | `http://grafana-monitoring.apps-crc.testing` |
+
+> ⚠️ Les URLs OpenShift nécessitent la configuration DNS. Voir [README-OPENSHIFT.md](infra/scripts/README-OPENSHIFT.md)
 
 ## Pré-requis
 
@@ -610,9 +665,9 @@ docker compose version
 # Attendu: Docker Compose version v2.x.x
 ```
 
-### ☸️ Mode OKD/K3s (Production-like)
+### ☸️ Mode K3s (Production-like)
 
-- ✅ **K3s** ou **OKD/OpenShift** installé
+- ✅ **K3s** installé (voir `infra/scripts/02-install-k3s.sh`)
 - ✅ **kubectl** configuré
 - ✅ **Strimzi Operator** déployé
 - ✅ **Kafka cluster** déployé via Strimzi
@@ -633,7 +688,34 @@ kubectl get kafka -n kafka
 # Attendu: bhf-kafka avec status Ready
 ```
 
-> 📖 **Installation K3s + Kafka** : Voir [Guide d'installation OKD/K3s](../../00-overview/INSTALL-OKD-UBUNTU.md) et les scripts dans `infra/Scripts/`
+> 📖 **Installation K3s + Kafka** : Voir les scripts dans `infra/scripts/`
+
+### 🔴 Mode OpenShift Local (CRC)
+
+- ✅ **OpenShift Local (CRC)** installé et démarré (voir `infra/scripts/install-openshift-local.sh`)
+- ✅ **oc** CLI configuré (`oc login`)
+- ✅ **kubectl** configuré (via `oc`)
+- ✅ **Strimzi Operator** déployé
+- ✅ **Kafka cluster** déployé via Strimzi
+- ✅ **DNS** configuré pour `*.apps-crc.testing`
+- ✅ **Navigateur web** (Chrome, Firefox, Edge)
+
+```bash
+# Vérifier oc
+oc version
+# Attendu: Client Version: 4.x
+
+# Vérifier le cluster CRC
+oc status
+crc status
+# Attendu: CRC VM Running, OpenShift Running
+
+# Vérifier Kafka
+oc get kafka -n kafka
+# Attendu: bhf-kafka avec status Ready
+```
+
+> 📖 **Installation OpenShift + Kafka** : Voir [README-OPENSHIFT.md](infra/scripts/README-OPENSHIFT.md) et `infra/scripts/03-install-kafka.sh`
 
 ---
 
@@ -694,7 +776,7 @@ Kafka UI: http://localhost:8080
 </details>
 
 <details>
-<summary>☸️ <b>Mode OKD/K3s</b></summary>
+<summary>☸️ <b>Mode K3s/OpenShift</b></summary>
 
 **Explication** : Le cluster Kafka est déjà déployé via Strimzi. Vérifiez son état :
 
@@ -762,7 +844,7 @@ kafka       Up X minutes (healthy)   0.0.0.0:9092->9092/tcp, 0.0.0.0:29092->2909
 </details>
 
 <details>
-<summary>☸️ <b>Mode OKD/K3s</b></summary>
+<summary>☸️ <b>Mode K3s/OpenShift</b></summary>
 
 **Commande** :
 
@@ -815,9 +897,9 @@ bhf-kafka-kafka-external    NodePort    10.43.x.x       9094:32092/TCP
 </details>
 
 <details>
-<summary>☸️ <b>Mode OKD/K3s</b></summary>
+<summary>☸️ <b>Mode K3s/OpenShift</b></summary>
 
-**Action** : Récupérez l'IP du node et accédez à Kafka UI :
+**K3s** — Récupérez l'IP du node et accédez à Kafka UI :
 
 ```bash
 # Récupérer l'IP du node
@@ -826,6 +908,15 @@ echo "Kafka UI: http://$NODE_IP:30808"
 ```
 
 👉 **http://<NODE_IP>:30808**
+
+**OpenShift** — Kafka UI est exposé via une Route :
+
+```bash
+# Récupérer l'URL de la Route
+oc get route kafka-ui -n kafka
+```
+
+👉 **http://kafka-ui-kafka.apps-crc.testing**
 
 **Ce que vous devez voir** :
 
@@ -879,7 +970,7 @@ docker exec kafka /opt/kafka/bin/kafka-topics.sh \
 </details>
 
 <details>
-<summary>☸️ <b>Mode OKD/K3s</b></summary>
+<summary>☸️ <b>Mode K3s/OpenShift</b></summary>
 
 **Explication** : Nous utilisons un pod éphémère avec l'image Strimzi pour exécuter les commandes Kafka.
 
@@ -958,7 +1049,7 @@ Created topic bhf-demo.
 </details>
 
 <details>
-<summary>☸️ <b>Mode OKD/K3s</b></summary>
+<summary>☸️ <b>Mode K3s/OpenShift</b></summary>
 
 **Option 1 : Via KafkaTopic CR (recommandé)** :
 
@@ -1027,7 +1118,7 @@ Topic: bhf-demo	TopicId: xxxxx	PartitionCount: 3	ReplicationFactor: 1	Configs:
 </details>
 
 <details>
-<summary>☸️ <b>Mode OKD/K3s</b></summary>
+<summary>☸️ <b>Mode K3s/OpenShift</b></summary>
 
 **Option 1 : Via kubectl** :
 
@@ -1100,7 +1191,7 @@ echo "$MSG" | docker exec -i kafka /opt/kafka/bin/kafka-console-producer.sh \
 </details>
 
 <details>
-<summary>☸️ <b>Mode OKD/K3s</b></summary>
+<summary>☸️ <b>Mode K3s/OpenShift</b></summary>
 
 **Commande** :
 
@@ -1152,7 +1243,7 @@ hello-bhf-1706390000
 </details>
 
 <details>
-<summary>☸️ <b>Mode OKD/K3s</b></summary>
+<summary>☸️ <b>Mode K3s/OpenShift</b></summary>
 
 **Commande** :
 
@@ -1201,16 +1292,25 @@ hello-bhf-1706390000
 </details>
 
 <details>
-<summary>☸️ <b>Mode OKD/K3s</b></summary>
+<summary>☸️ <b>Mode K3s/OpenShift</b></summary>
 
 **Actions** :
 
 1. Récupérez l'URL Kafka UI :
+
+   **K3s** :
    ```bash
    NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
    echo "Kafka UI: http://$NODE_IP:30808"
    ```
-2. Ouvrez **http://<NODE_IP>:30808** dans votre navigateur
+
+   **OpenShift** :
+   ```bash
+   oc get route kafka-ui -n kafka
+   # → http://kafka-ui-kafka.apps-crc.testing
+   ```
+
+2. Ouvrez l'URL dans votre navigateur
 3. Cliquez sur le cluster **bhf-kafka**
 4. Dans le menu, cliquez sur **Topics**
 5. Cliquez sur le topic **bhf-demo**
@@ -1265,7 +1365,7 @@ OK
 </details>
 
 <details>
-<summary>☸️ <b>Mode OKD/K3s</b></summary>
+<summary>☸️ <b>Mode K3s/OpenShift</b></summary>
 
 **Commande** :
 
@@ -1303,14 +1403,25 @@ OK
 | 5 | Message visible dans Kafka UI | ☐ |
 | 6 | Script `validate.sh` retourne OK | ☐ |
 
-### ☸️ Mode OKD/K3s
+### ☸️ Mode K3s
 
 | # | Checkpoint | Statut |
 |---|------------|--------|
 | 1 | Cluster Kafka `bhf-kafka` est Ready | ☐ |
-| 2 | Kafka UI accessible sur http://<NODE_IP>:30808 | ☐ |
+| 2 | Kafka UI accessible sur `http://<NODE_IP>:30808` | ☐ |
 | 3 | Topic `bhf-demo` créé avec 3 partitions | ☐ |
 | 4 | Message produit et consommé via kubectl | ☐ |
+| 5 | Message visible dans Kafka UI | ☐ |
+| 6 | Script `validate.sh --k8s` retourne OK | ☐ |
+
+### 🔴 Mode OpenShift (CRC)
+
+| # | Checkpoint | Statut |
+|---|------------|--------|
+| 1 | CRC VM Running et cluster Kafka `bhf-kafka` est Ready | ☐ |
+| 2 | Kafka UI accessible via Route `http://kafka-ui-kafka.apps-crc.testing` | ☐ |
+| 3 | Topic `bhf-demo` créé avec 3 partitions | ☐ |
+| 4 | Message produit et consommé via oc/kubectl | ☐ |
 | 5 | Message visible dans Kafka UI | ☐ |
 | 6 | Script `validate.sh --k8s` retourne OK | ☐ |
 
@@ -1374,7 +1485,7 @@ OK
 
 ---
 
-### ☸️ Mode OKD/K3s
+### ☸️ Mode K3s/OpenShift
 
 #### Problème : Kafka cluster non Ready
 
@@ -1439,6 +1550,53 @@ OK
    kubectl describe nodes
    ```
 
+#### Problème : CRC ne démarre pas (OpenShift)
+
+**Symptôme** : `crc start` échoue ou la VM ne démarre pas.
+
+**Solutions** :
+
+1. **Vérifiez l'erreur virtiofsd** :
+   ```bash
+   ./infra/scripts/openshift/06-fix-crc-virtiofsd.sh
+   ```
+
+2. **Reset complet** :
+   ```bash
+   crc cleanup && crc setup && crc start
+   ```
+
+3. **Vérifiez les logs CRC** :
+   ```bash
+   crc logs
+   ```
+
+#### Problème : Routes non accessibles (OpenShift)
+
+**Symptôme** : `http://kafka-ui-kafka.apps-crc.testing` ne répond pas.
+
+**Solutions** :
+
+1. **Vérifiez la configuration DNS** :
+   ```bash
+   # Le fichier hosts doit contenir l'IP du serveur CRC
+   cat /etc/hosts | grep apps-crc.testing
+   ```
+
+2. **Vérifiez HAProxy** :
+   ```bash
+   sudo systemctl status haproxy
+   sudo systemctl restart haproxy
+   ```
+
+3. **Vérifiez les Routes** :
+   ```bash
+   oc get routes -n kafka
+   oc get routes -n monitoring
+   ```
+
+> 📖 Voir [README-OPENSHIFT.md](infra/scripts/README-OPENSHIFT.md#-dépannage) pour le guide complet
+
 ---
 
 ## 🧹 Nettoyage
@@ -1468,9 +1626,9 @@ Stopping Kafka KRaft SINGLE NODE...
 </details>
 
 <details>
-<summary>☸️ <b>Mode OKD/K3s</b></summary>
+<summary>☸️ <b>Mode K3s/OpenShift</b></summary>
 
-> ⚠️ **Attention** : Le nettoyage en mode K8s supprime le cluster Kafka complet. N'utilisez que si nécessaire.
+> ⚠️ **Attention** : Le nettoyage supprime le cluster Kafka complet. N'utilisez que si nécessaire.
 
 **Supprimer uniquement le topic bhf-demo** :
 
@@ -1478,18 +1636,31 @@ Stopping Kafka KRaft SINGLE NODE...
 kubectl delete kafkatopic bhf-demo -n kafka
 ```
 
-**Nettoyage complet** (utiliser le script) :
+**Nettoyage Kafka + Monitoring uniquement** :
 
 ```bash
-sudo ./infra/Scripts/06-cleanup.sh --kafka
+sudo ./infra/scripts/06-cleanup-openshift.sh kafka
+```
+
+**Nettoyage complet K3s** :
+
+```bash
+sudo ./infra/scripts/06-cleanup-openshift.sh k3s
+```
+
+**Nettoyage complet CRC (OpenShift)** :
+
+```bash
+sudo ./infra/scripts/06-cleanup-openshift.sh crc
 ```
 
 **Ce que le script supprime** :
-- Le cluster Kafka `bhf-kafka`
-- Les KafkaNodePools (brokers, controllers)
-- Les topics créés
-- Les PVCs de données
-- Kafka UI
+
+- Le cluster Kafka `bhf-kafka` et les KafkaNodePools
+- Les topics créés et les PVCs de données
+- Kafka UI (Deployment, Service, Route)
+- Le monitoring (Prometheus, Grafana, Routes)
+- Le cluster K3s ou CRC (selon l'option choisie)
 
 </details>
 
@@ -1514,7 +1685,11 @@ sudo ./infra/Scripts/06-cleanup.sh --kafka
 
 - [Documentation officielle Apache Kafka](https://kafka.apache.org/documentation/)
 - [KRaft Mode Documentation](https://kafka.apache.org/documentation/#kraft)
+- [Strimzi - Kafka on Kubernetes](https://strimzi.io/documentation/)
 - [Kafka UI GitHub](https://github.com/provectus/kafka-ui)
+- [OpenShift Local (CRC)](https://developers.redhat.com/products/openshift-local/overview)
+- [README-OPENSHIFT.md - Guide CRC](infra/scripts/README-OPENSHIFT.md)
+- [Scripts d'installation K3s/OpenShift](infra/scripts/README.md)
 
 ---
 
