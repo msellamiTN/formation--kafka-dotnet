@@ -701,6 +701,9 @@ kubectl get kafka -n kafka
 - ✅ **Navigateur web** (Chrome, Firefox, Edge)
 
 ```bash
+# Démarrer CRC (résout automatiquement les problèmes courants)
+./infra/scripts/07-start-openshift.sh
+
 # Vérifier oc
 oc version
 # Attendu: Client Version: 4.x
@@ -714,6 +717,8 @@ crc status
 oc get kafka -n kafka
 # Attendu: bhf-kafka avec status Ready
 ```
+
+> 💡 **Démarrage quotidien** : Utilisez `./infra/scripts/07-start-openshift.sh` après un reboot — il corrige automatiquement les dnsmasq, libvirt et PATH.
 
 > 📖 **Installation OpenShift + Kafka** : Voir [README-OPENSHIFT.md](infra/scripts/README-OPENSHIFT.md) et `infra/scripts/03-install-kafka.sh`
 

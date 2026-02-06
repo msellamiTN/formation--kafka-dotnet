@@ -13,6 +13,7 @@
 | `04-deploy-monitoring.sh` | Installe Prometheus + Grafana **(K3s/OpenShift)** | user |
 | `05-status.sh` | Vérifie le statut de l'infrastructure **(K3s/OpenShift)** | user |
 | `06-cleanup-openshift.sh` | Supprime Kafka, monitoring et cluster **(K3s/CRC/OKD)** | `sudo` |
+| `07-start-openshift.sh` | **Démarre CRC avec résolution automatique des problèmes** | user |
 
 ### Scripts OpenShift (`openshift/`)
 
@@ -103,6 +104,31 @@ sudo ./01-install-prerequisites.sh
 ```
 
 > 📖 Voir [README-OPENSHIFT.md](README-OPENSHIFT.md) pour le guide complet
+
+### Étape 2b : Démarrer CRC (usage quotidien)
+
+Après un reboot ou une nouvelle session, utilisez le script de démarrage intelligent :
+
+```bash
+./07-start-openshift.sh
+```
+
+Ce script effectue automatiquement :
+
+- Vérifie libvirtd et NetworkManager
+- Tue les processus dnsmasq orphelins
+- Répare le réseau libvirt `crc`
+- Supprime les configs dnsmasq conflictuelles
+- Lance `crc setup` puis `crc start`
+- Configure `oc` dans le PATH et login automatique
+- Vérifie le cluster
+
+Options :
+
+```bash
+./07-start-openshift.sh --force-setup   # Force crc setup même si non nécessaire
+./07-start-openshift.sh --skip-login    # Ne pas faire oc login automatiquement
+```
 
 ### Étape 3 : Installer Kafka
 
