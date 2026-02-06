@@ -229,12 +229,20 @@ ensure_crc_setup() {
 # Phase 4: Start CRC
 #===============================================================================
 start_crc() {
-    local crc_status
-    crc_status=$(crc status 2>/dev/null | grep "CRC VM:" | awk '{print $3}' || echo "Unknown")
+    local vm_status
+    local os_status
+    vm_status=$(crc status 2>/dev/null | grep "CRC VM:" | awk '{print $3}' || echo "Unknown")
+    os_status=$(crc status 2>/dev/null | grep "OpenShift:" | awk '{print $2}' || echo "Unknown")
 
-    if [[ "$crc_status" == "Running" ]]; then
-        ok "CRC VM is already running"
+    if [[ "$vm_status" == "Running" && "$os_status" == "Running" ]]; then
+        ok "CRC VM and OpenShift are already running"
         return 0
+    fi
+
+    if [[ "$vm_status" == "Running" && "$os_status" != "Running" ]]; then
+        warn "CRC VM is running but OpenShift is $os_status — restarting CRC..."
+        crc stop 2>/dev/null || true
+        sleep 5
     fi
 
     step "Starting CRC (this may take 5-10 minutes)..."
@@ -273,6 +281,37 @@ start_crc() {
             exit 1
         fi
     fi
+}
+
+#===============================================================================
+# Phase 4b: Wait for OpenShift to become reachable
+#===============================================================================
+wait_for_openshift() {
+    step "Waiting for OpenShift to become reachable..."
+    local max_wait=300  # 5 minutes
+    local interval=15
+    local elapsed=0
+
+    while [[ $elapsed -lt $max_wait ]]; do
+        local os_status
+        os_status=$(crc status 2>/dev/null | grep "OpenShift:" | awk '{print $2}' || echo "Unknown")
+
+        if [[ "$os_status" == "Running" ]]; then
+            ok "OpenShift is running and reachable"
+            return 0
+        fi
+
+        info "OpenShift status: $os_status — waiting... (${elapsed}s/${max_wait}s)"
+        sleep $interval
+        elapsed=$((elapsed + interval))
+    done
+
+    err "OpenShift did not become reachable within ${max_wait}s"
+    err "Current status:"
+    crc status 2>/dev/null || true
+    err ""
+    err "Try: crc stop && crc start"
+    exit 1
 }
 
 #===============================================================================
@@ -418,6 +457,12 @@ main() {
 
     echo ""
     echo "============================================================"
+    echo "  Phase 4b: Wait for OpenShift Readiness"
+    echo "============================================================"
+    wait_for_openshift
+
+    echo ""
+    echo "============================================================"
     echo "  Phase 5: Configure CLI"
     echo "============================================================"
     setup_oc_env
@@ -429,7 +474,17 @@ main() {
     echo "============================================================"
     verify_cluster
 
-    print_summary
+    # Only show READY if OpenShift is actually reachable
+    local final_status
+    final_status=$(crc status 2>/dev/null | grep "OpenShift:" | awk '{print $2}' || echo "Unknown")
+    if [[ "$final_status" == "Running" ]]; then
+        print_summary
+    else
+        echo ""
+        err "OpenShift is not fully ready (status: $final_status)"
+        err "Try: crc stop && crc start"
+        exit 1
+    fi
 }
 
 main "$@"
