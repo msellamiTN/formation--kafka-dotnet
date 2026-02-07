@@ -9,7 +9,7 @@
 À la fin de cette journée, vous serez capable de :
 
 | # | Objectif | Module |
-|---|----------|--------|
+| --- | --- | --- |
 | 1 | Comprendre l'**architecture interne** de Kafka (brokers, topics, partitions) | M01 |
 | 2 | Expliquer le mode **KRaft** et ses avantages vs ZooKeeper | M01 |
 | 3 | Configurer un **producer idempotent** avec gestion des retries | M02 |
@@ -49,7 +49,7 @@ flowchart TB
 ### Concepts clés
 
 | Concept | Description | Importance |
-|---------|-------------|------------|
+| --- | --- | --- |
 | **Topic** | Canal de messages nommé | Organisation des données |
 | **Partition** | Subdivision pour parallélisme | Scalabilité |
 | **Offset** | Position d'un message dans une partition | Reprise après erreur |
@@ -71,7 +71,7 @@ flowchart LR
 ```
 
 | Garantie | Configuration | Cas d'usage |
-|----------|---------------|-------------|
+| --- | --- | --- |
 | **At Most Once** | `acks=0` | Logs non critiques |
 | **At Least Once** | `acks=1` ou `acks=all` | Défaut, peut dupliquer |
 | **Exactly Once** | `enable.idempotence=true` | Transactions financières |
@@ -83,30 +83,34 @@ flowchart LR
 ### Producer
 
 > **🔒 Toujours activer l'idempotence en production**
-> ```java
-> props.put("enable.idempotence", "true");
-> props.put("acks", "all");
-> props.put("retries", Integer.MAX_VALUE);
-> ```
+
+```java
+props.put("enable.idempotence", "true");
+props.put("acks", "all");
+props.put("retries", Integer.MAX_VALUE);
+```
 
 > **⚡ Optimiser le throughput avec le batching**
-> ```java
-> props.put("linger.ms", "5");      // Attendre 5ms pour grouper
-> props.put("batch.size", "16384"); // 16KB par batch
-> ```
+
+```java
+props.put("linger.ms", "5");      // Attendre 5ms pour grouper
+props.put("batch.size", "16384"); // 16KB par batch
+```
 
 ### Consumer
 
 > **📖 Préférer `read_committed` pour les données transactionnelles**
-> ```java
-> props.put("isolation.level", "read_committed");
-> ```
+
+```java
+props.put("isolation.level", "read_committed");
+```
 
 > **🔄 Gérer le rebalancing avec CooperativeSticky**
-> ```java
-> props.put("partition.assignment.strategy", 
->           "org.apache.kafka.clients.consumer.CooperativeStickyAssignor");
-> ```
+
+```java
+props.put("partition.assignment.strategy", 
+          "org.apache.kafka.clients.consumer.CooperativeStickyAssignor");
+```
 
 ---
 
@@ -143,7 +147,7 @@ flowchart TB
 ## 📦 Modules
 
 | Module | Titre | Durée | Description |
-|--------|-------|-------|-------------|
+| --- | --- | --- | --- |
 | [**M01**](./module-01-cluster/README.md) | Architecture Kafka & KRaft | 30-45 min | Théorie + Lab CLI |
 | [**M02**](./module-02-producer/README.md) | Producer Reliability | 60-90 min | Idempotence, Java/.NET |
 | [**M03**](./module-03-consumer/README.md) | Consumer Read Committed | 60-90 min | Transactions, Java/.NET |
@@ -173,9 +177,9 @@ cd infra/scripts
 ### URLs
 
 | Service | URL | Description |
-|---------|-----|-------------|
-| Kafka UI | http://localhost:8080 | Interface web |
-| Kafka | localhost:9092 | Bootstrap servers |
+| --- | --- | --- |
+| Kafka UI | <http://localhost:8080> | Interface web |
+| Kafka | <http://localhost:9092> | Bootstrap servers |
 
 ### Arrêter
 
@@ -188,7 +192,7 @@ docker-compose -f docker-compose.single-node.yml down
 ## ⚠️ Erreurs courantes
 
 | Erreur | Cause | Solution |
-|--------|-------|----------|
+| --- | --- | --- |
 | `Connection refused :9092` | Kafka pas démarré | Attendre 30s, vérifier `docker ps` |
 | `Topic not found` | Topic inexistant | Créer avec `kafka-topics.sh --create` |
 | `Offset out of range` | Consumer reset | Utiliser `--from-beginning` |

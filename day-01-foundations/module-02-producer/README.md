@@ -107,6 +107,30 @@ kubectl get kafka -n kafka
 # Attendu : bhf-kafka avec status Ready
 ```
 
+#### Option C : OpenShift Developer Sandbox
+
+Pour ce lab, nous devons exposer les brokers localement via `port-forward`.
+
+1. **Ouvrez 3 terminaux séparés** et lancez ces commandes pour créer les tunnels :
+
+   **Terminal A (Broker 0)** :
+   ```bash
+   oc port-forward kafka-0 9094:9094
+   ```
+
+   **Terminal B (Broker 1)** :
+   ```bash
+   oc port-forward kafka-1 9095:9094
+   ```
+
+   **Terminal C (Broker 2)** :
+   ```bash
+   oc port-forward kafka-2 9096:9094
+   ```
+
+2. **Configuration** :
+   Utilisez `localhost:9094` comme `BootstrapServers`.
+
 ### Outils de développement
 
 **Visual Studio Code** :

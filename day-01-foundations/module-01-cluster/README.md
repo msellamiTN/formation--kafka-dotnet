@@ -615,6 +615,56 @@ flowchart TB
 
 > 📝 **Note** : Sur OpenShift CRC (single-node), le cluster Kafka utilise 1 broker et 1 controller avec du stockage **éphémère**. Les scripts détectent automatiquement la plateforme et adaptent la configuration.
 
+#### Option D : OpenShift Developer Sandbox (Cloud gratuit)
+
+```mermaid
+flowchart TB
+    subgraph Sandbox["☁️ OpenShift Developer Sandbox"]
+        subgraph NS["Namespace: username-dev"]
+            subgraph KafkaSS["StatefulSet: kafka (KRaft)"]
+                K0["kafka-0<br/>Broker + Controller"]
+                K1["kafka-1<br/>Broker + Controller"]
+                K2["kafka-2<br/>Broker + Controller"]
+            end
+            
+            SVC["kafka-svc<br/>(Headless)"]
+            
+            subgraph UIDepl["Deployment: kafka-ui"]
+                KUI3["Kafka UI<br/>:8080"]
+            end
+            
+            UISVC3["kafka-ui-svc"]
+        end
+    end
+    
+    subgraph Local3["💻 Votre Machine"]
+        OC3["🖥️ oc CLI"]
+        Browser3["🌐 Navigateur"]
+    end
+    
+    K0 <--> K1
+    K1 <--> K2
+    K2 <--> K0
+    
+    K0 --- SVC
+    K1 --- SVC
+    K2 --- SVC
+    
+    SVC --> KUI3
+    KUI3 --> UISVC3
+    
+    OC3 -->|"port-forward"| UISVC3
+    Browser3 -->|"localhost:8080"| OC3
+    
+    style Sandbox fill:#e8f5e8
+    style KafkaSS fill:#e3f2fd
+    style UIDepl fill:#fff3e0
+```
+
+> 📝 **Note** : Le Sandbox ne supporte pas les Opérateurs (Strimzi). Kafka est déployé via des manifests YAML natifs. L'accès se fait via `oc port-forward` car les Routes externes sont limitées.
+
+> 📖 **Guide complet** : Voir [kafka-sandbox/README.md](kafka-sandbox/README.md) pour le tutoriel détaillé.
+
 ## Ports et URLs
 
 ### 🐳 Mode Docker
@@ -645,6 +695,16 @@ flowchart TB
 | Grafana | `http://grafana-monitoring.apps-crc.testing` |
 
 > ⚠️ Les URLs OpenShift nécessitent la configuration DNS. Voir [README-OPENSHIFT.md](infra/scripts/README-OPENSHIFT.md)
+
+### ☁️ Mode OpenShift Sandbox
+
+| Service | URL |
+|---------|-----|
+| OpenShift Console | `https://console.redhat.com/openshift/sandbox` |
+| Kafka Bootstrap (interne) | `kafka-svc:9092` |
+| Kafka UI (Port-forward) | `http://localhost:8080` (via `oc port-forward`) |
+| Route Externe | *Souvent restreint dans le Sandbox gratuit* |
+
 
 ## Pré-requis
 
@@ -721,6 +781,24 @@ oc get kafka -n kafka
 > 💡 **Démarrage quotidien** : Utilisez `./infra/scripts/07-start-openshift.sh` après un reboot — il corrige automatiquement les dnsmasq, libvirt et PATH.
 
 > 📖 **Installation OpenShift + Kafka** : Voir [README-OPENSHIFT.md](infra/scripts/README-OPENSHIFT.md) et `infra/scripts/03-install-kafka.sh`
+
+### ☁️ Mode OpenShift Sandbox
+
+- ✅ **Compte Red Hat** (gratuit)
+- ✅ **Environnement Sandbox** actif
+- ✅ **oc** CLI installé et connecté (`oc login`)
+- ✅ **Navigateur web**
+- ❌ **Pas de Docker ni de gros RAM requis** sur votre machine !
+
+```bash
+# Vérifier la connexion
+oc whoami
+# Attendu: votre-email@example.com
+
+# Vérifier le projet
+oc project
+# Attendu: Using project "votre-username-dev"
+```
 
 ---
 
@@ -833,6 +911,32 @@ strimzi-cluster-operator-xxxx                1/1     Running
 
 </details>
 
+<details>
+<summary>☁️ <b>Mode OpenShift Sandbox</b></summary>
+
+**Explication** : Le Sandbox ne permet pas Strimzi. Nous utilisons des manifests natifs.
+
+**Commande** :
+
+```bash
+# Vérifier les pods Kafka
+oc get pods -l app=kafka
+```
+
+**Résultat attendu** :
+
+```
+NAME                        READY   STATUS    RESTARTS   AGE
+kafka-0                     1/1     Running   0          2m
+kafka-1                     1/1     Running   0          2m
+kafka-2                     1/1     Running   0          2m
+kafka-ui-6cd86b679c-xxxxx   1/1     Running   0          2m
+```
+
+> 📝 **Note** : Si le cluster n'est pas déployé, exécutez `./infra/scripts/08-install-kafka-sandbox.sh`
+
+</details>
+
 **💡 Astuce** : Si vous voyez des erreurs, attendez 30 secondes et passez à l'étape suivante pour vérifier l'état.
 
 ---
@@ -896,6 +1000,33 @@ bhf-kafka-kafka-external    NodePort    10.43.x.x       9094:32092/TCP
 
 </details>
 
+<details>
+<summary>☁️ <b>Mode OpenShift Sandbox</b></summary>
+
+**Commande** :
+
+```bash
+# Vérifier l'état du StatefulSet
+oc get statefulset kafka
+
+# Vérifier les services
+oc get svc -l app=kafka
+```
+
+**Résultat attendu** :
+
+```
+NAME    READY   AGE
+kafka   3/3     5m
+
+NAME        TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)
+kafka-svc   ClusterIP   None         <none>        9092/TCP,9093/TCP
+```
+
+**✅ Checkpoint 1** : Le StatefulSet a 3/3 pods prêts.
+
+</details>
+
 ---
 
 ### Étape 3 - Accès à Kafka UI
@@ -943,6 +1074,28 @@ oc get route kafka-ui -n kafka
 
 1. Page d'accueil de Kafka UI
 2. Cluster nommé `bhf-kafka` dans la liste
+3. Statut du cluster : **Online**
+
+</details>
+
+<details>
+<summary>☁️ <b>Mode OpenShift Sandbox</b></summary>
+
+La Route externe n'est pas fiable sur le Sandbox gratuit. Utilisez port-forwarding :
+
+**Commande** :
+
+```bash
+# Rediriger le port 8080 local vers le service Kafka UI
+oc port-forward svc/kafka-ui-svc 8080:80
+```
+
+👉 **http://localhost:8080**
+
+**Ce que vous devez voir** :
+
+1. Page d'accueil de Kafka UI
+2. Cluster nommé `sandbox-cluster`
 3. Statut du cluster : **Online**
 
 </details>
@@ -1340,6 +1493,21 @@ hello-bhf-1706390000
 
 </details>
 
+<details>
+<summary>☁️ <b>Mode OpenShift Sandbox</b></summary>
+
+**Actions** :
+
+1. Assurez-vous que le port-forward est actif :
+   ```bash
+   oc port-forward svc/kafka-ui-svc 8080:80
+   ```
+2. Ouvrez **http://localhost:8080**
+3. Naviguez vers **Topics > bhf-demo > Messages**
+4. Vous devriez voir les messages produits
+
+</details>
+
 **Ce que vous devez voir** :
 
 - Le message `hello-bhf-XXXX` apparaît dans la liste
@@ -1409,6 +1577,29 @@ OK
 
 </details>
 
+<details>
+<summary>☁️ <b>Mode OpenShift Sandbox</b></summary>
+
+**Commande** :
+
+```bash
+./infra/scripts/validate-sandbox.sh
+```
+
+**Résultat attendu** :
+
+```
+Validating Kafka Sandbox Deployment...
+[OK] Kafka pods are Running
+[OK] Kafka UI pod is Running
+[OK] Topic bhf-demo exists
+[OK] Message produced and consumed successfully
+
+ALL CHECKS PASSED
+```
+
+</details>
+
 ---
 
 ## ✅ Récapitulatif des checkpoints
@@ -1445,6 +1636,17 @@ OK
 | 4 | Message produit et consommé via oc/kubectl | ☐ |
 | 5 | Message visible dans Kafka UI | ☐ |
 | 6 | Script `validate.sh --k8s` retourne OK | ☐ |
+
+### ☁️ Mode OpenShift Sandbox
+
+| # | Checkpoint | Statut |
+|---|------------|--------|
+| 1 | StatefulSet `kafka` a 3/3 pods Ready | ☐ |
+| 2 | Kafka UI accessible sur http://localhost:8080 (via port-forward) | ☐ |
+| 3 | Topic `bhf-demo` existe avec 3 partitions | ☐ |
+| 4 | Message produit et consommé via `oc exec` | ☐ |
+| 5 | Message visible dans Kafka UI | ☐ |
+| 6 | Script `validate-sandbox.sh` retourne OK | ☐ |
 
 ---
 

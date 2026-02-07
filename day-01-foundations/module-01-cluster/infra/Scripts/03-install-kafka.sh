@@ -26,6 +26,10 @@ KAFKA_CLUSTER_NAME="${KAFKA_CLUSTER_NAME:-bhf-kafka}"
 KAFKA_VERSION="${KAFKA_VERSION:-4.0.0}"
 STRIMZI_VERSION="${STRIMZI_VERSION:-latest}"
 PLATFORM="${PLATFORM:-auto}"
+KUBE_CLI="kubectl"
+LOW_RESOURCE_MODE="${LOW_RESOURCE_MODE:-false}"
+CRC_MIN_MEMORY_GIB="${CRC_MIN_MEMORY_GIB:-16}"
+IS_CRC="false"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -63,6 +67,23 @@ detect_platform() {
     # Setup CRC env first (in case running under sudo)
     setup_crc_env
 
+    BROKER_REQUEST_MEMORY="1Gi"
+    BROKER_REQUEST_CPU="500m"
+    BROKER_LIMIT_MEMORY="2Gi"
+    BROKER_LIMIT_CPU="1000m"
+    CONTROLLER_REQUEST_MEMORY="512Mi"
+    CONTROLLER_REQUEST_CPU="250m"
+    CONTROLLER_LIMIT_MEMORY="1Gi"
+    CONTROLLER_LIMIT_CPU="500m"
+    ENTITY_OPERATOR_REQUEST_MEMORY="256Mi"
+    ENTITY_OPERATOR_REQUEST_CPU="100m"
+    ENTITY_OPERATOR_LIMIT_MEMORY="512Mi"
+    ENTITY_OPERATOR_LIMIT_CPU="250m"
+    KAFKA_UI_REQUEST_MEMORY="256Mi"
+    KAFKA_UI_REQUEST_CPU="100m"
+    KAFKA_UI_LIMIT_MEMORY="512Mi"
+    KAFKA_UI_LIMIT_CPU="250m"
+
     if [[ "$PLATFORM" != "auto" ]]; then
         log_info "Platform forced: $PLATFORM"
     elif command -v oc &> /dev/null && oc whoami &> /dev/null 2>&1; then
@@ -87,6 +108,25 @@ detect_platform() {
         tls: true"
             KAFKA_UI_SVC_TYPE="ClusterIP"
             KAFKA_UI_SVC_EXTRA=""
+            if [[ "$LOW_RESOURCE_MODE" == "true" ]]; then
+                BROKER_REQUEST_MEMORY="512Mi"
+                BROKER_REQUEST_CPU="200m"
+                BROKER_LIMIT_MEMORY="1Gi"
+                BROKER_LIMIT_CPU="500m"
+                CONTROLLER_REQUEST_MEMORY="256Mi"
+                CONTROLLER_REQUEST_CPU="100m"
+                CONTROLLER_LIMIT_MEMORY="512Mi"
+                CONTROLLER_LIMIT_CPU="250m"
+                ENTITY_OPERATOR_REQUEST_MEMORY="128Mi"
+                ENTITY_OPERATOR_REQUEST_CPU="50m"
+                ENTITY_OPERATOR_LIMIT_MEMORY="256Mi"
+                ENTITY_OPERATOR_LIMIT_CPU="100m"
+                KAFKA_UI_REQUEST_MEMORY="128Mi"
+                KAFKA_UI_REQUEST_CPU="50m"
+                KAFKA_UI_LIMIT_MEMORY="256Mi"
+                KAFKA_UI_LIMIT_CPU="100m"
+                log_warning "LOW_RESOURCE_MODE enabled: using reduced resource requests."
+            fi
             log_info "Platform: OpenShift | Replicas: $KAFKA_REPLICAS | Storage: ephemeral"
             ;;
         k3s|*)
@@ -119,6 +159,84 @@ detect_platform() {
             log_info "Platform: K3s | Replicas: $KAFKA_REPLICAS | Storage: persistent (local-path)"
             ;;
     esac
+}
+
+#===============================================================================
+# Use oc for kubectl-compatible commands on OpenShift
+#===============================================================================
+set_kube_cli() {
+    if [[ "$PLATFORM" == "openshift" ]]; then
+        KUBE_CLI="oc"
+        if ! command -v kubectl &> /dev/null && command -v oc &> /dev/null; then
+            kubectl() { oc "$@"; }
+            log_info "kubectl not found; using oc for kubectl-compatible commands"
+        fi
+    else
+        KUBE_CLI="kubectl"
+    fi
+}
+
+to_mib() {
+    local value="$1"
+    if [[ -z "$value" ]]; then
+        echo ""
+        return
+    fi
+    if [[ "$value" =~ ^[0-9]+Ki$ ]]; then
+        echo $(( ${value%Ki} / 1024 ))
+    elif [[ "$value" =~ ^[0-9]+Mi$ ]]; then
+        echo "${value%Mi}"
+    elif [[ "$value" =~ ^[0-9]+Gi$ ]]; then
+        echo $(( ${value%Gi} * 1024 ))
+    else
+        echo ""
+    fi
+}
+
+detect_crc() {
+    if [[ "$PLATFORM" != "openshift" ]]; then
+        return
+    fi
+    local server
+    server=$(oc whoami --show-server 2>/dev/null || true)
+    if [[ "$server" == *"api.crc.testing"* ]]; then
+        IS_CRC="true"
+    fi
+}
+
+preflight_openshift() {
+    if [[ "$PLATFORM" != "openshift" ]]; then
+        return
+    fi
+
+    detect_crc
+
+    local alloc_mem alloc_mib min_mib
+    alloc_mem=$($KUBE_CLI get nodes -o jsonpath='{.items[0].status.allocatable.memory}' 2>/dev/null || true)
+    alloc_mib=$(to_mib "$alloc_mem")
+    min_mib=$((CRC_MIN_MEMORY_GIB * 1024))
+
+    if [[ -n "$alloc_mib" && "$alloc_mib" -lt "$min_mib" ]]; then
+        log_warning "Low allocatable memory detected: ${alloc_mem} (~${alloc_mib}Mi)."
+        log_warning "CRC Kafka/Strimzi usually needs >= ${CRC_MIN_MEMORY_GIB}Gi."
+        log_warning "Fix: crc config set memory $((CRC_MIN_MEMORY_GIB * 1024)); crc stop; crc start"
+        if [[ "$LOW_RESOURCE_MODE" != "true" ]]; then
+            log_warning "Or re-run with LOW_RESOURCE_MODE=true to reduce resource requests."
+        fi
+    fi
+
+    local mem_pressure
+    mem_pressure=$($KUBE_CLI get nodes -o jsonpath='{.items[0].status.conditions[?(@.type=="MemoryPressure")].status}' 2>/dev/null || true)
+    if [[ "$mem_pressure" == "True" ]]; then
+        log_warning "Node reports MemoryPressure=True. Pods may stay Pending."
+    fi
+
+    if [[ "$IS_CRC" == "true" ]] && command -v crc &> /dev/null; then
+        if ! crc ssh -- "nslookup quay.io" &> /dev/null; then
+            log_warning "CRC DNS cannot resolve quay.io. Image pulls will fail (ErrImagePull/ImagePullBackOff)."
+            log_warning "Fix: crc config set nameserver 8.8.8.8; crc stop; crc start"
+        fi
+    fi
 }
 
 #===============================================================================
@@ -168,7 +286,7 @@ create_namespace() {
     if [[ "$PLATFORM" == "openshift" ]]; then
         oc new-project "$KAFKA_NAMESPACE" 2>/dev/null || oc project "$KAFKA_NAMESPACE"
     else
-        kubectl create namespace "$KAFKA_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+        $KUBE_CLI create namespace "$KAFKA_NAMESPACE" --dry-run=client -o yaml | $KUBE_CLI apply -f -
     fi
     
     log_success "Namespace '$KAFKA_NAMESPACE' ready"
@@ -181,21 +299,29 @@ install_strimzi() {
     log_info "Installing Strimzi Kafka Operator..."
     
     # Check if Strimzi is already installed
-    if kubectl get deployment strimzi-cluster-operator -n "$KAFKA_NAMESPACE" &> /dev/null; then
+    if $KUBE_CLI get deployment strimzi-cluster-operator -n "$KAFKA_NAMESPACE" &> /dev/null; then
         log_warning "Strimzi Operator is already installed"
         return 0
     fi
     
     # Install Strimzi CRDs and Operator
-    kubectl create -f "https://strimzi.io/install/$STRIMZI_VERSION?namespace=$KAFKA_NAMESPACE" -n "$KAFKA_NAMESPACE"
+    $KUBE_CLI apply -f "https://strimzi.io/install/$STRIMZI_VERSION?namespace=$KAFKA_NAMESPACE" -n "$KAFKA_NAMESPACE"
     
     # Wait for operator to be ready
     log_info "Waiting for Strimzi Operator to be ready..."
-    kubectl wait --for=condition=ready pod \
+    if ! $KUBE_CLI wait --for=condition=ready pod \
         -l name=strimzi-cluster-operator \
         -n "$KAFKA_NAMESPACE" \
-        --timeout=300s
-    
+        --timeout=300s; then
+        log_error "Strimzi Operator did not become ready within timeout."
+        log_warning "Check pods: $KUBE_CLI get pods -n $KAFKA_NAMESPACE"
+        log_warning "Check events: $KUBE_CLI get events -n $KAFKA_NAMESPACE --sort-by='.lastTimestamp' | tail -40"
+        if [[ "$PLATFORM" == "openshift" ]]; then
+            log_warning "If Pending/ErrImagePull, verify CRC memory and DNS (quay.io)."
+        fi
+        exit 1
+    fi
+
     log_success "Strimzi Operator installed"
 }
 
@@ -206,14 +332,14 @@ deploy_kafka_cluster() {
     log_info "Deploying Kafka cluster '$KAFKA_CLUSTER_NAME' in KRaft mode..."
     
     # Check if cluster already exists
-    if kubectl get kafka "$KAFKA_CLUSTER_NAME" -n "$KAFKA_NAMESPACE" &> /dev/null; then
+    if $KUBE_CLI get kafka "$KAFKA_CLUSTER_NAME" -n "$KAFKA_NAMESPACE" &> /dev/null; then
         log_warning "Kafka cluster '$KAFKA_CLUSTER_NAME' already exists"
         read -p "Do you want to delete and recreate? (y/N): " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
-            kubectl delete kafkanodepool --all -n "$KAFKA_NAMESPACE" 2>/dev/null || true
-            kubectl delete kafka "$KAFKA_CLUSTER_NAME" -n "$KAFKA_NAMESPACE"
-            kubectl delete pvc -l strimzi.io/cluster="$KAFKA_CLUSTER_NAME" -n "$KAFKA_NAMESPACE" 2>/dev/null || true
+            $KUBE_CLI delete kafkanodepool --all -n "$KAFKA_NAMESPACE" 2>/dev/null || true
+            $KUBE_CLI delete kafka "$KAFKA_CLUSTER_NAME" -n "$KAFKA_NAMESPACE"
+            $KUBE_CLI delete pvc -l strimzi.io/cluster="$KAFKA_CLUSTER_NAME" -n "$KAFKA_NAMESPACE" 2>/dev/null || true
             sleep 10
         else
             return 0
@@ -222,8 +348,8 @@ deploy_kafka_cluster() {
     
     # Create KafkaNodePool for brokers (required for KRaft mode in Strimzi 0.46+)
     log_info "Creating KafkaNodePool for brokers..."
-    cat <<EOF | kubectl apply -n "$KAFKA_NAMESPACE" -f -
-apiVersion: kafka.strimzi.io/v1beta2
+    cat <<EOF | $KUBE_CLI apply -n "$KAFKA_NAMESPACE" -f -
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
 metadata:
   name: broker
@@ -237,17 +363,17 @@ spec:
 ${BROKER_STORAGE_YAML}
   resources:
     requests:
-      memory: 1Gi
-      cpu: 500m
+      memory: $BROKER_REQUEST_MEMORY
+      cpu: $BROKER_REQUEST_CPU
     limits:
-      memory: 2Gi
-      cpu: 1000m
+      memory: $BROKER_LIMIT_MEMORY
+      cpu: $BROKER_LIMIT_CPU
 EOF
 
     # Create KafkaNodePool for controllers (KRaft requires separate controller nodes)
     log_info "Creating KafkaNodePool for controllers..."
-    cat <<EOF | kubectl apply -n "$KAFKA_NAMESPACE" -f -
-apiVersion: kafka.strimzi.io/v1beta2
+    cat <<EOF | $KUBE_CLI apply -n "$KAFKA_NAMESPACE" -f -
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
 metadata:
   name: controller
@@ -261,17 +387,17 @@ spec:
 ${CONTROLLER_STORAGE_YAML}
   resources:
     requests:
-      memory: 512Mi
-      cpu: 250m
+      memory: $CONTROLLER_REQUEST_MEMORY
+      cpu: $CONTROLLER_REQUEST_CPU
     limits:
-      memory: 1Gi
-      cpu: 500m
+      memory: $CONTROLLER_LIMIT_MEMORY
+      cpu: $CONTROLLER_LIMIT_CPU
 EOF
 
     # Create Kafka cluster manifest (KRaft mode)
     log_info "Creating Kafka cluster..."
-    cat <<EOF | kubectl apply -n "$KAFKA_NAMESPACE" -f -
-apiVersion: kafka.strimzi.io/v1beta2
+    cat <<EOF | $KUBE_CLI apply -n "$KAFKA_NAMESPACE" -f -
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: $KAFKA_CLUSTER_NAME
@@ -310,19 +436,19 @@ ${EXTERNAL_LISTENER_YAML}
     topicOperator:
       resources:
         requests:
-          memory: 256Mi
-          cpu: 100m
+          memory: $ENTITY_OPERATOR_REQUEST_MEMORY
+          cpu: $ENTITY_OPERATOR_REQUEST_CPU
         limits:
-          memory: 512Mi
-          cpu: 250m
+          memory: $ENTITY_OPERATOR_LIMIT_MEMORY
+          cpu: $ENTITY_OPERATOR_LIMIT_CPU
     userOperator:
       resources:
         requests:
-          memory: 256Mi
-          cpu: 100m
+          memory: $ENTITY_OPERATOR_REQUEST_MEMORY
+          cpu: $ENTITY_OPERATOR_REQUEST_CPU
         limits:
-          memory: 512Mi
-          cpu: 250m
+          memory: $ENTITY_OPERATOR_LIMIT_MEMORY
+          cpu: $ENTITY_OPERATOR_LIMIT_CPU
 EOF
 
     log_success "Kafka cluster manifest applied (KRaft mode)"
@@ -334,7 +460,7 @@ EOF
 create_metrics_config() {
     log_info "Creating Kafka metrics configuration..."
     
-    cat <<'EOF' | kubectl apply -n "$KAFKA_NAMESPACE" -f -
+    cat <<'EOF' | $KUBE_CLI apply -n "$KAFKA_NAMESPACE" -f -
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -384,11 +510,16 @@ wait_for_kafka() {
     log_info "Waiting for Kafka cluster to be ready (this may take 5-10 minutes)..."
     
     # Wait for Kafka resource to be ready
-    kubectl wait kafka/"$KAFKA_CLUSTER_NAME" \
+    if ! $KUBE_CLI wait kafka/"$KAFKA_CLUSTER_NAME" \
         --for=condition=Ready \
         --timeout=600s \
-        -n "$KAFKA_NAMESPACE"
-    
+        -n "$KAFKA_NAMESPACE"; then
+        log_error "Kafka cluster did not become ready in time."
+        log_warning "Check pods: $KUBE_CLI get pods -n $KAFKA_NAMESPACE"
+        log_warning "Check Kafka status: $KUBE_CLI get kafka -n $KAFKA_NAMESPACE"
+        exit 1
+    fi
+
     log_success "Kafka cluster is ready"
 }
 
@@ -398,7 +529,7 @@ wait_for_kafka() {
 create_default_topics() {
     log_info "Creating default Kafka topics..."
     
-    cat <<EOF | kubectl apply -n "$KAFKA_NAMESPACE" -f -
+    cat <<EOF | $KUBE_CLI apply -n "$KAFKA_NAMESPACE" -f -
 apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
@@ -470,7 +601,7 @@ EOF
 deploy_kafka_ui() {
     log_info "Deploying Kafka UI..."
     
-    cat <<EOF | kubectl apply -n "$KAFKA_NAMESPACE" -f -
+    cat <<EOF | $KUBE_CLI apply -n "$KAFKA_NAMESPACE" -f -
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -499,11 +630,11 @@ spec:
               value: "true"
           resources:
             requests:
-              memory: 256Mi
-              cpu: 100m
+              memory: $KAFKA_UI_REQUEST_MEMORY
+              cpu: $KAFKA_UI_REQUEST_CPU
             limits:
-              memory: 512Mi
-              cpu: 250m
+              memory: $KAFKA_UI_LIMIT_MEMORY
+              cpu: $KAFKA_UI_LIMIT_CPU
 ---
 apiVersion: v1
 kind: Service
@@ -521,7 +652,7 @@ EOF
 
     # Create OpenShift Route for Kafka UI
     if [[ "$PLATFORM" == "openshift" ]]; then
-        cat <<EOF | kubectl apply -n "$KAFKA_NAMESPACE" -f -
+        cat <<EOF | $KUBE_CLI apply -n "$KAFKA_NAMESPACE" -f -
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
@@ -534,7 +665,7 @@ spec:
     targetPort: 8080
 EOF
         local ui_host
-        ui_host=$(kubectl get route kafka-ui -n "$KAFKA_NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "kafka-ui-$KAFKA_NAMESPACE.apps-crc.testing")
+        ui_host=$($KUBE_CLI get route kafka-ui -n "$KAFKA_NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "kafka-ui-$KAFKA_NAMESPACE.apps-crc.testing")
         log_success "Kafka UI deployed at http://$ui_host"
     else
         log_success "Kafka UI deployed at http://localhost:30808"
@@ -549,15 +680,15 @@ verify_installation() {
     
     echo ""
     echo "--- Kafka Pods ---"
-    kubectl get pods -n "$KAFKA_NAMESPACE"
+    $KUBE_CLI get pods -n "$KAFKA_NAMESPACE"
     
     echo ""
     echo "--- Kafka Services ---"
-    kubectl get svc -n "$KAFKA_NAMESPACE"
+    $KUBE_CLI get svc -n "$KAFKA_NAMESPACE"
     
     echo ""
     echo "--- Kafka Topics ---"
-    kubectl get kafkatopics -n "$KAFKA_NAMESPACE"
+    $KUBE_CLI get kafkatopics -n "$KAFKA_NAMESPACE"
     
     log_success "Kafka installation verified"
 }
@@ -584,10 +715,10 @@ print_summary() {
     
     if [[ "$PLATFORM" == "openshift" ]]; then
         local bootstrap_route
-        bootstrap_route=$(kubectl get route "$KAFKA_CLUSTER_NAME-kafka-bootstrap" -n "$KAFKA_NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "N/A (use internal)")
+        bootstrap_route=$($KUBE_CLI get route "$KAFKA_CLUSTER_NAME-kafka-bootstrap" -n "$KAFKA_NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "N/A (use internal)")
         echo "    External: $bootstrap_route"
         local ui_host
-        ui_host=$(kubectl get route kafka-ui -n "$KAFKA_NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "kafka-ui-$KAFKA_NAMESPACE.apps-crc.testing")
+        ui_host=$($KUBE_CLI get route kafka-ui -n "$KAFKA_NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null || echo "kafka-ui-$KAFKA_NAMESPACE.apps-crc.testing")
         echo ""
         echo "  Kafka UI:          http://$ui_host"
     else
@@ -598,7 +729,7 @@ print_summary() {
     
     echo ""
     echo "  Test connectivity:"
-    echo "    kubectl run kafka-test -it --rm --image=quay.io/strimzi/kafka:latest-kafka-$KAFKA_VERSION \\"
+    echo "    $KUBE_CLI run kafka-test -it --rm -n $KAFKA_NAMESPACE --image=quay.io/strimzi/kafka:latest-kafka-$KAFKA_VERSION \\"
     echo "      --restart=Never -- bin/kafka-topics.sh --bootstrap-server $BOOTSTRAP_INTERNAL --list"
     echo ""
     echo "============================================================"
@@ -616,7 +747,9 @@ main() {
     echo ""
     
     detect_platform
+    set_kube_cli
     check_prerequisites
+    preflight_openshift
     create_namespace
     create_metrics_config
     install_strimzi
