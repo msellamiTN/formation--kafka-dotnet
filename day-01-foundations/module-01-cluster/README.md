@@ -345,7 +345,7 @@ Partition 0:
                                               ↑
                                          Nouveaux messages
                                          (append-only)
-```
+```text
 
 #### Pourquoi plusieurs partitions ?
 
@@ -662,7 +662,7 @@ flowchart TB
 ```
 
 > 📝 **Note** : Le Sandbox ne supporte pas les Opérateurs (Strimzi). Kafka est déployé via des manifests YAML natifs. L'accès se fait via `oc port-forward` car les Routes externes sont limitées.
-
+>
 > 📖 **Guide complet** : Voir [kafka-sandbox/README.md](kafka-sandbox/README.md) pour le tutoriel détaillé.
 
 ## Ports et URLs
@@ -673,7 +673,7 @@ flowchart TB
 |---------|------|-----|
 | Kafka (externe) | 9092 | `localhost:9092` |
 | Kafka (interne Docker) | 29092 | `kafka:29092` |
-| Kafka UI | 8080 | http://localhost:8080 |
+| Kafka UI | 8080 | <http://localhost:8080> |
 
 ### ☸️ Mode K3s
 
@@ -779,7 +779,7 @@ oc get kafka -n kafka
 ```
 
 > 💡 **Démarrage quotidien** : Utilisez `./infra/scripts/07-start-openshift.sh` après un reboot — il corrige automatiquement les dnsmasq, libvirt et PATH.
-
+>
 > 📖 **Installation OpenShift + Kafka** : Voir [README-OPENSHIFT.md](infra/scripts/README-OPENSHIFT.md) et `infra/scripts/03-install-kafka.sh`
 
 ### ☁️ Mode OpenShift Sandbox

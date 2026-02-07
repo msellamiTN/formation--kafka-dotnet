@@ -452,6 +452,7 @@ oc get kafka bhf-kafka -n kafka -w
 # bhf-kafka   1                        True
 
 Vérifier les pods :
+
 oc get pods -n kafka
 
 # Attendez que ces pods soient Running (K3s) :
