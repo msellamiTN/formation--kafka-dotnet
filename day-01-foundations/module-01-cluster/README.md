@@ -681,18 +681,18 @@ flowchart TB
 |---------|------|-----|
 | Kafka Bootstrap (interne) | 9092 | `bhf-kafka-kafka-bootstrap.kafka.svc:9092` |
 | Kafka Bootstrap (externe) | 32092 | `<NODE_IP>:32092` |
-| Kafka UI | 30808 | `http://<NODE_IP>:30808` |
+| Kafka UI | 30808 | `<NODE_IP>:30808` |
 
 ### 🔴 Mode OpenShift (CRC)
 
 | Service | URL |
 |---------|-----|
-| OpenShift Console | `https://console-openshift-console.apps-crc.testing` |
+| OpenShift Console | [https://console-openshift-console.apps-crc.testing](https://console-openshift-console.apps-crc.testing) |
 | Kafka Bootstrap (interne) | `bhf-kafka-kafka-bootstrap.kafka.svc:9092` |
 | Kafka Bootstrap (externe) | Route TLS via `*.apps-crc.testing` |
-| Kafka UI | `http://kafka-ui-kafka.apps-crc.testing` |
-| Prometheus | `http://prometheus-monitoring.apps-crc.testing` |
-| Grafana | `http://grafana-monitoring.apps-crc.testing` |
+| Kafka UI | [http://kafka-ui-kafka.apps-crc.testing](http://kafka-ui-kafka.apps-crc.testing) |
+| Prometheus | [http://prometheus-monitoring.apps-crc.testing](http://prometheus-monitoring.apps-crc.testing) |
+| Grafana | [http://grafana-monitoring.apps-crc.testing](http://grafana-monitoring.apps-crc.testing) |
 
 > ⚠️ Les URLs OpenShift nécessitent la configuration DNS. Voir [README-OPENSHIFT.md](infra/scripts/README-OPENSHIFT.md)
 
@@ -700,9 +700,9 @@ flowchart TB
 
 | Service | URL |
 |---------|-----|
-| OpenShift Console | `https://console.redhat.com/openshift/sandbox` |
+| OpenShift Console | [https://console.redhat.com/openshift/sandbox](https://console.redhat.com/openshift/sandbox) |
 | Kafka Bootstrap (interne) | `kafka-svc:9092` |
-| Kafka UI (Port-forward) | `http://localhost:8080` (via `oc port-forward`) |
+| Kafka UI (Port-forward) | [http://localhost:8080](http://localhost:8080) (via `oc port-forward`) |
 | Route Externe | *Souvent restreint dans le Sandbox gratuit* |
 
 
@@ -851,7 +851,7 @@ Checking for existing containers...
  ✔ Container kafka            Started
  ✔ Container kafka-ui         Started
 ✅ Kafka KRaft single-node is ready!
-Kafka UI: http://localhost:8080
+Kafka UI: <http://localhost:8080>
 ```
 
 **⏱️ Temps d'attente** : 30-60 secondes pour le premier démarrage.
@@ -994,7 +994,7 @@ NAME                        TYPE        CLUSTER-IP      PORT(S)
 bhf-kafka-kafka-bootstrap   ClusterIP   10.43.x.x       9091/TCP,9092/TCP,9093/TCP
 bhf-kafka-kafka-brokers     ClusterIP   None            9090/TCP,9091/TCP,9092/TCP
 bhf-kafka-kafka-external    NodePort    10.43.x.x       9094:32092/TCP
-```
+```text
 
 **✅ Checkpoint 1** : Le cluster affiche `READY: True` et les pods sont `Running`.
 
@@ -1021,7 +1021,7 @@ kafka   3/3     5m
 
 NAME        TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)
 kafka-svc   ClusterIP   None         <none>        9092/TCP,9093/TCP
-```
+```text
 
 **✅ Checkpoint 1** : Le StatefulSet a 3/3 pods prêts.
 
@@ -1038,7 +1038,7 @@ kafka-svc   ClusterIP   None         <none>        9092/TCP,9093/TCP
 
 **Action** : Ouvrez votre navigateur et accédez à :
 
-👉 **http://localhost:8080**
+👉 **<http://localhost:8080>**
 
 **Ce que vous devez voir** :
 
@@ -1059,7 +1059,7 @@ NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="
 echo "Kafka UI: http://$NODE_IP:30808"
 ```
 
-👉 **http://<NODE_IP>:30808**
+👉 **<http://$NODE_IP:30808>**
 
 **OpenShift** — Kafka UI est exposé via une Route :
 
@@ -1068,7 +1068,7 @@ echo "Kafka UI: http://$NODE_IP:30808"
 oc get route kafka-ui -n kafka
 ```
 
-👉 **http://kafka-ui-kafka.apps-crc.testing**
+👉 **<http://kafka-ui-kafka.apps-crc.testing>**
 
 **Ce que vous devez voir** :
 
@@ -1090,7 +1090,7 @@ La Route externe n'est pas fiable sur le Sandbox gratuit. Utilisez port-forwardi
 oc port-forward svc/kafka-ui-svc 8080:80
 ```
 
-👉 **http://localhost:8080**
+👉 **<http://localhost:8080>**
 
 **Ce que vous devez voir** :
 
@@ -1456,7 +1456,7 @@ hello-bhf-1706390000
 
 **Actions** :
 
-1. Ouvrez **http://localhost:8080** dans votre navigateur
+1. Ouvrez **<http://localhost:8080>** dans votre navigateur
 2. Cliquez sur le cluster **BHF-Training**
 3. Dans le menu, cliquez sur **Topics**
 4. Cliquez sur le topic **bhf-demo**
@@ -1475,7 +1475,7 @@ hello-bhf-1706390000
    **K3s** :
    ```bash
    NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
-   echo "Kafka UI: http://$NODE_IP:30808"
+   echo "Kafka UI: <http://$NODE_IP:30808>"
    ```
 
    **OpenShift** :
@@ -1502,7 +1502,7 @@ hello-bhf-1706390000
    ```bash
    oc port-forward svc/kafka-ui-svc 8080:80
    ```
-2. Ouvrez **http://localhost:8080**
+2. Ouvrez **<http://localhost:8080>**
 3. Naviguez vers **Topics > bhf-demo > Messages**
 4. Vous devriez voir les messages produits
 
@@ -1596,7 +1596,7 @@ Validating Kafka Sandbox Deployment...
 [OK] Message produced and consumed successfully
 
 ALL CHECKS PASSED
-```
+```text
 
 </details>
 
@@ -1609,7 +1609,7 @@ ALL CHECKS PASSED
 | # | Checkpoint | Statut |
 |---|------------|--------|
 | 1 | Conteneurs `kafka` et `kafka-ui` sont healthy | ☐ |
-| 2 | Kafka UI accessible sur http://localhost:8080 | ☐ |
+| 2 | Kafka UI accessible sur <http://localhost:8080> | ☐ |
 | 3 | Topic `bhf-demo` créé avec 3 partitions | ☐ |
 | 4 | Message produit et consommé via CLI | ☐ |
 | 5 | Message visible dans Kafka UI | ☐ |
@@ -1620,7 +1620,7 @@ ALL CHECKS PASSED
 | # | Checkpoint | Statut |
 |---|------------|--------|
 | 1 | Cluster Kafka `bhf-kafka` est Ready | ☐ |
-| 2 | Kafka UI accessible sur `http://<NODE_IP>:30808` | ☐ |
+| 2 | Kafka UI accessible sur `<NODE_IP>:30808` | ☐ |
 | 3 | Topic `bhf-demo` créé avec 3 partitions | ☐ |
 | 4 | Message produit et consommé via kubectl | ☐ |
 | 5 | Message visible dans Kafka UI | ☐ |
@@ -1631,7 +1631,7 @@ ALL CHECKS PASSED
 | # | Checkpoint | Statut |
 |---|------------|--------|
 | 1 | CRC VM Running et cluster Kafka `bhf-kafka` est Ready | ☐ |
-| 2 | Kafka UI accessible via Route `http://kafka-ui-kafka.apps-crc.testing` | ☐ |
+| 2 | Kafka UI accessible via Route <http://kafka-ui-kafka.apps-crc.testing> | ☐ |
 | 3 | Topic `bhf-demo` créé avec 3 partitions | ☐ |
 | 4 | Message produit et consommé via oc/kubectl | ☐ |
 | 5 | Message visible dans Kafka UI | ☐ |
@@ -1642,7 +1642,7 @@ ALL CHECKS PASSED
 | # | Checkpoint | Statut |
 |---|------------|--------|
 | 1 | StatefulSet `kafka` a 3/3 pods Ready | ☐ |
-| 2 | Kafka UI accessible sur http://localhost:8080 (via port-forward) | ☐ |
+| 2 | Kafka UI accessible sur <http://localhost:8080> (via port-forward) | ☐ |
 | 3 | Topic `bhf-demo` existe avec 3 partitions | ☐ |
 | 4 | Message produit et consommé via `oc exec` | ☐ |
 | 5 | Message visible dans Kafka UI | ☐ |
@@ -1678,7 +1678,7 @@ ALL CHECKS PASSED
 
 #### Problème : Kafka UI non accessible
 
-**Symptôme** : http://localhost:8080 ne répond pas.
+**Symptôme** : <http://localhost:8080> ne répond pas.
 
 **Solutions** :
 
@@ -1734,7 +1734,7 @@ ALL CHECKS PASSED
 
 #### Problème : Kafka UI non accessible
 
-**Symptôme** : http://<NODE_IP>:30808 ne répond pas.
+**Symptôme** : `<NODE_IP>:30808` ne répond pas.
 
 **Solutions** :
 
@@ -1796,7 +1796,7 @@ ALL CHECKS PASSED
 
 #### Problème : Routes non accessibles (OpenShift)
 
-**Symptôme** : `http://kafka-ui-kafka.apps-crc.testing` ne répond pas.
+**Symptôme** : `<http://kafka-ui-kafka.apps-crc.testing>` ne répond pas.
 
 **Solutions** :
 
