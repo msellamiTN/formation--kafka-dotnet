@@ -123,6 +123,19 @@ kubectl get kafka -n kafka
 # Attendu : bhf-kafka avec status Ready
 ```
 
+**OpenShift Sandbox** :
+
+> ⚠️ Assurez-vous d'avoir configuré l'accès externe (port-forward) comme décrit dans le README du module.
+
+```bash
+# Vérifiez les pods
+oc get pods -l app=kafka
+# Configurez les tunnels (dans 3 terminaux) :
+# oc port-forward kafka-0 9094:9094
+# oc port-forward kafka-1 9095:9094
+# oc port-forward kafka-2 9096:9094
+```
+
 ### Créer le topic
 
 **Docker** :
@@ -143,6 +156,17 @@ kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 
   --restart=Never -n kafka -- \
   bin/kafka-topics.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
   --create --if-not-exists --topic banking.transactions --partitions 6 --replication-factor 3
+```
+
+**OpenShift Sandbox** :
+
+```bash
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists \
+  --topic banking.transactions \
+  --partitions 3 \
+  --replication-factor 3
 ```
 
 ---
@@ -563,6 +587,8 @@ app.Run();
 
 > **OKD/K3s** : Remplacer `localhost:9092` par `bhf-kafka-kafka-bootstrap:9092`
 
+> **OpenShift Sandbox (Localisé)** : Utilisez `localhost:9094` et assurez-vous que les tunnels sont actifs.
+
 ---
 
 ### Étape 7 : Exécuter et tester
@@ -716,11 +742,73 @@ docker exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
   --max-messages 10
 ```
 
+**OpenShift Sandbox** :
+
+```bash
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic banking.transactions \
+  --from-beginning \
+  --max-messages 10
+```
+
 **Résultat attendu** :
 
 ```json
 {"transactionId":"a1b2c3d4-...","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":250.00,"currency":"EUR","type":1,"description":"Virement mensuel loyer","customerId":"CUST-001","timestamp":"2026-02-06T00:00:00Z","riskScore":5,"status":1}
 ```
+
+---
+
+## ☁️ Déploiement sur OpenShift Sandbox
+
+Si vous souhaitez déployer cette API directement sur le cluster OpenShift Sandbox (au lieu de l'exécuter localement), suivez ces étapes :
+
+### 1. Préparer le déploiement
+
+Assurez-vous d'être dans le dossier du projet :
+```bash
+cd EBankingProducerAPI
+```
+
+### 2. Déployer avec `oc new-app`
+
+Nous allons utiliser la stratégie "Source-to-Image" (S2I) ou "Binary Build" de OpenShift.
+
+```bash
+# Créer une build binaire pour .NET
+oc new-build --name=ebanking-producer-api dotnet:8.0 --binary=true
+
+# Lancer la build en envoyant le dossier courant
+oc start-build ebanking-producer-api --from-dir=. --follow
+
+# Créer l'application
+oc new-app ebanking-producer-api
+
+# Exposer l'API via une Route (HTTPS)
+oc expose svc/ebanking-producer-api
+```
+
+### 3. Configurer les variables d'environnement
+
+L'API doit savoir où se trouve Kafka (interne au cluster).
+
+```bash
+oc set env dc/ebanking-producer-api \
+  Kafka__BootstrapServers="kafka-svc:9092" \
+  Kafka__Topic="banking.transactions" \
+  ASPNETCORE_ENVIRONMENT="Development"
+```
+
+### 4. Tester l'API déployée
+
+```bash
+# Obtenir l'URL publique
+HOST=$(oc get route ebanking-producer-api -o jsonpath='{.spec.host}')
+echo "Swagger UI : https://$HOST/swagger"
+```
+
+Ouvrez cette URL dans votre navigateur pour tester l'API déployée sur le cloud !
 
 ---
 

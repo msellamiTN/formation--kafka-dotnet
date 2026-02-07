@@ -243,6 +243,17 @@ kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 
   --restart=Never -n kafka -- \
   bin/kafka-topics.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
   --create --if-not-exists --topic orders.created --partitions 6 --replication-factor 3
+
+```bash
+# OpenShift Sandbox (via pod existant)
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create \
+  --if-not-exists \
+  --topic orders.created \
+  --partitions 3 \
+  --replication-factor 3
+```
 ```
 
 ### Lister les messages produits
@@ -259,6 +270,15 @@ kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 
   --restart=Never -n kafka -- \
   bin/kafka-console-consumer.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
   --topic orders.created --from-beginning --max-messages 10
+
+```bash
+# OpenShift Sandbox (via pod existant)
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic orders.created \
+  --from-beginning \
+  --max-messages 10
+```
 ```
 
 ### Voir les détails d'un topic
@@ -274,6 +294,14 @@ kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 
   --restart=Never -n kafka -- \
   bin/kafka-topics.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
   --describe --topic orders.created
+
+```bash
+# OpenShift Sandbox (via pod existant)
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --describe \
+  --topic orders.created
+```
 ```
 
 ---

@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ebanking-producer-api
+  labels:
+    app: ebanking-producer-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ebanking-producer-api
+  template:
+    metadata:
+      labels:
+        app: ebanking-producer-api
+    spec:
+      containers:
+        - name: api
+          # Using a temporary placeholder image or build strategy. 
+          # Since we cannot easily build/push from this environment without a registry,
+          # we will use a "dotnet-sdk" image and run the code from a mounted volume or git clone?
+          # NO, the user wants "Docker/OKD/OpenShiftlocal/Sandbox".
+          # Usually, on OpenShift, we use S2I (Source-to-Image) or a binary build.
+          # For a lab, "oc new-app dotnet:8.0~." is the easiest way.
+          # However, providing a YAML is better for reproducibility if we had an image.
+          #
+          # Strategy: We will document "oc new-app" command which handles build & deploy.
+          # But for the manifest, let's assume an image exists or provide a "Deployment" that uses the result of a build.
+          #
+          # ACTUALLY, sticking to "oc new-app" is safest for Sandbox as it auto-detects sources.
+          # I will NOT create a Deployment YAML for the API itself, but provide instructions to build it.
+          # But wait, "oc new-app" requires source code in a git repo reachable by the cluster.
+          # The user has code LOCALLY.
+          # "oc new-build --binary" + "oc start-build --from-dir=." is the way for local code.
+          #
+          # Let's verify if "oc start-build" is available/allowed in Sandbox. Yes.
+          #
+          # So, I'll delete this thought process and instead create a script or instructions for binary build.
+          image: image-registry.openshift-image-registry.svc:5000/msellamitn-dev/ebanking-producer-api:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: Kafka__BootstrapServers
+              value: "kafka-svc:9092"
+            - name: Kafka__Topic
+              value: "banking.transactions"
+            - name: ASPNETCORE_ENVIRONMENT
+              value: "Development"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ebanking-producer-api
+  labels:
+    app: ebanking-producer-api
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app: ebanking-producer-api
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ebanking-producer-api
+spec:
+  to:
+    kind: Service
+    name: ebanking-producer-api
+  port:
+    targetPort: 8080
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
