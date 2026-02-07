@@ -810,6 +810,20 @@ echo "Swagger UI : https://$HOST/swagger"
 
 Ouvrez cette URL dans votre navigateur pour tester l'API déployée sur le cloud !
 
+### 5. Troubleshooting (Sandbox)
+
+- **503 Service Unavailable** :
+    - Vérifiez que le pod est `Running` : `oc get pods -l deployment=ebanking-producer-api`
+    - Vérifiez les logs : `oc logs -l deployment=ebanking-producer-api`
+    - Assurez-vous que l'application écoute sur le port 8080. Si elle écoute sur 5000/5001 (défaut local), mettez à jour la variable d'environnement :
+      ```bash
+      oc set env deployment/ebanking-producer-api ASPNETCORE_URLS="http://0.0.0.0:8080"
+      ```
+
+- **Kafka Error: Coordinator load in progress** :
+    - Cela signifie que le cluster Kafka est en train d'élire les leaders pour les transactions internes. Cela peut prendre quelques minutes sur un cluster Sandbox frais.
+    - Solution : Attendez 5 minutes et rééssayez. Ou redémarrez les pods Kafka : `oc delete pods -l app=kafka`.
+
 ---
 
 ## 🎯 Concepts Clés Expliqués
