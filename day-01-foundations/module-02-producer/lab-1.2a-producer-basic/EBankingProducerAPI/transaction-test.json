@@ -1,0 +1,10 @@
+{
+  "fromAccount": "FR7630001000123456789",
+  "toAccount": "FR7630001000987654321",
+  "amount": 100.0,
+  "currency": "EUR",
+  "type": 1,
+  "description": "Verification with File",
+  "customerId": "CUST-FILE",
+  "riskScore": 0
+}

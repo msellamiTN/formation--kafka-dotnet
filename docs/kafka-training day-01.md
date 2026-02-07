@@ -1,8 +1,6 @@
 
-Formation Apache Kafka
-
-
 # Formation Apache Kafka pour Développeurs .NET
+
 ## Programme Intensif 3 Jours (21 heures) - Version Complète
 
 **Version:** 3.0 - Février 2026  

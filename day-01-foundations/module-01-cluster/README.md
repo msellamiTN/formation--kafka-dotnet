@@ -687,23 +687,23 @@ flowchart TB
 ### 🔴 Mode OpenShift (CRC)
 
 | Service | URL |
-|---------|-----|
-| OpenShift Console | [https://console-openshift-console.apps-crc.testing](https://console-openshift-console.apps-crc.testing) |
+|---|---|
+| OpenShift Console | <https://console-openshift-console.apps-crc.testing> |
 | Kafka Bootstrap (interne) | `bhf-kafka-kafka-bootstrap.kafka.svc:9092` |
 | Kafka Bootstrap (externe) | Route TLS via `*.apps-crc.testing` |
-| Kafka UI | [http://kafka-ui-kafka.apps-crc.testing](http://kafka-ui-kafka.apps-crc.testing) |
-| Prometheus | [http://prometheus-monitoring.apps-crc.testing](http://prometheus-monitoring.apps-crc.testing) |
-| Grafana | [http://grafana-monitoring.apps-crc.testing](http://grafana-monitoring.apps-crc.testing) |
+| Kafka UI | <http://kafka-ui-kafka.apps-crc.testing> |
+| Prometheus | <http://prometheus-monitoring.apps-crc.testing> |
+| Grafana | <http://grafana-monitoring.apps-crc.testing> |
 
 > ⚠️ Les URLs OpenShift nécessitent la configuration DNS. Voir [README-OPENSHIFT.md](infra/scripts/README-OPENSHIFT.md)
 
 ### ☁️ Mode OpenShift Sandbox
 
 | Service | URL |
-|---------|-----|
-| OpenShift Console | [https://console.redhat.com/openshift/sandbox](https://console.redhat.com/openshift/sandbox) |
+|---|---|
+| OpenShift Console | <https://console.redhat.com/openshift/sandbox> |
 | Kafka Bootstrap (interne) | `kafka-svc:9092` |
-| Kafka UI (Port-forward) | [http://localhost:8080](http://localhost:8080) (via `oc port-forward`) |
+| Kafka UI (Port-forward) | <http://localhost:8080> (via `oc port-forward`) |
 | Route Externe | *Souvent restreint dans le Sandbox gratuit* |
 
 
@@ -1575,12 +1575,11 @@ OK
 2. ✅ Les pods Kafka sont en état `Running`
 3. ✅ Kafka UI est accessible
 4. ✅ Le topic `bhf-demo` existe avec 3 partitions
-5. ✅ Un message peut être produit et consommé
 
 </details>
 
 <details>
-<summary>☁️ Mode OpenShift Sandbox</summary>
+<summary> Mode OpenShift Sandbox</summary>
 
 **Commande** :
 
@@ -1590,7 +1589,6 @@ OK
 
 **Résultat attendu** :
 
-```
 Validating Kafka Sandbox Deployment...
 [OK] Kafka pods are Running
 [OK] Kafka UI pod is Running
@@ -1598,7 +1596,6 @@ Validating Kafka Sandbox Deployment...
 [OK] Message produced and consumed successfully
 
 ALL CHECKS PASSED
-```text
 
 </details>
 
@@ -1617,7 +1614,7 @@ ALL CHECKS PASSED
 | 5 | Message visible dans Kafka UI | ☐ |
 | 6 | Script `validate.sh` retourne OK | ☐ |
 
-### ☸️ Mode K3s
+### ☸️ Mode K3s/OpenShift
 
 | # | Checkpoint | Statut |
 |---|------------|--------|
@@ -1851,7 +1848,7 @@ Stopping Kafka KRaft SINGLE NODE...
 </details>
 
 <details>
-<summary>☸️ <b>Mode K3s/OpenShift</b></summary>
+<summary>☸️ Mode K3s/OpenShift</summary>
 
 > ⚠️ **Attention** : Le nettoyage supprime le cluster Kafka complet. N'utilisez que si nécessaire.
 
