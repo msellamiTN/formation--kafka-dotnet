@@ -16,7 +16,7 @@
 
 ---
 
-## �️ Parcours d'Apprentissage
+## 🧭 Parcours d'Apprentissage
 
 ```mermaid
 flowchart LR
@@ -32,7 +32,7 @@ flowchart LR
 
 ---
 
-## �📖 Structure du Module
+## 📖 Structure du Module
 
 Ce module contient 3 labs progressifs :
 
@@ -99,7 +99,9 @@ docker ps
 # Vous devez voir : kafka (healthy) et kafka-ui (healthy)
 ```
 
-#### Option B : OKD/K3s (Production-like)
+#### Option B : OKD/K3s/OpenShift (Production-like)
+
+> ℹ️ Sur OpenShift/OKD, remplacez `kubectl` par `oc`.
 ```bash
 kubectl get kafka -n kafka
 # Attendu : bhf-kafka avec status Ready

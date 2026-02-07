@@ -145,8 +145,8 @@ flowchart TB
 | Module | Titre | Durée | Description |
 |--------|-------|-------|-------------|
 | [**M01**](./module-01-cluster/README.md) | Architecture Kafka & KRaft | 30-45 min | Théorie + Lab CLI |
-| [**M02**](./module-02-producer-reliability/README.md) | Producer Reliability | 60-90 min | Idempotence, Java/.NET |
-| [**M03**](./module-03-consumer-read-committed/README.md) | Consumer Read Committed | 60-90 min | Transactions, Java/.NET |
+| [**M02**](./module-02-producer/README.md) | Producer Reliability | 60-90 min | Idempotence, Java/.NET |
+| [**M03**](./module-03-consumer/README.md) | Consumer Read Committed | 60-90 min | Transactions, Java/.NET |
 
 ---
 
@@ -160,14 +160,14 @@ flowchart TB
 ### Démarrer l'infrastructure
 
 ```powershell
-# Depuis formation-v2/
-cd infra
+# Depuis day-01-foundations/module-01-cluster/
+cd infra/scripts
 
-# Démarrer Kafka + UI
-docker-compose -f docker-compose.single-node.yml up -d
+# Démarrer Kafka (Docker)
+./up.sh
 
-# Vérifier
-docker-compose -f docker-compose.single-node.yml ps
+# Ou sur K3s/OpenShift
+./03-install-kafka.sh
 ```
 
 ### URLs

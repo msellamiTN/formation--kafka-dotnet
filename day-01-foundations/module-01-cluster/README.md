@@ -731,13 +731,13 @@ oc get kafka -n kafka
 **Objectif** : Se placer dans le bon répertoire de travail.
 
 ```bash
-cd formation-v2/
+cd formation--kafka-dotnet/day-01-foundations/module-01-cluster/
 ```
 
 **Vérification** :
 
 ```bash
-ls -la scripts/
+ls -la scripts/ infra/scripts/
 ```
 
 **Résultat attendu** : Vous devez voir les fichiers `up.sh`, `down.sh`, `start.sh`, `stop.sh`.
@@ -785,6 +785,8 @@ Kafka UI: http://localhost:8080
 
 **Explication** : Le cluster Kafka est déjà déployé via Strimzi. Vérifiez son état :
 
+> ℹ️ Sur OpenShift/OKD, remplacez `kubectl` par `oc`.
+
 **Commande** :
 
 ```bash
@@ -795,7 +797,7 @@ kubectl get kafka -n kafka
 kubectl get pods -n kafka
 ```
 
-**Résultat attendu** :
+**Résultat attendu (K3s)** :
 
 ```
 NAME        CLUSTER     READY   WARNINGS
@@ -813,7 +815,21 @@ kafka-ui-xxxx                                1/1     Running
 strimzi-cluster-operator-xxxx                1/1     Running
 ```
 
-> 📝 **Note** : Si le cluster n'est pas déployé, exécutez `sudo ./infra/scripts/03-install-kafka.sh`
+**Résultat attendu (OpenShift CRC)** :
+
+```
+NAME        CLUSTER     READY   WARNINGS
+bhf-kafka   bhf-kafka   True    
+
+NAME                                         READY   STATUS
+bhf-kafka-broker-0                           1/1     Running
+bhf-kafka-controller-0                       1/1     Running
+bhf-kafka-entity-operator-xxxx               2/2     Running
+kafka-ui-xxxx                                1/1     Running
+strimzi-cluster-operator-xxxx                1/1     Running
+```
+
+> 📝 **Note** : Si le cluster n'est pas déployé, exécutez `./infra/scripts/03-install-kafka.sh`
 
 </details>
 
@@ -1702,4 +1718,4 @@ sudo ./infra/scripts/06-cleanup-openshift.sh crc
 
 Une fois ce module terminé, passez au :
 
-👉 **[Module 02 - Fiabilité du Producteur](../module-02-producer-reliability/README.md)**
+👉 **[Module 02 - Producer Reliability](../module-02-producer/README.md)**

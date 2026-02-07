@@ -1157,19 +1157,10 @@ networks:
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ ÉTAPE 1 : Démarrer l'infrastructure Kafka                   ║
 # ╚══════════════════════════════════════════════════════════════╝
-cd formation-v2/infra
+cd formation--kafka-dotnet/day-01-foundations/module-01-cluster/infra/scripts
 
-# Démarrer Kafka single-node + UI
-docker-compose -f docker-compose.single-node.yml up -d
-
-# Vérifier l'état
-docker-compose -f docker-compose.single-node.yml ps
-
-# Créer le réseau pour le module
-docker network create bhf-kafka-network
-
-# Connecter Kafka au réseau
-docker network connect bhf-kafka-network kafka-single-node
+# Démarrer Kafka (Docker)
+./up.sh
 ```
 
 #### 5.2.2 Build et Déploiement des APIs
@@ -1178,7 +1169,7 @@ docker network connect bhf-kafka-network kafka-single-node
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ ÉTAPE 2 : Build des images Docker                              ║
 # ╚══════════════════════════════════════════════════════════════╝
-cd ../day-01-foundations/module-02-producer-reliability
+cd ../module-02-producer
 
 # Build .NET API
 docker build -t m02-dotnet-api:latest ./dotnet/M02ProducerReliability/
@@ -1305,8 +1296,8 @@ docker network inspect bhf-kafka-network
 curl -f http://localhost:9092 || echo "Kafka not running"
 
 # Démarrer Kafka local si nécessaire
-cd formation-v2/infra
-docker-compose -f docker-compose.single-node.yml up -d
+cd ../../module-01-cluster/infra/scripts
+./up.sh
 ```
 
 #### 6.1.2 Exécution de l'API .NET

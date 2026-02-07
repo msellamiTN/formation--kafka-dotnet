@@ -190,7 +190,9 @@ docker exec kafka /opt/kafka/bin/kafka-topics.sh \
   --describe --topic banking.transactions
 ```
 
-#### Option B : OKD/K3s (Production-like)
+#### Option B : OKD/K3s/OpenShift (Production-like)
+
+> ℹ️ Sur OpenShift/OKD, remplacez `kubectl` par `oc`.
 
 ```bash
 kubectl get kafka -n kafka

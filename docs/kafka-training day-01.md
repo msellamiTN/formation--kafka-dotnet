@@ -7,7 +7,7 @@ Formation Apache Kafka
 
 **Version:** 3.0 - Février 2026  
 **Cible:** Développeurs seniors .NET sans connaissance préalable Kafka  
-**Environnement:** OpenShift/OKD + .NET 8 + Kafka 3.6+ + Kafka Connect  
+**Environnement:** OpenShift/OKD + .NET 8 + Kafka 4.0.0 + Kafka Connect  
 **Instructeur:** Expert Kafka & .NET Architecture  
 
 ---
@@ -319,7 +319,7 @@ Si Instance 2 crash → Rebalancing automatique:
 **Producer** : Client écrivant des messages dans un topic  
 **Consumer** : Client lisant des messages depuis un topic  
 
-💡 **TIP** : Kafka 3.6+ supporte KRaft (Kafka Raft) pour remplacer ZooKeeper. C'est l'architecture recommandée pour les nouveaux déploiements.
+💡 **TIP** : Kafka 4.0.0 supporte KRaft (Kafka Raft) pour remplacer ZooKeeper. C'est l'architecture recommandée pour les nouveaux déploiements.
 
 #### Réplication & Haute Disponibilité
 
@@ -352,7 +352,7 @@ Déployer un cluster Kafka 3 brokers sur OpenShift via Strimzi Operator et crée
 #### Prérequis
 - Accès à un cluster OpenShift/OKD 4.x avec droits admin namespace
 - CLI `oc` installé et authentifié (`oc login`)
-- Namespace dédié : `kafka-training`
+- Namespace dédié : `kafka`
 - Quota suffisant : 12 GB RAM, 6 CPU cores minimum
 
 #### Étape 1 : Installation Strimzi Operator
@@ -360,18 +360,18 @@ Déployer un cluster Kafka 3 brokers sur OpenShift via Strimzi Operator et crée
 Strimzi est l'opérateur Kubernetes natif pour gérer Kafka (CNCF Sandbox project).
 
 # Créer le namespace
-oc new-project kafka-training
+oc new-project kafka
 
 # Installer Strimzi Operator (via OperatorHub ou YAML)
 # Option 1 : Via Web Console OpenShift (RECOMMANDÉ)
 # - Operators → OperatorHub → Rechercher "Strimzi" → Install
-# - Choisir "A specific namespace" → kafka-training
+# - Choisir "A specific namespace" → kafka
 
 # Option 2 : Via CLI
-oc apply -f https://strimzi.io/install/latest?namespace=kafka-training -n kafka-training
+oc apply -f https://strimzi.io/install/latest?namespace=kafka -n kafka
 
 Vérifier l'installation :
-oc get pods -n kafka-training
+oc get pods -n kafka
 
 # Attendez que strimzi-cluster-operator-xxx soit Running (1-2 minutes)
 # NAME                                        READY   STATUS    RESTARTS   AGE
@@ -386,29 +386,28 @@ Créer le fichier `kafka-cluster.yaml` :
 apiVersion: kafka.strimzi.io/v1beta2
 kind: Kafka
 metadata:
-  name: training-cluster
-  namespace: kafka-training
+  name: bhf-kafka
+  namespace: kafka
+  annotations:
+    strimzi.io/kraft: "enabled"
+    strimzi.io/node-pools: "enabled"
 spec:
   kafka:
-    version: 3.6.0
-    replicas: 3
+    version: 4.0.0
+    replicas: 1
     listeners:
       - name: plain
         port: 9092
         type: internal
         tls: false
-      - name: tls
-        port: 9093
-        type: internal
-        tls: true
     config:
-      offsets.topic.replication.factor: 3
-      transaction.state.log.replication.factor: 3
-      transaction.state.log.min.isr: 2
-      default.replication.factor: 3
-      min.insync.replicas: 2
-      inter.broker.protocol.version: "3.6"
-      log.message.format.version: "3.6"
+      offsets.topic.replication.factor: 1
+      transaction.state.log.replication.factor: 1
+      transaction.state.log.min.isr: 1
+      default.replication.factor: 1
+      min.insync.replicas: 1
+      inter.broker.protocol.version: "4.0"
+      log.message.format.version: "4.0"
       # Compression par défaut
       compression.type: lz4
       # Rétention par défaut (7 jours)
@@ -416,22 +415,7 @@ spec:
       # Taille max segment (1 GB)
       log.segment.bytes: 1073741824
     storage:
-      type: persistent-claim
-      size: 10Gi
-      deleteClaim: false
-    resources:
-      requests:
-        memory: 2Gi
-        cpu: 1
-      limits:
-        memory: 4Gi
-        cpu: 2
-  zookeeper:
-    replicas: 3
-    storage:
-      type: persistent-claim
-      size: 5Gi
-      deleteClaim: false
+      type: ephemeral
     resources:
       requests:
         memory: 1Gi
@@ -458,32 +442,37 @@ spec:
           cpu: 500m
 
 Déployer :
-oc apply -f kafka-cluster.yaml -n kafka-training
+oc apply -f kafka-cluster.yaml -n kafka
 
 # Suivre le déploiement (prend 3-5 minutes)
-oc get kafka training-cluster -n kafka-training -w
+oc get kafka bhf-kafka -n kafka -w
 
 # Attendez status: Ready
-# NAME               DESIRED KAFKA REPLICAS   DESIRED ZK REPLICAS   READY   WARNINGS
-# training-cluster   3                        3                     True
+# NAME        DESIRED KAFKA REPLICAS   READY   WARNINGS
+# bhf-kafka   1                        True
 
 Vérifier les pods :
-oc get pods -n kafka-training
+oc get pods -n kafka
 
-# Attendez que ces pods soient Running :
-# training-cluster-kafka-0                    1/1     Running   0          5m
-# training-cluster-kafka-1                    1/1     Running   0          5m
-# training-cluster-kafka-2                    1/1     Running   0          5m
-# training-cluster-zookeeper-0                1/1     Running   0          6m
-# training-cluster-zookeeper-1                1/1     Running   0          6m
-# training-cluster-zookeeper-2                1/1     Running   0          6m
-# training-cluster-entity-operator-xxx        3/3     Running   0          4m
+# Attendez que ces pods soient Running (K3s) :
+# bhf-kafka-broker-0                           1/1     Running   0          5m
+# bhf-kafka-broker-1                           1/1     Running   0          5m
+# bhf-kafka-broker-2                           1/1     Running   0          5m
+# bhf-kafka-controller-3                       1/1     Running   0          6m
+# bhf-kafka-controller-4                       1/1     Running   0          6m
+# bhf-kafka-controller-5                       1/1     Running   0          6m
+# bhf-kafka-entity-operator-xxx               2/2     Running   0          4m
+
+# Attendez que ces pods soient Running (OpenShift CRC) :
+# bhf-kafka-broker-0                           1/1     Running   0          5m
+# bhf-kafka-controller-0                       1/1     Running   0          6m
+# bhf-kafka-entity-operator-xxx               2/2     Running   0          4m
 
 💡 **TIP** : Si un pod reste en Pending, vérifiez le PVC : `oc get pvc`. Assurez-vous qu'un StorageClass par défaut existe.
 
 ⚠️ **TROUBLESHOOTING** : Pod CrashLoopBackOff ?
 # Vérifier les logs
-oc logs training-cluster-kafka-0
+oc logs bhf-kafka-kafka-0
 
 # Erreur courante : Insufficient memory
 # Solution : Réduire resources.requests.memory à 1Gi pour les tests
@@ -496,9 +485,9 @@ apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaTopic
 metadata:
   name: orders.created
-  namespace: kafka-training
+  namespace: kafka
   labels:
-    strimzi.io/cluster: training-cluster
+    strimzi.io/cluster: bhf-kafka
 spec:
   partitions: 6
   replicas: 3
@@ -513,16 +502,16 @@ spec:
     max.message.bytes: 1048576
 
 Appliquer :
-oc apply -f first-topic.yaml -n kafka-training
+oc apply -f first-topic.yaml -n kafka
 
 # Vérifier la création
-oc get kafkatopic orders.created -n kafka-training
+oc get kafkatopic orders.created -n kafka
 
 # Détails du topic
 oc describe kafkatopic orders.created
 
 💡 **TIP** : Vous pouvez aussi créer des topics via CLI Kafka :
-oc exec -it training-cluster-kafka-0 -- \
+oc exec -it bhf-kafka-kafka-0 -- \
   bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --create \
@@ -538,7 +527,7 @@ oc run kafka-producer -ti \
   --rm=true \
   --restart=Never \
   -- bin/kafka-console-producer.sh \
-  --bootstrap-server training-cluster-kafka-bootstrap:9092 \
+  --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
   --topic orders.created
 
 # Taper quelques messages :
@@ -553,7 +542,7 @@ oc run kafka-consumer -ti \
   --rm=true \
   --restart=Never \
   -- bin/kafka-console-consumer.sh \
-  --bootstrap-server training-cluster-kafka-bootstrap:9092 \
+  --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
   --topic orders.created \
   --from-beginning
 
@@ -564,13 +553,13 @@ oc run kafka-consumer -ti \
 #### Étape 5 : Vérifier le Cluster
 
 # Lister tous les topics
-oc exec -it training-cluster-kafka-0 -- \
+oc exec -it bhf-kafka-kafka-0 -- \
   bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --list
 
 # Décrire un topic
-oc exec -it training-cluster-kafka-0 -- \
+oc exec -it bhf-kafka-kafka-0 -- \
   bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --describe \
@@ -594,9 +583,9 @@ oc exec -it training-cluster-kafka-0 -- \
 **📸 Screenshot à prendre** : `oc get pods` montrant tous les pods Running
 
 💡 **TIP** : Créez un alias pour faciliter l'accès aux outils Kafka :
-alias kafka-topics="oc exec -it training-cluster-kafka-0 -- bin/kafka-topics.sh --bootstrap-server localhost:9092"
-alias kafka-console-producer="oc exec -it training-cluster-kafka-0 -- bin/kafka-console-producer.sh --bootstrap-server localhost:9092"
-alias kafka-console-consumer="oc exec -it training-cluster-kafka-0 -- bin/kafka-console-consumer.sh --bootstrap-server localhost:9092"
+alias kafka-topics="oc exec -it bhf-kafka-kafka-0 -- bin/kafka-topics.sh --bootstrap-server localhost:9092"
+alias kafka-console-producer="oc exec -it bhf-kafka-kafka-0 -- bin/kafka-console-producer.sh --bootstrap-server localhost:9092"
+alias kafka-console-consumer="oc exec -it bhf-kafka-kafka-0 -- bin/kafka-console-consumer.sh --bootstrap-server localhost:9092"
 
 ---
 
@@ -685,7 +674,7 @@ using Confluent.Kafka;
 var config = new ProducerConfig
 {
     // ===== OBLIGATOIRE =====
-    BootstrapServers = "training-cluster-kafka-bootstrap:9092",
+    BootstrapServers = "bhf-kafka-kafka-bootstrap:9092",
     
     // ===== IDENTIFICATION =====
     ClientId = "dotnet-producer-v1",  // Pour logs et monitoring
@@ -762,7 +751,7 @@ var logger = loggerFactory.CreateLogger<Program>();
 var config = new ProducerConfig
 {
     BootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") 
-                       ?? "training-cluster-kafka-bootstrap:9092",
+                       ?? "bhf-kafka-kafka-bootstrap:9092",
     ClientId = "dotnet-basic-producer",
     Acks = Acks.All,
     MessageSendMaxRetries = 3,
@@ -869,7 +858,7 @@ finally
     }
   },
   "Kafka": {
-    "BootstrapServers": "training-cluster-kafka-bootstrap:9092",
+    "BootstrapServers": "bhf-kafka-kafka-bootstrap:9092",
     "ClientId": "dotnet-producer",
     "TopicName": "orders.created"
   }
@@ -904,13 +893,13 @@ docker build -t kafka-producer-basic:v1 .
 
 # Tag pour registry OpenShift interne
 docker tag kafka-producer-basic:v1 \
-  image-registry.openshift-image-registry.svc:5000/kafka-training/producer-basic:v1
+  image-registry.openshift-image-registry.svc:5000/kafka/producer-basic:v1
 
 # Login au registry OpenShift
 oc registry login
 
 # Push vers registry OpenShift
-docker push image-registry.openshift-image-registry.svc:5000/kafka-training/producer-basic:v1
+docker push image-registry.openshift-image-registry.svc:5000/kafka/producer-basic:v1
 
 💡 **TIP** : Si `oc registry login` échoue, créez un secret manuel :
 oc create secret docker-registry my-pull-secret \
@@ -923,7 +912,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: producer-basic
-  namespace: kafka-training
+  namespace: kafka
 spec:
   replicas: 1
   selector:
@@ -940,7 +929,7 @@ spec:
         image: image-registry.openshift-image-registry.svc:5000/kafka-training/producer-basic:v1
         env:
         - name: KAFKA_BOOTSTRAP_SERVERS
-          value: "training-cluster-kafka-bootstrap:9092"
+          value: "bhf-kafka-kafka-bootstrap:9092"
         resources:
           requests:
             memory: "128Mi"
@@ -950,10 +939,10 @@ spec:
             cpu: "200m"
 
 **Déployer** :
-oc apply -f deployment.yaml -n kafka-training
+oc apply -f deployment.yaml -n kafka
 
 # Suivre les logs
-oc logs -f deployment/producer-basic -n kafka-training
+oc logs -f deployment/producer-basic -n kafka
 
 #### ✅ Validation
 
@@ -972,7 +961,7 @@ info: Program[0]
 - Latence d'envoi : ~5-10ms par message
 
 💡 **TIP** : Pour voir les messages produits :
-oc exec -it training-cluster-kafka-0 -- \
+oc exec -it bhf-kafka-kafka-0 -- \
   bin/kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic orders.created \
@@ -1000,7 +989,7 @@ var logger = loggerFactory.CreateLogger<Program>();
 
 var config = new ProducerConfig
 {
-    BootstrapServers = "training-cluster-kafka-bootstrap:9092",
+    BootstrapServers = "bhf-kafka-kafka-bootstrap:9092",
     ClientId = "dotnet-keyed-producer",
     Acks = Acks.All
 };
@@ -1359,7 +1348,7 @@ Un consumer Kafka fonctionne en **polling continu** :
 var config = new ConsumerConfig
 {
     // ===== OBLIGATOIRE =====
-    BootstrapServers = "training-cluster-kafka-bootstrap:9092",
+    BootstrapServers = "bhf-kafka-kafka-bootstrap:9092",
     
     // ===== IDENTIFIANT DU GROUPE =====
     GroupId = "inventory-service",  // Tous les consumers avec ce GroupId partagent les partitions
@@ -1538,7 +1527,7 @@ var logger = loggerFactory.CreateLogger<Program>();
 var config = new ConsumerConfig
 {
     BootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") 
-                       ?? "training-cluster-kafka-bootstrap:9092",
+                       ?? "bhf-kafka-kafka-bootstrap:9092",
     GroupId = Environment.GetEnvironmentVariable("KAFKA_GROUP_ID") 
               ?? "inventory-service",
     ClientId = $"inventory-worker-{Environment.MachineName}-{Guid.NewGuid():N}",
@@ -1727,7 +1716,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: consumer-basic
-  namespace: kafka-training
+  namespace: kafka
 spec:
   replicas: 1  # On commencera avec 1, puis scalera
   selector:
@@ -1741,10 +1730,10 @@ spec:
     spec:
       containers:
       - name: consumer
-        image: image-registry.openshift-image-registry.svc:5000/kafka-training/consumer-basic:v1
+        image: image-registry.openshift-image-registry.svc:5000/kafka/consumer-basic:v1
         env:
         - name: KAFKA_BOOTSTRAP_SERVERS
-          value: "training-cluster-kafka-bootstrap:9092"
+          value: "bhf-kafka-kafka-bootstrap:9092"
         - name: KAFKA_GROUP_ID
           value: "inventory-service"
         resources:
@@ -1768,14 +1757,14 @@ spec:
 **Déployer** :
 # Build & push image
 docker build -t consumer-basic:v1 .
-docker tag consumer-basic:v1 image-registry.openshift-image-registry.svc:5000/kafka-training/consumer-basic:v1
-docker push image-registry.openshift-image-registry.svc:5000/kafka-training/consumer-basic:v1
+docker tag consumer-basic:v1 image-registry.openshift-image-registry.svc:5000/kafka/consumer-basic:v1
+docker push image-registry.openshift-image-registry.svc:5000/kafka/consumer-basic:v1
 
 # Déployer
-oc apply -f deployment.yaml -n kafka-training
+oc apply -f deployment.yaml -n kafka
 
 # Observer les logs
-oc logs -f deployment/consumer-basic -n kafka-training
+oc logs -f deployment/consumer-basic -n kafka
 
 #### ✅ Validation
 
@@ -1800,7 +1789,7 @@ info: Program[0]
 - Latence de traitement : ~100ms par message
 
 💡 **TIP** : Pour voir le consumer lag en temps réel :
-oc exec -it training-cluster-kafka-0 -- \
+oc exec -it bhf-kafka-kafka-0 -- \
   bin/kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092 \
   --group inventory-service \
@@ -1821,14 +1810,14 @@ Observer le rebalancing en déployant 2 consumers dans le même groupe, puis en 
 #### Étape 1 : Scaler le Deployment à 2 Replicas
 
 # Scaler à 2 instances
-oc scale deployment/consumer-basic --replicas=2 -n kafka-training
+oc scale deployment/consumer-basic --replicas=2 -n kafka
 
 # Observer les pods
-oc get pods -l app=consumer-basic -n kafka-training
+oc get pods -l app=consumer-basic -n kafka
 # Devrait montrer 2 pods Running
 
 # Suivre les logs des 2 pods simultanément
-oc logs -f deployment/consumer-basic --all-containers=true --max-log-requests=10 -n kafka-training
+oc logs -f deployment/consumer-basic --all-containers=true --max-log-requests=10 -n kafka
 
 #### Logs Attendus : Rebalancing Automatique
 
@@ -1899,7 +1888,7 @@ info: Program[0]
 #### Étape 3 : Scaler à 6 Replicas (Optimal)
 
 # Topic a 6 partitions, scaler à 6 consumers
-oc scale deployment/consumer-basic --replicas=6 -n kafka-training
+oc scale deployment/consumer-basic --replicas=6 -n kafka
 
 # Observer distribution
 oc logs deployment/consumer-basic --tail=10 | grep "Partitions assigned"
@@ -1933,7 +1922,7 @@ Exemple :
 #### Étape 4 : Scaler à 8 Replicas (Sur-capacité)
 
 # Scaler à 8 consumers (plus que de partitions)
-oc scale deployment/consumer-basic --replicas=8 -n kafka-training
+oc scale deployment/consumer-basic --replicas=8 -n kafka
 
 # Observer les pods
 oc get pods -l app=consumer-basic
@@ -2051,7 +2040,7 @@ private static async Task SendToDeadLetterQueueAsync(ConsumeResult<string, strin
 
 💡 **TIP** : Créez un consumer séparé pour monitorer le DLQ et alerter l'équipe ops :
 # Vérifier nombre de messages dans DLQ
-oc exec -it training-cluster-kafka-0 -- \
+oc exec -it bhf-kafka-kafka-0 -- \
   bin/kafka-run-class.sh kafka.tools.GetOffsetShell \
   --broker-list localhost:9092 \
   --topic orders.dlq \
@@ -2129,7 +2118,7 @@ builder.Services.AddSingleton<IProducer<string, string>>(sp =>
     var config = new ProducerConfig
     {
         BootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") 
-                           ?? "training-cluster-kafka-bootstrap:9092",
+                           ?? "bhf-kafka-kafka-bootstrap:9092",
         ClientId = "order-api",
         Acks = Acks.All,
         EnableIdempotence = true,  // Éviter duplicatas
@@ -2267,7 +2256,7 @@ oc logs -f deployment/inventory-service
 # 📦 Message received → Key: customer-456, Partition: 1, Offset: 9  ← Même partition !
 
 **4. Vérifier dans Kafka** :
-oc exec -it training-cluster-kafka-0 -- \
+oc exec -it bhf-kafka-kafka-0 -- \
   bin/kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic orders.created \
@@ -2471,7 +2460,7 @@ Partitions = max(500/50, 20, 3×2) = max(10, 20, 6) = 20 partitions
 **Symptôme** : Consumer lag augmente (écart entre offset consommé et offset courant)
 
 # Vérifier le lag
-oc exec -it training-cluster-kafka-0 -- \
+oc exec -it bhf-kafka-kafka-0 -- \
   bin/kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092 \
   --group inventory-service \
@@ -2509,7 +2498,7 @@ await ProcessBatchAsync(batch);  // 1 bulk insert → 10x plus rapide
 
 **4. Augmenter partitions (solution long terme)** :
 # Si consumers saturés même après optimisation
-oc exec -it training-cluster-kafka-0 -- \
+oc exec -it bhf-kafka-kafka-0 -- \
   bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --alter \
@@ -2829,12 +2818,12 @@ consumer.Close();  // Trigger rebalancing proprement
 ## Tips Opérationnels
 
 💡 **TIP #9** : Créez des aliases pour CLI Kafka
-alias kafka-topics="oc exec -it training-cluster-kafka-0 -- bin/kafka-topics.sh --bootstrap-server localhost:9092"
-alias kafka-consumer-groups="oc exec -it training-cluster-kafka-0 -- bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092"
+alias kafka-topics="oc exec -it bhf-kafka-kafka-0 -- bin/kafka-topics.sh --bootstrap-server localhost:9092"
+alias kafka-consumer-groups="oc exec -it bhf-kafka-kafka-0 -- bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092"
 
 💡 **TIP #10** : Monitoring du lag en continu
 # Script watch.sh
-watch -n 5 'oc exec -it training-cluster-kafka-0 -- \
+watch -n 5 'oc exec -it bhf-kafka-kafka-0 -- \
   bin/kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092 \
   --group inventory-service \
