@@ -189,6 +189,7 @@ flowchart LR
 ```
 
 **Avantages** :
+
 - ✅ Audit trail complet
 - ✅ Replay à n'importe quel point dans le temps
 - ✅ Debug facilité (qu'est-ce qui s'est passé ?)
@@ -827,9 +828,10 @@ ls -la scripts/ infra/scripts/
 **Objectif** : Lancer le cluster Kafka en mode KRaft avec Kafka UI.
 
 <details>
-<summary>🐳 <b>Mode Docker</b></summary>
+<summary>🐳 Mode Docker</summary>
 
 **Explication** : Le script `up.sh` va :
+
 1. Télécharger l'image `apache/kafka:latest` (si nécessaire)
 2. Créer le réseau Docker `bhf-kafka-network`
 3. Démarrer le conteneur Kafka en mode KRaft
@@ -859,7 +861,7 @@ Kafka UI: <http://localhost:8080>
 </details>
 
 <details>
-<summary>☸️ <b>Mode K3s/OpenShift</b></summary>
+<summary>☸️ Mode K3s/OpenShift</summary>
 
 **Explication** : Le cluster Kafka est déjà déployé via Strimzi. Vérifiez son état :
 
@@ -912,7 +914,7 @@ strimzi-cluster-operator-xxxx                1/1     Running
 </details>
 
 <details>
-<summary>☁️ <b>Mode OpenShift Sandbox</b></summary>
+<summary>☁️ Mode OpenShift Sandbox</summary>
 
 **Explication** : Le Sandbox ne permet pas Strimzi. Nous utilisons des manifests natifs.
 
@@ -946,7 +948,7 @@ kafka-ui-6cd86b679c-xxxxx   1/1     Running   0          2m
 **Objectif** : S'assurer que tous les composants sont en fonctionnement.
 
 <details>
-<summary>🐳 <b>Mode Docker</b></summary>
+<summary>🐳 Mode Docker</summary>
 
 **Commande** :
 
@@ -969,7 +971,7 @@ kafka       Up X minutes (healthy)   0.0.0.0:9092->9092/tcp, 0.0.0.0:29092->2909
 </details>
 
 <details>
-<summary>☸️ <b>Mode K3s/OpenShift</b></summary>
+<summary>☸️ Mode K3s/OpenShift</summary>
 
 **Commande** :
 
@@ -1001,7 +1003,7 @@ bhf-kafka-kafka-external    NodePort    10.43.x.x       9094:32092/TCP
 </details>
 
 <details>
-<summary>☁️ <b>Mode OpenShift Sandbox</b></summary>
+<summary>☁️ Mode OpenShift Sandbox</summary>
 
 **Commande** :
 
@@ -1190,7 +1192,7 @@ orders-retry
 - **Ordre** : L'ordre est garanti uniquement au sein d'une partition
 
 <details>
-<summary>🐳 <b>Mode Docker</b></summary>
+<summary>🐳 Mode Docker</summary>
 
 **Commande** :
 
@@ -1269,7 +1271,7 @@ kafkatopic.kafka.strimzi.io/bhf-demo created
 **Objectif** : Vérifier la configuration du topic créé.
 
 <details>
-<summary>🐳 <b>Mode Docker</b></summary>
+<summary>🐳 Mode Docker</summary>
 
 **Commande** :
 
@@ -1343,7 +1345,7 @@ Topic: bhf-demo	TopicId: xxxxx	PartitionCount: 3	ReplicationFactor: 3	Configs:
 - Envoyer les messages au broker
 
 <details>
-<summary>🐳 <b>Mode Docker</b></summary>
+<summary>🐳 Mode Docker</summary>
 
 **Commande** :
 
@@ -1365,7 +1367,7 @@ echo "$MSG" | docker exec -i kafka /opt/kafka/bin/kafka-console-producer.sh \
 </details>
 
 <details>
-<summary>☸️ <b>Mode K3s/OpenShift</b></summary>
+<summary>☸️ Mode K3s/OpenShift</summary>
 
 **Commande** :
 
@@ -1396,7 +1398,7 @@ echo "$MSG" | kubectl run kafka-producer -i --rm --image=quay.io/strimzi/kafka:l
 - Gérer les offsets (position de lecture)
 
 <details>
-<summary>🐳 <b>Mode Docker</b></summary>
+<summary>🐳 Mode Docker</summary>
 
 **Commande** :
 
@@ -1417,7 +1419,7 @@ hello-bhf-1706390000
 </details>
 
 <details>
-<summary>☸️ <b>Mode K3s/OpenShift</b></summary>
+<summary>☸️ Mode K3s/OpenShift</summary>
 
 **Commande** :
 
@@ -1530,7 +1532,7 @@ hello-bhf-1706390000
 **Objectif** : Exécuter le script de validation pour confirmer que tout fonctionne.
 
 <details>
-<summary>🐳 <b>Mode Docker</b></summary>
+<summary>🐳 Mode Docker</summary>
 
 **Commande** :
 
@@ -1554,7 +1556,7 @@ OK
 </details>
 
 <details>
-<summary>☸️ <b>Mode K3s/OpenShift</b></summary>
+<summary>☸️ Mode K3s/OpenShift</summary>
 
 **Commande** :
 
@@ -1578,7 +1580,7 @@ OK
 </details>
 
 <details>
-<summary>☁️ <b>Mode OpenShift Sandbox</b></summary>
+<summary>☁️ Mode OpenShift Sandbox</summary>
 
 **Commande** :
 
@@ -1827,7 +1829,7 @@ ALL CHECKS PASSED
 **Objectif** : Arrêter et supprimer l'environnement.
 
 <details>
-<summary>🐳 <b>Mode Docker</b></summary>
+<summary>🐳 Mode Docker</summary>
 
 **Commande** :
 
