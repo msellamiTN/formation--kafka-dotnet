@@ -1192,6 +1192,13 @@ sequenceDiagram
 
 ## ☁️ Déploiement sur OpenShift Sandbox
 
+> **🎯 Objectif** : Ce déploiement valide les patterns de **résilience du Producer Kafka** dans un environnement cloud réel :
+> - **Retry avec backoff exponentiel** : le producer retente automatiquement l'envoi en cas d'erreur transitoire
+> - **Dead Letter Queue (DLQ)** : les messages impossibles à envoyer sont redirigés vers un topic DLQ
+> - **Circuit Breaker** : après N échecs consécutifs, le circuit s'ouvre pour protéger le système
+> - **Métriques** : taux de succès, compteur DLQ, état du circuit breaker
+> - **Vérification via Kafka CLI** : consommer la DLQ pour vérifier les messages en échec
+
 Si vous souhaitez déployer cette API directement sur le cluster OpenShift Sandbox (au lieu de l'exécuter localement), suivez ces étapes :
 
 ### 1. Préparer le déploiement

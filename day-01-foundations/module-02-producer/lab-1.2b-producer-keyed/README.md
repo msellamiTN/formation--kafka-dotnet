@@ -704,6 +704,12 @@ Ouvrir Swagger UI : **<https://localhost:5001/swagger>**
 
 ## ☁️ Déploiement sur OpenShift Sandbox
 
+> **🎯 Objectif** : Ce déploiement valide les concepts de **partitionnement par clé (Keyed Producer)** dans un environnement cloud :
+> - **Clé de partitionnement** : le `customerId` détermine la partition cible via l'algorithme **Murmur2**
+> - **Garantie d'ordre** : toutes les transactions d'un même client arrivent dans la **même partition**, dans l'ordre
+> - **Distribution équitable** : des clients différents se répartissent sur des partitions différentes
+> - **Vérification via Kafka CLI** : lire une partition spécifique pour prouver l'isolation par client
+
 Si vous utilisez l'OpenShift Developer Sandbox, suivez ces étapes pour déployer l'API :
 
 ### 1. Créer le Build et l'Application
@@ -749,6 +755,63 @@ echo "Swagger UI : https://$HOST/swagger"
 ### 5. Stability Warning
 
 For Sandbox environments, use `Acks = Acks.Leader` and `EnableIdempotence = false` in `ProducerConfig` to avoid `Coordinator load in progress` hangs.
+
+### 6. 🧪 Scénarios de Test et Validation des Concepts (Sandbox)
+
+> Les scénarios Swagger détaillés ci-dessous (Tests OpenAPI) fonctionnent aussi bien en local qu'en Sandbox.
+> Pour le Sandbox, utilisez `https://$HOST` au lieu de `https://localhost:5001`.
+
+Après avoir exécuté les Tests OpenAPI (section suivante), vérifiez la distribution dans Kafka **via le CLI du Sandbox** :
+
+```bash
+HOST=$(oc get route ebanking-keyed-api -o jsonpath='{.spec.host}')
+
+# Envoyer des transactions pour différents clients
+curl -k -s -X POST "https://$HOST/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000111111111","toAccount":"FR7630001000222222222","amount":500.00,"currency":"EUR","type":3,"description":"Depot CUST-001","customerId":"CUST-001"}' | jq .kafkaPartition
+
+curl -k -s -X POST "https://$HOST/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000333333333","toAccount":"FR7630001000444444444","amount":1500.00,"currency":"EUR","type":1,"description":"Virement CUST-002","customerId":"CUST-002"}' | jq .kafkaPartition
+```
+
+**📖 Vérification** : Les deux `kafkaPartition` doivent être **différents** (clients différents → partitions différentes).
+
+```bash
+# Consulter les statistiques de distribution
+curl -k -s "https://$HOST/api/Transactions/stats/partitions" | jq .
+
+# Vérifier dans Kafka que les partitions contiennent les bons messages
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic banking.transactions \
+  --partition 2 \
+  --from-beginning --max-messages 5
+
+# Vérifier la distribution des offsets
+oc exec kafka-0 -- /opt/kafka/bin/kafka-run-class.sh kafka.tools.GetOffsetShell \
+  --broker-list localhost:9092 --topic banking.transactions
+```
+
+**📖 Concepts validés** :
+
+| Concept | Comment le vérifier |
+| ------- | ------------------- |
+| Même clé → même partition | Envoyer 3 tx pour CUST-001, vérifier que `kafkaPartition` est identique |
+| Clés différentes → partitions différentes | Comparer `kafkaPartition` de CUST-001 vs CUST-002 |
+| Ordre garanti par partition | Lire une partition spécifique, l'ordre chronologique est respecté |
+| Distribution Murmur2 | `GET /stats/partitions` montre la map `customerId → partition` |
+
+#### Récapitulatif des Endpoints
+
+| Méthode | Endpoint | Objectif pédagogique |
+| ------- | -------- | -------------------- |
+| `POST` | `/api/Transactions` | Produire un message avec clé (`customerId`) |
+| `POST` | `/api/Transactions/batch` | Produire un lot — observer la distribution par clé |
+| `GET` | `/api/Transactions/stats/partitions` | Voir la map `customerId → partition` et la distribution |
+| `GET` | `/api/Transactions/{id}` | Obtenir le statut d'une transaction |
+| `GET` | `/api/Transactions/health` | Vérifier la disponibilité du service |
 
 ---
 
@@ -942,7 +1005,33 @@ echo "https://$URL/swagger"
 curl -k -i "https://$URL/api/Transactions/health"
 ```
 
-### 5. Alternative : Déploiement par manifeste YAML
+### 5. 🧪 Validation des concepts (CRC)
+
+```bash
+URL=$(oc get route ebanking-keyed-producer-api-secure -o jsonpath='{.spec.host}')
+
+# Envoyer 2 transactions pour le même client
+curl -k -s -X POST "https://$URL/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000111111111","toAccount":"FR7630001000222222222","amount":500.00,"currency":"EUR","type":3,"description":"Tx1 CUST-001","customerId":"CUST-001"}' | jq .kafkaPartition
+
+curl -k -s -X POST "https://$URL/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000333333333","toAccount":"FR7630001000444444444","amount":100.00,"currency":"EUR","type":2,"description":"Tx2 CUST-001","customerId":"CUST-001"}' | jq .kafkaPartition
+
+# Les deux kafkaPartition doivent être IDENTIQUES (même clé → même partition)
+
+# Consulter les stats de distribution
+curl -k -s "https://$URL/api/Transactions/stats/partitions" | jq .
+
+# Vérifier dans Kafka — lire une partition spécifique
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic banking.transactions \
+  --partition 2 --from-beginning --max-messages 5
+```
+
+### 6. Alternative : Déploiement par manifeste YAML
 
 ```bash
 sed "s/\${NAMESPACE}/ebanking-labs/g" deployment/openshift-deployment.yaml | oc apply -f -
@@ -1000,7 +1089,35 @@ curl http://localhost:8080/swagger/index.html
 
 > **Ingress** : Si vous avez un Ingress Controller (nginx, traefik), ajoutez `ebanking-keyed-producer-api.local` à votre fichier `/etc/hosts` pointant vers l'IP du cluster.
 
-### 5. OKD : Utiliser les manifestes OpenShift
+### 5. 🧪 Validation des concepts (K8s)
+
+```bash
+# Envoyer des transactions pour 2 clients différents (port-forward actif sur 8080)
+curl -s -X POST "http://localhost:8080/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000111111111","toAccount":"FR7630001000222222222","amount":500.00,"currency":"EUR","type":3,"description":"Test K8s CUST-001","customerId":"CUST-001"}' | jq .kafkaPartition
+
+curl -s -X POST "http://localhost:8080/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000333333333","toAccount":"FR7630001000444444444","amount":1500.00,"currency":"EUR","type":1,"description":"Test K8s CUST-002","customerId":"CUST-002"}' | jq .kafkaPartition
+
+# Consulter les stats de distribution
+curl -s "http://localhost:8080/api/Transactions/stats/partitions" | jq .
+
+# Vérifier dans Kafka
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic banking.transactions \
+  --partition 2 --from-beginning --max-messages 5
+
+# Vérifier la distribution des offsets
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-run-class.sh kafka.tools.GetOffsetShell \
+  --broker-list localhost:9092 --topic banking.transactions
+```
+
+> **Docker Compose** : Si Kafka tourne via Docker Compose, utilisez `docker exec kafka ...` au lieu de `kubectl exec kafka-0 ...`.
+
+### 6. OKD : Utiliser les manifestes OpenShift
 
 ```bash
 sed "s/\${NAMESPACE}/$(oc project -q)/g" deployment/openshift-deployment.yaml | oc apply -f -

@@ -762,6 +762,12 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
 
 ## ☁️ Déploiement sur OpenShift Sandbox
 
+> **🎯 Objectif** : Ce déploiement ne se limite pas à mettre l'API en ligne. L'objectif est de **valider les concepts fondamentaux du Producer Kafka** dans un environnement cloud réel :
+> - **Envoi de messages** vers un topic Kafka depuis une API REST
+> - **Partition et Offset** : chaque message reçoit une partition (round-robin) et un offset séquentiel
+> - **Acknowledgment (acks)** : le broker confirme la réception du message
+> - **Vérification via Kafka CLI** : consommer les messages produits pour confirmer le flux de bout en bout
+
 Si vous souhaitez déployer cette API directement sur le cluster OpenShift Sandbox (au lieu de l'exécuter localement), suivez ces étapes :
 
 ### 1. Préparer le déploiement
@@ -807,21 +813,149 @@ oc set env deployment/ebanking-producer-api \
 oc create route edge ebanking-producer-api --service=ebanking-producer-api --port=8080-tcp
 ```
 
-### 5. Tester l'API déployée
+### 5. Obtenir l'URL publique
 
 ```bash
-# Obtenir l'URL publique
 HOST=$(oc get route ebanking-producer-api -o jsonpath='{.spec.host}')
 echo "Swagger UI : https://$HOST/swagger"
 ```
 
-Ouvrez cette URL dans votre navigateur pour tester l'API déployée sur le cloud !
+Ouvrez cette URL dans votre navigateur pour accéder à Swagger UI.
 
-### 6. Stability Warning
+### 6. 🧪 Scénarios de Test et Validation des Concepts
+
+#### Scénario 1 : Envoyer une transaction simple (POST /api/Transactions)
+
+Dans Swagger UI, cliquer sur **POST /api/Transactions** → **Try it out** :
+
+```json
+{
+  "fromAccount": "FR7630001000123456789",
+  "toAccount": "FR7630001000987654321",
+  "amount": 1500.00,
+  "currency": "EUR",
+  "type": 1,
+  "description": "Virement salaire janvier",
+  "customerId": "CUST-001"
+}
+```
+
+Ou via `curl` :
+
+```bash
+curl -k -s -X POST "https://$HOST/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fromAccount": "FR7630001000123456789",
+    "toAccount": "FR7630001000987654321",
+    "amount": 1500.00,
+    "currency": "EUR",
+    "type": 1,
+    "description": "Virement salaire janvier",
+    "customerId": "CUST-001"
+  }' | jq .
+```
+
+**Réponse attendue (201 Created)** :
+
+```json
+{
+  "transactionId": "a1b2c3d4-...",
+  "status": "Processing",
+  "kafkaPartition": 3,
+  "kafkaOffset": 0,
+  "timestamp": "2026-02-08T22:00:00Z"
+}
+```
+
+**📖 Concepts observés** :
+
+| Champ | Concept Kafka |
+| ----- | ------------- |
+| `kafkaPartition: 3` | Le broker assigne une partition via **round-robin** (pas de clé spécifiée) |
+| `kafkaOffset: 0` | Offset séquentiel — premier message de cette partition |
+| `status: "Processing"` | Envoi **fire-and-forget** — le producer n'attend pas le traitement |
+
+#### Scénario 2 : Envoyer un lot de transactions (POST /api/Transactions/batch)
+
+```bash
+curl -k -s -X POST "https://$HOST/api/Transactions/batch" \
+  -H "Content-Type: application/json" \
+  -d '[
+    {"fromAccount": "FR7630001000111111111", "toAccount": "FR7630001000222222222", "amount": 100.00, "currency": "EUR", "type": 1, "description": "Virement 1", "customerId": "CUST-001"},
+    {"fromAccount": "FR7630001000333333333", "toAccount": "FR7630001000444444444", "amount": 250.00, "currency": "EUR", "type": 2, "description": "Paiement facture", "customerId": "CUST-002"},
+    {"fromAccount": "FR7630001000555555555", "toAccount": "GB29NWBK60161331926819", "amount": 5000.00, "currency": "EUR", "type": 6, "description": "Transfert international", "customerId": "CUST-003"}
+  ]' | jq .
+```
+
+**📖 Concepts observés** :
+- Les 3 transactions arrivent sur des **partitions potentiellement différentes** (round-robin sans clé)
+- Chaque message reçoit un **offset séquentiel** au sein de sa partition
+- Le batch n'est **pas atomique** : chaque message est produit indépendamment
+
+#### Scénario 3 : Vérifier les messages dans Kafka (CLI)
+
+```bash
+# Consommer les messages du topic depuis le début
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic banking.transactions \
+  --from-beginning \
+  --max-messages 10
+```
+
+**Vérification** : Vous devez voir les transactions envoyées en format JSON, confirmant que le Producer a bien écrit dans le topic.
+
+```bash
+# Vérifier les offsets par partition
+oc exec kafka-0 -- /opt/kafka/bin/kafka-run-class.sh kafka.tools.GetOffsetShell \
+  --broker-list localhost:9092 \
+  --topic banking.transactions
+```
+
+**Sortie attendue** (exemple avec 6 partitions) :
+
+```text
+banking.transactions:0:2
+banking.transactions:1:1
+banking.transactions:2:0
+banking.transactions:3:1
+banking.transactions:4:0
+banking.transactions:5:0
+```
+
+Chaque ligne montre `topic:partition:dernier_offset`. Cela confirme la **distribution round-robin** des messages sans clé.
+
+#### Scénario 4 : Health Check et monitoring
+
+```bash
+curl -k -s "https://$HOST/api/Transactions/health" | jq .
+```
+
+**Réponse attendue** :
+
+```json
+{
+  "status": "Healthy",
+  "service": "EBanking Producer API",
+  "timestamp": "2026-02-08T22:05:00Z"
+}
+```
+
+#### Récapitulatif des Endpoints
+
+| Méthode | Endpoint | Objectif pédagogique |
+| ------- | -------- | -------------------- |
+| `POST` | `/api/Transactions` | Produire un message Kafka (fire-and-forget) |
+| `POST` | `/api/Transactions/batch` | Produire plusieurs messages en séquence |
+| `GET` | `/api/Transactions/{id}` | Obtenir le statut d'une transaction |
+| `GET` | `/api/Transactions/health` | Vérifier la disponibilité du service |
+
+### 7. Stability Warning
 
 For Sandbox environments, use `Acks = Acks.Leader` and `EnableIdempotence = false` in `ProducerConfig` to avoid `Coordinator load in progress` hangs.
 
-### 7. Troubleshooting (Sandbox)
+### 8. Troubleshooting (Sandbox)
 
 - **503 Service Unavailable** :
     - Vérifiez que le pod est `Running` : `oc get pods -l deployment=ebanking-producer-api`
@@ -889,7 +1023,29 @@ echo "https://$URL/swagger"
 curl -k -i "https://$URL/api/Transactions/health"
 ```
 
-### 5. Alternative : Déploiement par manifeste YAML
+### 5. 🧪 Validation des concepts (CRC)
+
+```bash
+# Obtenir l'URL
+URL=$(oc get route ebanking-producer-api-secure -o jsonpath='{.spec.host}')
+
+# Envoyer une transaction
+curl -k -s -X POST "https://$URL/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":1500.00,"currency":"EUR","type":1,"description":"Test CRC","customerId":"CUST-001"}' | jq .
+
+# Vérifier les messages dans Kafka
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic banking.transactions \
+  --from-beginning --max-messages 5
+
+# Vérifier la distribution des offsets par partition
+oc exec kafka-0 -- /opt/kafka/bin/kafka-run-class.sh kafka.tools.GetOffsetShell \
+  --broker-list localhost:9092 --topic banking.transactions
+```
+
+### 6. Alternative : Déploiement par manifeste YAML
 
 ```bash
 sed "s/\${NAMESPACE}/ebanking-labs/g" deployment/openshift-deployment.yaml | oc apply -f -
@@ -947,7 +1103,28 @@ curl http://localhost:8080/swagger/index.html
 
 > **Ingress** : Si vous avez un Ingress Controller (nginx, traefik), ajoutez `ebanking-producer-api.local` à votre fichier `/etc/hosts` pointant vers l'IP du cluster.
 
-### 5. OKD : Utiliser les manifestes OpenShift
+### 5. 🧪 Validation des concepts (K8s)
+
+```bash
+# Envoyer une transaction
+curl -s -X POST "http://localhost:8080/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":1500.00,"currency":"EUR","type":1,"description":"Test K8s","customerId":"CUST-001"}' | jq .
+
+# Vérifier les messages dans Kafka (adapter le pod Kafka selon votre installation)
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic banking.transactions \
+  --from-beginning --max-messages 5
+
+# Vérifier la distribution des offsets par partition
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-run-class.sh kafka.tools.GetOffsetShell \
+  --broker-list localhost:9092 --topic banking.transactions
+```
+
+> **Docker Compose** : Si Kafka tourne via Docker Compose, utilisez `docker exec kafka ...` au lieu de `kubectl exec kafka-0 ...`.
+
+### 6. OKD : Utiliser les manifestes OpenShift
 
 ```bash
 sed "s/\${NAMESPACE}/$(oc project -q)/g" deployment/openshift-deployment.yaml | oc apply -f -
