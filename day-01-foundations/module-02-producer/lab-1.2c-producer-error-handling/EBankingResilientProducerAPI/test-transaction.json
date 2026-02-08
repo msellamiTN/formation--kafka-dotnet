@@ -1,9 +1,9 @@
 {
     "fromAccount": "FR761111100012345678",
     "toAccount": "FR762222200098733332",
-    "amount": 125.50,
+    "amount": 25000.00,
     "currency": "EUR",
     "type": 1,
-    "description": "Public Secure Verification",
-    "customerId": "RES-PUBLIC-E2E"
+    "description": "FRAUD-VERIFICATION-E2E",
+    "customerId": "CUST-VERIF-01"
 }

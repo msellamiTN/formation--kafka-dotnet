@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Mvc;
 using EBankingAuditAPI.Services;
+using EBankingAuditAPI.Models;
 
 namespace EBankingAuditAPI.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Produces("application/json")]
 public class AuditController : ControllerBase
 {
     private readonly AuditConsumerService _consumerService;
@@ -19,10 +21,10 @@ public class AuditController : ControllerBase
     }
 
     /// <summary>
-    /// Journal d'audit complet (toutes les transactions enregistrées)
+    /// Get full audit log (all recorded transactions).
     /// </summary>
     [HttpGet("log")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     public IActionResult GetAuditLog()
     {
         var records = _consumerService.GetAuditLog();
@@ -34,11 +36,11 @@ public class AuditController : ControllerBase
     }
 
     /// <summary>
-    /// Rechercher un enregistrement d'audit par TransactionId
+    /// Search audit record by TransactionId.
     /// </summary>
     [HttpGet("log/{transactionId}")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(AuditRecord), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status404NotFound)]
     public IActionResult GetAuditRecord(string transactionId)
     {
         var record = _consumerService.GetAuditRecord(transactionId);
@@ -49,10 +51,10 @@ public class AuditController : ControllerBase
     }
 
     /// <summary>
-    /// Messages envoyés en Dead Letter Queue (transactions échouées)
+    /// Get messages sent to Dead Letter Queue (failed transactions).
     /// </summary>
     [HttpGet("dlq")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     public IActionResult GetDlqMessages()
     {
         var messages = _consumerService.GetDlqMessages();
@@ -64,40 +66,40 @@ public class AuditController : ControllerBase
     }
 
     /// <summary>
-    /// Métriques du consumer : commits, doublons, DLQ, offsets
+    /// Get consumer metrics (commits, duplicates, DLQ, offsets).
     /// </summary>
     [HttpGet("metrics")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(AuditMetrics), StatusCodes.Status200OK)]
     public IActionResult GetMetrics()
     {
         return Ok(_consumerService.GetMetrics());
     }
 
     /// <summary>
-    /// Health check incluant le nombre de commits manuels
+    /// Service health check including manual commit count.
     /// </summary>
     [HttpGet("health")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status503ServiceUnavailable)]
     public IActionResult GetHealth()
     {
         var metrics = _consumerService.GetMetrics();
-        var isHealthy = metrics.ConsumerStatus == "Consuming" ||
-                        metrics.ConsumerStatus == "Running";
+        var isHealthy = metrics.ConsumerStatus == "Consuming" || metrics.ConsumerStatus == "Running";
 
-        var health = new
+        var status = new
         {
-            status = isHealthy ? "Healthy" : "Degraded",
-            consumerStatus = metrics.ConsumerStatus,
-            messagesConsumed = metrics.MessagesConsumed,
-            auditRecords = metrics.AuditRecordsCreated,
-            manualCommits = metrics.ManualCommits,
-            duplicatesSkipped = metrics.DuplicatesSkipped,
-            dlqMessages = metrics.MessagesSentToDlq,
-            lastCommitAt = metrics.LastCommitAt,
-            uptime = DateTime.UtcNow - metrics.StartedAt
+            Status = isHealthy ? "Healthy" : "Degraded",
+            Service = "E-Banking Audit & Compliance API",
+            ConsumerStatus = metrics.ConsumerStatus,
+            MessagesProcessed = metrics.MessagesConsumed,
+            AuditRecords = metrics.AuditRecordsCreated,
+            ManualCommits = metrics.ManualCommits,
+            DuplicatesSkipped = metrics.DuplicatesSkipped,
+            DlqMessages = metrics.MessagesSentToDlq,
+            LastCommitAt = metrics.LastCommitAt,
+            Uptime = DateTime.UtcNow - metrics.StartedAt
         };
 
-        return isHealthy ? Ok(health) : StatusCode(503, health);
+        return isHealthy ? Ok(status) : StatusCode(503, status);
     }
 }

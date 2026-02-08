@@ -801,14 +801,86 @@ warn: EBankingFraudDetectionAPI.Services.KafkaConsumerService
       🚨 FRAUD ALERT: TX-002 | CUST-002 | 15000EUR | Score: 60 | Montant élevé: 15000EUR
 ```
 
-#### 5. Tester via Swagger
+#### 6. Vérifier via l'API (Swagger)
 
-Ouvrez `https://localhost:5002/swagger` (ou le port configuré) :
+Ouvrez `https://localhost:5001/swagger` (ou `http://localhost:5000/swagger`) :
+- `GET /api/FraudDetection/alerts` : Liste toutes les alertes.
+- `GET /api/FraudDetection/metrics` : Statistiques de consommation et offsets.
 
-- **GET /api/frauddetection/alerts** → Toutes les alertes
-- **GET /api/frauddetection/alerts/high-risk** → Alertes critiques
-- **GET /api/frauddetection/metrics** → Métriques du consumer
-- **GET /api/frauddetection/health** → État de santé
+---
+
+## ☁️ Alternative : Déploiement sur OpenShift Sandbox
+
+Si vous utilisez l'environnement **OpenShift Sandbox**, suivez ces étapes pour déployer et exposer votre Consumer publiquement.
+
+### 1. Préparer le Build et le Déploiement
+
+```bash
+# Se placer dans le dossier du projet
+cd EBankingFraudDetectionAPI
+
+# Créer une build binaire pour .NET
+oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-fraud-detection-api
+
+# Lancer la build en envoyant le dossier courant
+oc start-build ebanking-fraud-detection-api --from-dir=. --follow
+
+# Créer l'application
+oc new-app ebanking-fraud-detection-api
+```
+
+### 2. Configurer les variables d'environnement
+
+Le Consumer doit savoir où se trouve Kafka (interne au cluster) et quel groupe utiliser.
+
+```bash
+oc set env deployment/ebanking-fraud-detection-api \
+  Kafka__BootstrapServers=kafka-svc:9092 \
+  Kafka__GroupId=fraud-detection-service \
+  Kafka__Topic=banking.transactions \
+  ASPNETCORE_URLS=http://0.0.0.0:8080 \
+  ASPNETCORE_ENVIRONMENT=Development
+```
+
+### 3. Exposer publiquement (Secure Edge Route)
+
+```bash
+oc create route edge ebanking-fraud-api-secure --service=ebanking-fraud-detection-api --port=8080-tcp
+```
+
+### 4. Tester l'API déployée
+
+```bash
+# Obtenir l'URL publique
+URL=$(oc get route ebanking-fraud-api-secure -o jsonpath='{.spec.host}')
+echo "https://$URL/swagger"
+
+# Tester le Health Check
+curl -k -i "https://$URL/api/FraudDetection/health"
+
+# Voir les métriques de consommation
+curl -k -s "https://$URL/api/FraudDetection/metrics"
+```
+
+### 5. Test de Bout-en-Bout (E2E)
+
+1. Envoyez une transaction via l'**API Producer Resilient** (Lab 1.2c).
+2. Vérifiez immédiatement les **Logs** du Consumer :
+   ```bash
+   oc logs deployment/ebanking-fraud-detection-api -f
+   ```
+3. Vérifiez l'apparition de l'alerte dans les métriques :
+   ```bash
+   curl -k -s "https://$URL/api/FraudDetection/alerts/high-risk"
+   ```
+
+---
+
+## 🏆 Critères de succès
+1. L'application démarre et affiche `✅ Partitions assigned`.
+2. Le `messagesConsumed` augmente quand vous envoyez des transactions.
+3. Les transactions > 10,000€ génèrent une `🚨 FRAUD ALERT` dans les logs et l'API.
+4. Les offsets sont commités automatiquement toutes les 5 secondes (visible dans les logs Kafka ou UI).
 
 ---
 

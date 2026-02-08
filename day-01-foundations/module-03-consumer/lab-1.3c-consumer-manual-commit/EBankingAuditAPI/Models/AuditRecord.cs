@@ -7,19 +7,19 @@ public class AuditRecord
     public string CustomerId { get; set; } = string.Empty;
     public decimal Amount { get; set; }
     public string Currency { get; set; } = "EUR";
-    public string Type { get; set; } = string.Empty;
+    public int Type { get; set; }
     public string FromAccount { get; set; } = string.Empty;
     public string ToAccount { get; set; } = string.Empty;
     public DateTime TransactionTimestamp { get; set; }
     public DateTime AuditTimestamp { get; set; } = DateTime.UtcNow;
     public string Status { get; set; } = "Recorded"; // Recorded, Failed, DLQ
 
-    // Métadonnées Kafka
+    // Kafka Metadata
     public int KafkaPartition { get; set; }
     public long KafkaOffset { get; set; }
     public string ConsumerGroupId { get; set; } = string.Empty;
 
-    // Traçabilité
+    // Traceability
     public int ProcessingAttempts { get; set; } = 1;
     public string? ErrorDetails { get; set; }
 }

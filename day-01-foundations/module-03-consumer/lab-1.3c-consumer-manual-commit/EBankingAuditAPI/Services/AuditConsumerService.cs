@@ -11,12 +11,12 @@ public class AuditConsumerService : BackgroundService
     private readonly ILogger<AuditConsumerService> _logger;
     private readonly IConfiguration _configuration;
 
-    // Audit store (in-memory, idempotent par TransactionId)
+    // Audit store (in-memory, idempotent by TransactionId)
     private readonly ConcurrentDictionary<string, AuditRecord> _auditLog = new();
     private readonly ConcurrentBag<DlqMessage> _dlqMessages = new();
     private readonly ConcurrentDictionary<int, long> _committedOffsets = new();
 
-    // Métriques
+    // Metrics
     private long _messagesConsumed;
     private long _auditRecords;
     private long _duplicatesSkipped;
@@ -57,7 +57,7 @@ public class AuditConsumerService : BackgroundService
             ClientId = $"audit-worker-{Environment.MachineName}-{Guid.NewGuid().ToString()[..8]}",
             AutoOffsetReset = AutoOffsetReset.Earliest,
 
-            // *** MANUAL COMMIT : clé de ce lab ***
+            // *** MANUAL COMMIT: key feature of this lab ***
             EnableAutoCommit = false,
 
             SessionTimeoutMs = 10000,
@@ -69,7 +69,7 @@ public class AuditConsumerService : BackgroundService
         var topic = _configuration["Kafka:Topic"] ?? "banking.transactions";
         var dlqTopic = _configuration["Kafka:DlqTopic"] ?? "banking.transactions.audit-dlq";
 
-        // Créer le DLQ producer
+        // Create DLQ producer
         _dlqProducer = new ProducerBuilder<string, string>(new ProducerConfig
         {
             BootstrapServers = bootstrapServers,
@@ -95,7 +95,7 @@ public class AuditConsumerService : BackgroundService
             })
             .SetPartitionsRevokedHandler((c, partitions) =>
             {
-                // IMPORTANT : Commit avant que les partitions soient révoquées
+                // IMPORTANT: Commit before partitions are revoked
                 _logger.LogWarning("⚠️ Partitions revoked: [{Partitions}] — Committing offsets before revocation",
                     string.Join(", ", partitions.Select(p => p.Partition.Value)));
                 try
@@ -127,16 +127,17 @@ public class AuditConsumerService : BackgroundService
             {
                 try
                 {
+                    // Poll for messages
                     var consumeResult = consumer.Consume(stoppingToken);
                     if (consumeResult == null) continue;
 
                     var success = await ProcessWithRetryAsync(consumeResult, dlqTopic);
 
-                    // Stocker l'offset pour commit (que le traitement ait réussi ou envoyé en DLQ)
+                    // Store offset for commit (whether processing succeeded or sent to DLQ)
                     consumer.StoreOffset(consumeResult);
                     _uncommittedCount++;
 
-                    // Commit par batch ou par intervalle
+                    // Batch commit
                     if (_uncommittedCount >= CommitBatchSize)
                     {
                         consumer.Commit();
@@ -154,15 +155,20 @@ public class AuditConsumerService : BackgroundService
                     _logger.LogError(ex, "Consume error: {Reason}", ex.Error.Reason);
                     Interlocked.Increment(ref _processingErrors);
                 }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
             }
         }
-        catch (OperationCanceledException)
+        catch (Exception ex)
         {
-            _logger.LogInformation("Consumer shutdown requested");
+            _logger.LogCritical(ex, "Uncaught exception in Consumer loop");
+            _status = "Faulted";
         }
         finally
         {
-            // GRACEFUL SHUTDOWN : commit final avant fermeture
+            // GRACEFUL SHUTDOWN: final commit before close
             _logger.LogInformation("🛑 Graceful shutdown: committing final offsets...");
             try
             {
@@ -204,7 +210,7 @@ public class AuditConsumerService : BackgroundService
                     return false;
                 }
 
-                // IDEMPOTENCE : vérifier si déjà traité
+                // IDEMPOTENCE: check if already processed
                 if (_auditLog.ContainsKey(transaction.TransactionId))
                 {
                     Interlocked.Increment(ref _duplicatesSkipped);
@@ -214,7 +220,7 @@ public class AuditConsumerService : BackgroundService
                     return true;
                 }
 
-                // Créer l'enregistrement d'audit
+                // Create audit record
                 var auditRecord = new AuditRecord
                 {
                     TransactionId = transaction.TransactionId,
@@ -231,7 +237,7 @@ public class AuditConsumerService : BackgroundService
                     ProcessingAttempts = attempt
                 };
 
-                // Persister (in-memory, simule une écriture en base)
+                // Persist (in-memory, simulates DB write)
                 _auditLog[transaction.TransactionId] = auditRecord;
                 Interlocked.Increment(ref _auditRecords);
 
@@ -241,7 +247,7 @@ public class AuditConsumerService : BackgroundService
                     transaction.Amount, transaction.Currency, transaction.Type,
                     result.Partition.Value, result.Offset.Value, attempt);
 
-                // Simuler persistance en base (peut échouer)
+                // Simulate DB persistence (may fail)
                 await Task.Delay(30);
                 return true;
             }
@@ -318,7 +324,7 @@ public class AuditConsumerService : BackgroundService
         }
     }
 
-    // Méthodes publiques pour l'API
+    // Public methods for API access
     public IReadOnlyList<AuditRecord> GetAuditLog() =>
         _auditLog.Values.OrderByDescending(a => a.AuditTimestamp).ToList().AsReadOnly();
 

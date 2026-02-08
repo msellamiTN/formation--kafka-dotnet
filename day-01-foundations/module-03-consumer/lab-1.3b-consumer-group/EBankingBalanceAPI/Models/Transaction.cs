@@ -20,7 +20,7 @@ public class Transaction
     public string Currency { get; set; } = "EUR";
 
     [JsonPropertyName("type")]
-    public string Type { get; set; } = "Transfer";
+    public int Type { get; set; }
 
     [JsonPropertyName("customerId")]
     public string CustomerId { get; set; } = string.Empty;

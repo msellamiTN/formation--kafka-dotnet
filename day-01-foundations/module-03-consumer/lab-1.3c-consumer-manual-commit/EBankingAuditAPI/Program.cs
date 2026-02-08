@@ -1,7 +1,9 @@
 using EBankingAuditAPI.Services;
+using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Register Kafka Consumer as a Singleton Background Service
 builder.Services.AddSingleton<AuditConsumerService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<AuditConsumerService>());
 
@@ -9,11 +11,11 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new()
+    c.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "E-Banking Audit & Compliance API",
         Version = "v1",
-        Description = "Consumer Kafka avec manual commit pour l'audit réglementaire des transactions bancaires (at-least-once)"
+        Description = "Kafka Consumer with manual commit for regulatory audit of bank transactions (at-least-once)."
     });
 });
 

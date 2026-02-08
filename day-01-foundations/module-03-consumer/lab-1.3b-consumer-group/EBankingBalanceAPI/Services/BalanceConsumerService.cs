@@ -10,7 +10,7 @@ public class BalanceConsumerService : BackgroundService
     private readonly ILogger<BalanceConsumerService> _logger;
     private readonly IConfiguration _configuration;
 
-    // Stockage partagé des soldes (thread-safe)
+    // In-Memory Storage for balances (thread-safe)
     private readonly ConcurrentDictionary<string, CustomerBalance> _balances = new();
     private readonly ConcurrentDictionary<int, long> _partitionOffsets = new();
     private readonly ConcurrentBag<RebalancingEvent> _rebalancingHistory = new();
@@ -50,7 +50,7 @@ public class BalanceConsumerService : BackgroundService
             SessionTimeoutMs = 10000,
             HeartbeatIntervalMs = 3000,
             MaxPollIntervalMs = 300000,
-            // CooperativeSticky : rebalancing incrémental (pas de stop-the-world complet)
+            // CooperativeSticky: incremental rebalancing (no stop-the-world)
             PartitionAssignmentStrategy = PartitionAssignmentStrategy.CooperativeSticky
         };
 
@@ -129,6 +129,7 @@ public class BalanceConsumerService : BackgroundService
             {
                 try
                 {
+                    // Poll for messages
                     var consumeResult = consumer.Consume(stoppingToken);
                     if (consumeResult == null) continue;
 
@@ -139,11 +140,16 @@ public class BalanceConsumerService : BackgroundService
                     _logger.LogError(ex, "[{Consumer}] Consume error: {Reason}", _consumerId, ex.Error.Reason);
                     Interlocked.Increment(ref _processingErrors);
                 }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
             }
         }
-        catch (OperationCanceledException)
+        catch (Exception ex)
         {
-            _logger.LogInformation("[{Consumer}] Shutdown requested", _consumerId);
+            _logger.LogCritical(ex, "[{Consumer}] Uncaught exception in Consumer loop", _consumerId);
+            _status = "Faulted";
         }
         finally
         {
@@ -164,10 +170,10 @@ public class BalanceConsumerService : BackgroundService
                 return;
             }
 
-            // Mettre à jour le solde du client
+            // Update customer balance
             _balances.AddOrUpdate(
                 transaction.CustomerId,
-                // Nouveau client
+                // New customer
                 new CustomerBalance
                 {
                     CustomerId = transaction.CustomerId,
@@ -176,7 +182,7 @@ public class BalanceConsumerService : BackgroundService
                     LastUpdated = DateTime.UtcNow,
                     LastTransactionId = transaction.TransactionId
                 },
-                // Client existant
+                // Existing customer
                 (key, existing) =>
                 {
                     existing.Balance += GetBalanceChange(transaction);
@@ -186,14 +192,14 @@ public class BalanceConsumerService : BackgroundService
                     return existing;
                 });
 
-            // Métriques
+            // Update metrics
             Interlocked.Increment(ref _messagesConsumed);
             Interlocked.Increment(ref _balanceUpdates);
             _lastMessageAt = DateTime.UtcNow;
             _partitionOffsets[result.Partition.Value] = result.Offset.Value;
 
             _logger.LogInformation(
-                "💰 [{Consumer}] {Customer}: {Sign}{Amount}{Currency} ({Type}) → Solde: {Balance}{Currency2} | P{Partition}:O{Offset}",
+                "💰 [{Consumer}] {Customer}: {Sign}{Amount}{Currency} (type={Type}) → Balance: {Balance}{Currency2} | P{Partition}:O{Offset}",
                 _consumerId,
                 transaction.CustomerId,
                 GetBalanceChange(transaction) >= 0 ? "+" : "",
@@ -205,7 +211,7 @@ public class BalanceConsumerService : BackgroundService
                 result.Partition.Value,
                 result.Offset.Value);
 
-            // Simuler traitement (écriture en base en production)
+            // Simulate processing time
             await Task.Delay(20);
         }
         catch (Exception ex)
@@ -218,15 +224,16 @@ public class BalanceConsumerService : BackgroundService
 
     private static decimal GetBalanceChange(Transaction tx)
     {
+        // 3=Deposit, 1=Transfer -> credit; 4=Withdrawal, 5=CardPayment, 7=BillPayment -> debit
         return tx.Type switch
         {
-            "Deposit" or "Transfer" when tx.Amount > 0 => tx.Amount,
-            "Withdrawal" or "CardPayment" or "BillPayment" => -tx.Amount,
+            3 or 1 when tx.Amount > 0 => tx.Amount,
+            4 or 5 or 7 => -tx.Amount,
             _ => tx.Amount
         };
     }
 
-    // Méthodes publiques pour l'API
+    // Public methods for API access
     public IReadOnlyDictionary<string, CustomerBalance> GetAllBalances() =>
         new Dictionary<string, CustomerBalance>(_balances);
 

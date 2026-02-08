@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Mvc;
 using EBankingBalanceAPI.Services;
+using EBankingBalanceAPI.Models;
 
 namespace EBankingBalanceAPI.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Produces("application/json")]
 public class BalanceController : ControllerBase
 {
     private readonly BalanceConsumerService _consumerService;
@@ -19,10 +21,10 @@ public class BalanceController : ControllerBase
     }
 
     /// <summary>
-    /// Récupère les soldes de tous les clients
+    /// Get all customer balances computed from consumed transactions.
     /// </summary>
     [HttpGet("balances")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     public IActionResult GetAllBalances()
     {
         var balances = _consumerService.GetAllBalances();
@@ -34,11 +36,11 @@ public class BalanceController : ControllerBase
     }
 
     /// <summary>
-    /// Récupère le solde d'un client spécifique
+    /// Get balance for a specific customer.
     /// </summary>
     [HttpGet("balances/{customerId}")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(CustomerBalance), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status404NotFound)]
     public IActionResult GetBalance(string customerId)
     {
         var balance = _consumerService.GetBalance(customerId);
@@ -49,20 +51,20 @@ public class BalanceController : ControllerBase
     }
 
     /// <summary>
-    /// Métriques du consumer : partitions, offsets, rebalancing history
+    /// Get Kafka consumer group metrics (partitions, offsets, rebalancing history).
     /// </summary>
     [HttpGet("metrics")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ConsumerGroupMetrics), StatusCodes.Status200OK)]
     public IActionResult GetMetrics()
     {
         return Ok(_consumerService.GetMetrics());
     }
 
     /// <summary>
-    /// Historique des rebalancing (assignations, révocations)
+    /// Get partition rebalancing history (assignments, revocations, losses).
     /// </summary>
     [HttpGet("rebalancing-history")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     public IActionResult GetRebalancingHistory()
     {
         var metrics = _consumerService.GetMetrics();
@@ -76,27 +78,28 @@ public class BalanceController : ControllerBase
     }
 
     /// <summary>
-    /// Health check incluant le statut du consumer group
+    /// Service health check including consumer group status.
     /// </summary>
     [HttpGet("health")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status503ServiceUnavailable)]
     public IActionResult GetHealth()
     {
         var metrics = _consumerService.GetMetrics();
         var isHealthy = metrics.Status == "Consuming" || metrics.Status == "Running";
 
-        var health = new
+        var status = new
         {
-            status = isHealthy ? "Healthy" : "Degraded",
-            consumerId = metrics.ConsumerId,
-            consumerStatus = metrics.Status,
-            assignedPartitions = metrics.AssignedPartitions,
-            messagesConsumed = metrics.MessagesConsumed,
-            lastMessageAt = metrics.LastMessageAt,
-            uptime = DateTime.UtcNow - metrics.StartedAt
+            Status = isHealthy ? "Healthy" : "Degraded",
+            Service = "E-Banking Balance API",
+            ConsumerId = metrics.ConsumerId,
+            ConsumerStatus = metrics.Status,
+            AssignedPartitions = metrics.AssignedPartitions,
+            MessagesProcessed = metrics.MessagesConsumed,
+            LastMessageAt = metrics.LastMessageAt,
+            Uptime = DateTime.UtcNow - metrics.StartedAt
         };
 
-        return isHealthy ? Ok(health) : StatusCode(503, health);
+        return isHealthy ? Ok(status) : StatusCode(503, status);
     }
 }
