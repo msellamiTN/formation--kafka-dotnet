@@ -4,7 +4,18 @@
 |-------|--------|-----------|
 | 3 heures | Intermédiaire | Modules 01-04 complétés |
 
-## 🎯 Objectifs d'apprentissage
+## � Scénario E-Banking (suite)
+
+Dans le contexte bancaire BHF, les transactions arrivent en continu via Kafka. Ce module vous apprend à traiter ces flux en temps réel avec **Kafka Streams** :
+
+- **KStream** des événements de vente (`sales-events`) → analogie avec un flux de transactions bancaires
+- **KTable** des produits (`products`) → analogie avec un référentiel de comptes ou de clients
+- **Agrégations** par produit → analogie avec le calcul en temps réel du solde par compte
+- **Windowing** par minute → analogie avec la détection de fraude par fenêtre temporelle
+
+> **Note** : Les labs utilisent des topics `sales-events` / `sales-by-product` pour rester cohérents avec le code Java fourni. Les patterns (KStream, KTable, windowing, jointures) s'appliquent directement à un pipeline `banking.transactions`.
+
+## �🎯 Objectifs d'apprentissage
 
 À la fin de ce module, vous serez capable de :
 
@@ -23,6 +34,12 @@
 #### Qu'est-ce que Kafka Streams ?
 
 **Kafka Streams** est une bibliothèque Java pour construire des applications de traitement de flux en temps réel. Contrairement à Spark ou Flink, elle ne nécessite pas de cluster séparé.
+
+> **ℹ️ Note .NET** : Kafka Streams n'a pas d'équivalent officiel en .NET. Alternatives :
+> - [Streamiz.Kafka.Net](https://github.com/LGouellec/kafka-streams-dotnet) — port communautaire de l'API Kafka Streams pour .NET
+> - **ksqlDB** — requêtes SQL en temps réel sur Kafka, accessible via REST API depuis n'importe quel langage
+>
+> Ce module utilise Java car c'est le seul SDK officiel pour Kafka Streams. Les concepts (KStream, KTable, topologie, windowing) restent identiques quelle que soit l'implémentation.
 
 ```mermaid
 flowchart LR

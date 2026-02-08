@@ -121,57 +121,71 @@ flowchart TB
     E1 -->|"cause"| E2 -->|"cause"| E3
 ```
 
-#### Implémentation Java avec OpenTelemetry
+#### Implémentation .NET avec OpenTelemetry
 
-```java
+```csharp
+// NuGet: OpenTelemetry, OpenTelemetry.Exporter.Jaeger
+using System.Diagnostics;
+using OpenTelemetry;
+using OpenTelemetry.Context.Propagation;
+
+// Définir un ActivitySource pour l'application
+private static readonly ActivitySource ActivitySource = new("KafkaTracing");
+private static readonly TextMapPropagator Propagator = Propagators.DefaultTextMapPropagator;
+
 // Producer - Injection du contexte
-@Autowired
-private Tracer tracer;
+async Task SendWithTracingAsync(IProducer<string, string> producer,
+    string topic, string key, string value)
+{
+    using var activity = ActivitySource.StartActivity("kafka-produce", ActivityKind.Producer);
+    activity?.SetTag("messaging.system", "kafka");
+    activity?.SetTag("messaging.destination", topic);
 
-public void send(String topic, String key, String value) {
-    Span span = tracer.spanBuilder("kafka-produce")
-        .setSpanKind(SpanKind.PRODUCER)
-        .startSpan();
-    
-    try (Scope scope = span.makeCurrent()) {
-        ProducerRecord<String, String> record = new ProducerRecord<>(topic, key, value);
-        
-        // Injecter le contexte dans les headers
-        Context context = Context.current();
-        GlobalOpenTelemetry.getPropagators().getTextMapPropagator()
-            .inject(context, record.headers(), (headers, k, v) -> 
-                headers.add(k, v.getBytes()));
-        
-        producer.send(record);
-    } finally {
-        span.end();
+    var headers = new Headers();
+
+    // Injecter le contexte W3C dans les headers Kafka
+    if (activity != null)
+    {
+        Propagator.Inject(
+            new PropagationContext(activity.Context, Baggage.Current),
+            headers,
+            (h, k, v) => h.Add(k, Encoding.UTF8.GetBytes(v)));
     }
+
+    await producer.ProduceAsync(topic, new Message<string, string>
+    {
+        Key = key, Value = value, Headers = headers
+    });
 }
 ```
 
-```java
+```csharp
 // Consumer - Extraction du contexte
-public void consume(ConsumerRecord<String, String> record) {
-    // Extraire le contexte des headers
-    Context extractedContext = GlobalOpenTelemetry.getPropagators()
-        .getTextMapPropagator()
-        .extract(Context.current(), record.headers(), 
-            (headers, key) -> {
-                Header h = headers.lastHeader(key);
-                return h != null ? new String(h.value()) : null;
-            });
-    
-    Span span = tracer.spanBuilder("kafka-consume")
-        .setSpanKind(SpanKind.CONSUMER)
-        .setParent(extractedContext)
-        .startSpan();
-    
-    try (Scope scope = span.makeCurrent()) {
-        // Traitement du message
-        processMessage(record);
-    } finally {
-        span.end();
-    }
+void ConsumeWithTracing(ConsumeResult<string, string> result)
+{
+    // Extraire le contexte W3C des headers Kafka
+    var parentContext = Propagator.Extract(
+        default,
+        result.Message.Headers,
+        (headers, key) =>
+        {
+            var header = headers.FirstOrDefault(h => h.Key == key);
+            return header != null
+                ? new[] { Encoding.UTF8.GetString(header.GetValueBytes()) }
+                : Enumerable.Empty<string>();
+        });
+
+    Baggage.Current = parentContext.Baggage;
+
+    using var activity = ActivitySource.StartActivity(
+        "kafka-consume",
+        ActivityKind.Consumer,
+        parentContext.ActivityContext);
+    activity?.SetTag("messaging.system", "kafka");
+    activity?.SetTag("messaging.destination", result.Topic);
+
+    // Traitement du message
+    ProcessMessage(result);
 }
 ```
 

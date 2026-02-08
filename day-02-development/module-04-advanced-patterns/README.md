@@ -4,14 +4,25 @@
 |-------|--------|-----------|
 | 3 heures | Intermédiaire | Modules 01-03 complétés |
 
-## 🎯 Objectifs d'apprentissage
+## � Scénario E-Banking (suite)
+
+Dans les modules précédents, vous avez construit un Producer et un Consumer pour traiter les transactions bancaires (`banking.transactions`). Dans ce module, vous allez renforcer la **résilience** de ce pipeline en ajoutant :
+
+- Un **Dead Letter Topic** pour isoler les transactions qui échouent au traitement (montant invalide, client inconnu, etc.)
+- Des **retries avec backoff exponentiel** pour les erreurs transitoires (timeout base de données, service de scoring indisponible)
+- Le **rebalancing CooperativeSticky** pour scaler horizontalement le service de détection de fraude
+
+> **Note** : Les labs pratiques utilisent un topic `orders` générique configurable via la variable d'environnement `KAFKA_TOPIC`. Les patterns appris s'appliquent directement à votre pipeline `banking.transactions`.
+
+## �🎯 Objectifs d'apprentissage
 
 À la fin de ce module, vous serez capable de :
 
 - ✅ Implémenter un Dead Letter Topic (DLT) pour gérer les messages en erreur
-- ✅ Configurer des stratégies de retry robustes
+- ✅ Configurer des stratégies de retry robustes avec Polly (.NET) ou Spring Retry (Java)
 - ✅ Comprendre et gérer le rebalancing des consumer groups
 - ✅ Implémenter des patterns de gestion d'erreurs professionnels
+- ✅ Appliquer ces patterns à un pipeline de transactions bancaires
 
 ---
 
@@ -92,16 +103,25 @@ flowchart TB
 
 #### Configuration recommandée
 
-```java
-// Backoff exponentiel avec jitter
-RetryConfig config = RetryConfig.builder()
-    .maxAttempts(5)
-    .initialDelay(Duration.ofSeconds(1))
-    .maxDelay(Duration.ofMinutes(5))
-    .multiplier(2.0)
-    .jitterFactor(0.2)
-    .retryOn(TransientException.class)
-    .build();
+```csharp
+// Backoff exponentiel avec jitter (utilisant Polly)
+var retryPolicy = Policy
+    .Handle<KafkaException>(ex => ex.Error.IsFatal == false) // Erreurs transient uniquement
+    .WaitAndRetryAsync(
+        retryCount: 5,
+        sleepDurationProvider: attempt =>
+        {
+            var baseDelay = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1)); // 1s, 2s, 4s, 8s, 16s
+            var maxDelay = TimeSpan.FromMinutes(5);
+            var delay = baseDelay < maxDelay ? baseDelay : maxDelay;
+            var jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(0, (int)(delay.TotalMilliseconds * 0.2)));
+            return delay + jitter;
+        },
+        onRetry: (exception, timespan, attempt, context) =>
+        {
+            logger.LogWarning("Retry {Attempt}/5 dans {Delay}ms : {Error}",
+                attempt, timespan.TotalMilliseconds, exception.Message);
+        });
 ```
 
 #### Erreurs Retryables vs Non-Retryables
@@ -153,23 +173,26 @@ flowchart LR
 
 #### Callbacks de Rebalancing
 
-```java
-consumer.subscribe(topics, new ConsumerRebalanceListener() {
-    @Override
-    public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
+```csharp
+using var consumer = new ConsumerBuilder<string, string>(config)
+    .SetPartitionsRevokedHandler((c, partitions) =>
+    {
         // Appelé AVANT que les partitions soient retirées
         // → Commit les offsets, flush les buffers
-        log.info("Partitions révoquées: {}", partitions);
-        consumer.commitSync();
-    }
-
-    @Override
-    public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
+        logger.LogInformation("Partitions révoquées: {Partitions}",
+            string.Join(", ", partitions));
+        c.Commit();
+    })
+    .SetPartitionsAssignedHandler((c, partitions) =>
+    {
         // Appelé APRÈS que les nouvelles partitions sont assignées
         // → Initialiser l'état, seek si nécessaire
-        log.info("Partitions assignées: {}", partitions);
-    }
-});
+        logger.LogInformation("Partitions assignées: {Partitions}",
+            string.Join(", ", partitions));
+    })
+    .Build();
+
+consumer.Subscribe(topics);
 ```
 
 ---
@@ -202,38 +225,51 @@ flowchart LR
 
 #### Pattern de gestion d'erreurs complet
 
-```java
-public void processWithErrorHandling(ConsumerRecords<String, String> records) {
-    for (ConsumerRecord<String, String> record : records) {
-        int retryCount = 0;
-        boolean processed = false;
-        
-        while (!processed && retryCount < MAX_RETRIES) {
-            try {
-                // Traitement métier
-                processRecord(record);
-                processed = true;
-                
-            } catch (TransientException e) {
-                // Erreur temporaire → retry
-                retryCount++;
-                log.warn("Retry {}/{} pour offset {}", 
-                    retryCount, MAX_RETRIES, record.offset());
-                sleepWithBackoff(retryCount);
-                
-            } catch (PermanentException e) {
-                // Erreur permanente → DLT immédiat
-                sendToDlt(record, e);
-                processed = true;
-            }
+```csharp
+async Task ProcessWithErrorHandlingAsync(
+    ConsumeResult<string, string> result, 
+    ILogger logger,
+    int maxRetries = 3)
+{
+    int retryCount = 0;
+    bool processed = false;
+
+    while (!processed && retryCount < maxRetries)
+    {
+        try
+        {
+            // Traitement métier
+            await ProcessRecordAsync(result);
+            processed = true;
         }
-        
-        if (!processed) {
-            // Max retries atteint → DLT
-            sendToDlt(record, new MaxRetriesExceededException());
+        catch (Exception ex) when (IsTransient(ex))
+        {
+            // Erreur temporaire → retry
+            retryCount++;
+            logger.LogWarning("Retry {RetryCount}/{MaxRetries} pour offset {Offset}: {Error}",
+                retryCount, maxRetries, result.Offset.Value, ex.Message);
+            var delay = TimeSpan.FromSeconds(Math.Pow(2, retryCount - 1)
+                        + Random.Shared.NextDouble());
+            await Task.Delay(delay);
+        }
+        catch (Exception ex)
+        {
+            // Erreur permanente → DLT immédiat
+            await SendToDltAsync(result, ex);
+            processed = true;
         }
     }
+
+    if (!processed)
+    {
+        // Max retries atteint → DLT
+        await SendToDltAsync(result, new InvalidOperationException("Max retries exceeded"));
+    }
 }
+
+bool IsTransient(Exception ex) => ex is TimeoutException
+    or OperationCanceledException
+    or KafkaException { Error.IsFatal: false };
 ```
 
 ---
@@ -246,6 +282,15 @@ public void processWithErrorHandling(ConsumerRecords<String, String> records) {
 | .NET API (Consumer) | 18083 | Consumer avec rebalancing |
 | Kafka UI | 8080 | Visualisation des topics |
 | Kafka | 9092 | Broker externe |
+
+### 🔷 Code .NET disponible
+
+Le consumer .NET avec rebalancing et manual commit est disponible dans [`dotnet/Program.cs`](./dotnet/Program.cs). Il implémente :
+
+- `CooperativeSticky` partition assignment
+- `SetPartitionsAssignedHandler` / `SetPartitionsRevokedHandler` / `SetPartitionsLostHandler`
+- Manual commit après chaque message
+- API REST pour exposer les stats (`/api/v1/stats`, `/api/v1/partitions`)
 
 ---
 

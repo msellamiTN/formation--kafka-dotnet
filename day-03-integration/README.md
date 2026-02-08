@@ -155,20 +155,29 @@ flowchart TB
 
 ### Testing
 
-> **⚡ Préférer MockProducer pour les tests unitaires**
-> ```java
-> MockProducer<String, String> producer = new MockProducer<>(
->     true, new StringSerializer(), new StringSerializer());
+> **⚡ Préférer Moq pour les tests unitaires du Producer**
+> ```csharp
+> var mockProducer = new Mock<IProducer<string, string>>();
+> mockProducer.Setup(p => p.ProduceAsync(
+>     It.IsAny<string>(),
+>     It.IsAny<Message<string, string>>(),
+>     It.IsAny<CancellationToken>()))
+>     .ReturnsAsync(new DeliveryResult<string, string>());
 > 
 > // Vérifier les messages envoyés
-> assertEquals(1, producer.history().size());
+> mockProducer.Verify(p => p.ProduceAsync("orders",
+>     It.IsAny<Message<string, string>>(),
+>     It.IsAny<CancellationToken>()), Times.Once);
 > ```
 
 > **🐳 Utiliser Testcontainers pour l'intégration**
-> ```java
-> @Container
-> static KafkaContainer kafka = new KafkaContainer(
->     DockerImageName.parse("confluentinc/cp-kafka:7.5.0"));
+> ```csharp
+> // NuGet: Testcontainers.Kafka
+> var kafka = new KafkaBuilder()
+>     .WithImage("confluentinc/cp-kafka:7.5.0")
+>     .Build();
+> await kafka.StartAsync();
+> var bootstrapServers = kafka.GetBootstrapAddress();
 > ```
 
 ### Observabilité
@@ -184,9 +193,15 @@ flowchart TB
 > ```
 
 > **🔗 Propager les correlation IDs dans les headers**
-> ```java
-> record.headers().add("correlation-id", 
->     UUID.randomUUID().toString().getBytes());
+> ```csharp
+> var message = new Message<string, string>
+> {
+>     Key = key, Value = value,
+>     Headers = new Headers
+>     {
+>         { "correlation-id", Encoding.UTF8.GetBytes(Guid.NewGuid().ToString()) }
+>     }
+> };
 > ```
 
 ---
@@ -290,4 +305,4 @@ docker-compose -f docker-compose.module.yml up -d
 
 ⬅️ **[Day 02 - Développement](../day-02-development/README.md)**
 
-🏠 **[Overview](../00-overview/README.md)**
+🏠 **[Overview](../README.md)**

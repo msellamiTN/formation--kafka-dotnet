@@ -23,8 +23,8 @@ public class KeyedKafkaProducerService : IDisposable
         {
             BootstrapServers = config["Kafka:BootstrapServers"] ?? "localhost:9092",
             ClientId = config["Kafka:ClientId"] ?? "ebanking-keyed-producer-api",
-            Acks = Acks.All,
-            EnableIdempotence = true,
+            Acks = Acks.Leader, // Changed from All to Leader for Sandbox stability
+            EnableIdempotence = false, // Disabled for Sandbox stability
             MessageSendMaxRetries = 3,
             RetryBackoffMs = 1000,
             LingerMs = 10,

@@ -121,7 +121,8 @@ Vous devez avoir complété le LAB 1.2A (API Producer Basique).
 
 ### Topic Kafka créé
 
-**Docker** :
+<details>
+<summary>🐳 Mode: Docker</summary>
 
 ```bash
 docker exec kafka /opt/kafka/bin/kafka-topics.sh \
@@ -131,8 +132,10 @@ docker exec kafka /opt/kafka/bin/kafka-topics.sh \
   --partitions 6 \
   --replication-factor 1
 ```
+</details>
 
-**OKD/K3s** :
+<details>
+<summary>☸️ Mode: OKD / K3s</summary>
 
 ```bash
 kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
@@ -140,10 +143,34 @@ kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 
   bin/kafka-topics.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
   --create --if-not-exists --topic banking.transactions --partitions 6 --replication-factor 3
 ```
+</details>
+
+<details>
+<summary>☁️ Mode: OpenShift Sandbox</summary>
+
+```bash
+# Via le terminal OpenShift ou localement avec 'oc'
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists --topic banking.transactions --partitions 6 --replication-factor 3
+```
+</details>
 
 ---
 
 ## 🚀 Instructions Pas à Pas
+
+### Étape 0 : Auto-Vérification de l'Environnement
+
+Avant de commencer, vérifiez que votre cluster est prêt :
+
+| Composant | Status | Commande de vérification |
+| :--- | :--- | :--- |
+| **Kafka Broker** | En ligne | `oc get pods \| grep kafka` ou `docker ps` |
+| **Topic** | Créé (6 part.) | `oc exec kafka-0 -- bin/kafka-topics.sh --list --bootstrap-server localhost:9092` |
+| **Connectivité** | OK | `oc exec kafka-0 -- bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic test --request-required-acks 1` |
+
+---
 
 ### Étape 1 : Créer le projet API Web
 
@@ -233,9 +260,64 @@ sequenceDiagram
 
 ---
 
-### Étape 3 : Créer le modèle Transaction (réutiliser LAB 1.2A)
+### Étape 3 : Créer le modèle Transaction
 
-Copier le fichier `Models/Transaction.cs` du LAB 1.2A ou le recréer identique.
+Créer le dossier `Models` et le fichier `Models/Transaction.cs` :
+
+```csharp
+using System.ComponentModel.DataAnnotations;
+
+namespace EBankingKeyedProducerAPI.Models;
+
+public enum TransactionType
+{
+    Transfer = 1, Payment = 2, Deposit = 3, 
+    Withdrawal = 4, Refund = 5, International = 6
+}
+
+public enum TransactionStatus
+{
+    Pending, Processing, Completed, Failed, Rejected
+}
+
+public class Transaction
+{
+    [Required]
+    public string TransactionId { get; set; } = Guid.NewGuid().ToString();
+
+    [Required]
+    [StringLength(20, MinimumLength = 10)]
+    public string FromAccount { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(20, MinimumLength = 10)]
+    public string ToAccount { get; set; } = string.Empty;
+
+    [Required]
+    [Range(0.01, 1_000_000.00)]
+    public decimal Amount { get; set; }
+
+    [Required]
+    [StringLength(3, MinimumLength = 3)]
+    public string Currency { get; set; } = "EUR";
+
+    [Required]
+    public TransactionType Type { get; set; }
+
+    [StringLength(500)]
+    public string? Description { get; set; }
+
+    [Required]
+    public string CustomerId { get; set; } = string.Empty;
+
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+    [Range(0, 100)]
+    public int RiskScore { get; set; } = 0;
+
+    public TransactionStatus Status { get; set; } = TransactionStatus.Pending;
+}
+```
 
 ---
 
@@ -610,13 +692,51 @@ app.Run();
 
 ---
 
-### Étape 8 : Exécuter et tester
+### Étape 8 : Exécuter et tester (Local)
 
 ```bash
 dotnet run
 ```
 
 Ouvrir Swagger UI : **<https://localhost:5001/swagger>**
+
+---
+
+## ☁️ Déploiement sur OpenShift Sandbox
+
+Si vous utilisez l'OpenShift Developer Sandbox, suivez ces étapes pour déployer l'API :
+
+### 1. Créer le Build et l'Application
+Depuis le dossier `EBankingKeyedProducerAPI` :
+
+```bash
+# 1. Créer la config de build binaire
+oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-keyed-producer-api
+
+# 2. Lancer le build en envoyant le code source
+oc start-build ebanking-keyed-producer-api --from-dir=. --follow
+
+# 3. Créer l'application à partir de l'image générée
+oc new-app ebanking-keyed-producer-api
+```
+
+### 2. Configurer les variables d'environnement
+Il est crucial de pointer vers le service Kafka interne et de configurer l'écoute sur le port 8080 :
+
+```bash
+oc set env deployment/ebanking-keyed-producer-api \
+  Kafka__BootstrapServers=kafka-svc:9092 \
+  ASPNETCORE_URLS=http://0.0.0.0:8080 \
+  ASPNETCORE_ENVIRONMENT=Development
+```
+
+### 3. Exposer l'API
+```bash
+oc expose svc/ebanking-keyed-producer-api
+```
+
+> [!IMPORTANT]
+> **Stabilité sur Sandbox** : Si vous rencontrez une erreur `Coordinator load in progress`, assurez-vous que `Acks` est réglé sur `Leader` et `EnableIdempotence` sur `false` dans votre `KeyedKafkaProducerService.cs` pour contourner les limitations de ressources du cluster gratuit.
 
 ---
 

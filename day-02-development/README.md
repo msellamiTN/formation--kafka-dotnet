@@ -21,7 +21,7 @@
 
 ---
 
-## �️ Phase de Développement .NET avec Kafka
+## 🛠️ Phase de Développement .NET avec Kafka
 
 ### 🎯 Objectif
 Ce module est conçu pour les développeurs .NET BHF souhaitant maîtriser l'intégration Kafka dans leurs applications. Vous apprendrez à développer un Producer Kafka fiable, puis à le déployer et tester dans des environnements Docker et Kubernetes.
@@ -33,14 +33,14 @@ Ce module est conçu pour les développeurs .NET BHF souhaitant maîtriser l'int
 **Étape 1 → Étape 2 → Étape 3 → Étape 4 → Étape 5**
 
 #### 🎓 Tutoriel Complet .NET (Day 01)
-- **Référence** : [TUTORIAL_COMPLET.md](../day-01-foundations/module-02-producer-reliability/kafka_producer/TUTORIAL_COMPLET.md)
+- **Référence** : [TUTORIAL-DOTNET.md](../day-01-foundations/module-02-producer/TUTORIAL-DOTNET.md)
 - **Focus** : Producteur .NET 8 pour K8s/Docker BHF
 - **Contenu** : Architecture complète, déploiement, chaos engineering
 - **Environnement** : Docker/Kubernetes avec Toxiproxy
 
 ---
 
-## �📚 Concepts fondamentaux
+## 📚 Concepts fondamentaux
 
 ### Dead Letter Topic (DLT)
 
@@ -147,11 +147,21 @@ flowchart TB
 ### Dead Letter Topic
 
 > **💀 Toujours créer un DLT pour chaque topic critique**
-> ```java
-> @Bean
-> public DeadLetterPublishingRecoverer recoverer(KafkaTemplate<?, ?> template) {
->     return new DeadLetterPublishingRecoverer(template,
->         (record, ex) -> new TopicPartition(record.topic() + ".DLT", -1));
+> ```csharp
+> async Task SendToDltAsync(ConsumeResult<string, string> failed, Exception ex)
+> {
+>     var dltMessage = new Message<string, string>
+>     {
+>         Key = failed.Message.Key,
+>         Value = failed.Message.Value,
+>         Headers = new Headers
+>         {
+>             { "original-topic", Encoding.UTF8.GetBytes(failed.Topic) },
+>             { "error-message", Encoding.UTF8.GetBytes(ex.Message) },
+>             { "error-timestamp", Encoding.UTF8.GetBytes(DateTime.UtcNow.ToString("o")) }
+>         }
+>     };
+>     await dlqProducer.ProduceAsync(failed.Topic + ".DLT", dltMessage);
 > }
 > ```
 
@@ -164,21 +174,25 @@ flowchart TB
 
 > **🆔 Choisir un APPLICATION_ID unique par application**
 > ```java
+> // Kafka Streams est une API Java uniquement
 > props.put(StreamsConfig.APPLICATION_ID_CONFIG, "sales-processor-v1");
 > ```
 
 > **💾 Configurer le State Store pour la production**
 > ```java
+> // Kafka Streams est une API Java uniquement
 > props.put(StreamsConfig.STATE_DIR_CONFIG, "/var/kafka-streams");
 > props.put(StreamsConfig.NUM_STANDBY_REPLICAS_CONFIG, 1);
 > ```
 
 > **⏰ Gérer le temps correctement**
 > ```java
-> // Utiliser event time, pas processing time
+> // Kafka Streams est une API Java uniquement
 > props.put(StreamsConfig.DEFAULT_TIMESTAMP_EXTRACTOR_CLASS_CONFIG,
 >           WallclockTimestampExtractor.class);
 > ```
+
+> **ℹ️ Note .NET** : Kafka Streams n'est pas disponible en .NET natif. Alternatives : [Streamiz.Kafka.Net](https://github.com/LGouellec/kafka-streams-dotnet) (port communautaire) ou ksqlDB via REST API.
 
 ---
 
@@ -216,18 +230,13 @@ flowchart TB
 
 | Module | Titre | Durée | Description | Tutoriels |
 |--------|-------|-------|-------------|-----------|
-| [**M04**](./module-04-advanced-patterns/README.md) | Patterns Avancés | 90-120 min | DLT, Retry, Rebalancing | [☕ Java](../day-01-foundations/module-02-producer-reliability/TUTORIAL-JAVA.md) \| [🔷 .NET](../day-01-foundations/module-02-producer-reliability/kafka_producer/TUTORIAL_COMPLET.md) |
+| [**M04**](./module-04-advanced-patterns/README.md) | Patterns Avancés | 90-120 min | DLT, Retry, Rebalancing | [🔷 .NET](../day-01-foundations/module-02-producer/TUTORIAL-DOTNET.md) |
 | [**M05**](./module-05-kafka-streams/README.md) | Kafka Streams | 90-120 min | KStream, KTable, Aggregations | - |
 
 ### 📚 Tutoriels de Référence
 
-#### ☕ Java Producer (Day 01)
-- **Tutoriel Complet** : [TUTORIAL-JAVA.md](../day-01-foundations/module-02-producer-reliability/TUTORIAL-JAVA.md)
-- **Focus** : Producer fiable, idempotence, retries
-- **Patterns** : Plain vs Idempotent, Synchrone vs Asynchrone
-
 #### 🔷 .NET Producer (Day 01)
-- **Tutoriel Complet** : [TUTORIAL_COMPLET.md](../day-01-foundations/module-02-producer-reliability/kafka_producer/TUTORIAL_COMPLET.md)
+- **Tutoriel Complet** : [TUTORIAL-DOTNET.md](../day-01-foundations/module-02-producer/TUTORIAL-DOTNET.md)
 - **Focus** : Producteur .NET 8 pour K8s/Docker BHF
 - **Patterns** : Architecture complète, déploiement, chaos engineering
 - **Environnement** : Docker/Kubernetes avec Toxiproxy

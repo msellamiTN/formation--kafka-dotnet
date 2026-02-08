@@ -1,0 +1,47 @@
+[
+    {
+        "fromAccount": "FR7630001000111111111",
+        "toAccount": "FR7630001000999999999",
+        "amount": 100.00,
+        "currency": "EUR",
+        "type": 3,
+        "description": "Salary Deposit",
+        "customerId": "CUST-001"
+    },
+    {
+        "fromAccount": "FR7630001000111111111",
+        "toAccount": "FR7630001000888888888",
+        "amount": 50.00,
+        "currency": "EUR",
+        "type": 2,
+        "description": "Grocery Payment",
+        "customerId": "CUST-001"
+    },
+    {
+        "fromAccount": "FR7630001000222222222",
+        "toAccount": "FR7630001000777777777",
+        "amount": 2000.00,
+        "currency": "EUR",
+        "type": 1,
+        "description": "Investment Transfer",
+        "customerId": "CUST-002"
+    },
+    {
+        "fromAccount": "FR7630001000222222222",
+        "toAccount": "FR7630001000666666666",
+        "amount": 150.00,
+        "currency": "EUR",
+        "type": 2,
+        "description": "Electricity Bill",
+        "customerId": "CUST-002"
+    },
+    {
+        "fromAccount": "FR7630001000333333333",
+        "toAccount": "FR7630001000555555555",
+        "amount": 500.00,
+        "currency": "EUR",
+        "type": 3,
+        "description": "Freelance Payment",
+        "customerId": "CUST-003"
+    }
+]

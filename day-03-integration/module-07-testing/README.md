@@ -39,58 +39,65 @@ flowchart TB
 
 #### MockProducer
 
-```java
-@Test
-void testProducerSendsMessage() {
+```csharp
+[Fact]
+public async Task TestProducerSendsMessage()
+{
     // Arrange
-    MockProducer<String, String> mockProducer = new MockProducer<>(
-        true, // autoComplete
-        new StringSerializer(),
-        new StringSerializer()
-    );
-    
-    MyService service = new MyService(mockProducer);
-    
+    var mockProducer = new Mock<IProducer<string, string>>();
+    var deliveredMessages = new List<Message<string, string>>();
+
+    mockProducer.Setup(p => p.ProduceAsync(
+        It.IsAny<string>(),
+        It.IsAny<Message<string, string>>(),
+        It.IsAny<CancellationToken>()))
+        .Callback<string, Message<string, string>, CancellationToken>(
+            (topic, msg, ct) => deliveredMessages.Add(msg))
+        .ReturnsAsync(new DeliveryResult<string, string>());
+
+    var service = new MyService(mockProducer.Object);
+
     // Act
-    service.sendMessage("key", "value");
-    
+    await service.SendMessageAsync("key", "value");
+
     // Assert
-    List<ProducerRecord<String, String>> history = mockProducer.history();
-    assertEquals(1, history.size());
-    assertEquals("key", history.get(0).key());
-    assertEquals("value", history.get(0).value());
+    Assert.Single(deliveredMessages);
+    Assert.Equal("key", deliveredMessages[0].Key);
+    Assert.Equal("value", deliveredMessages[0].Value);
 }
 ```
 
 #### MockConsumer
 
-```java
-@Test
-void testConsumerProcessesMessages() {
+```csharp
+[Fact]
+public void TestConsumerProcessesMessages()
+{
     // Arrange
-    MockConsumer<String, String> mockConsumer = new MockConsumer<>(
-        OffsetResetStrategy.EARLIEST
-    );
-    
-    // Setup topic and partitions
-    mockConsumer.assign(List.of(new TopicPartition("test-topic", 0)));
-    mockConsumer.updateBeginningOffsets(Map.of(
-        new TopicPartition("test-topic", 0), 0L
-    ));
-    
-    // Add test records
-    mockConsumer.addRecord(new ConsumerRecord<>(
-        "test-topic", 0, 0L, "key", "value"
-    ));
-    
-    MyConsumer consumer = new MyConsumer(mockConsumer);
-    
+    var mockConsumer = new Mock<IConsumer<string, string>>();
+    var testResult = new ConsumeResult<string, string>
+    {
+        Topic = "test-topic",
+        Partition = 0,
+        Offset = 0,
+        Message = new Message<string, string>
+        {
+            Key = "key",
+            Value = "value"
+        }
+    };
+
+    mockConsumer.Setup(c => c.Consume(It.IsAny<CancellationToken>()))
+        .Returns(testResult);
+
+    var consumer = new MyConsumer(mockConsumer.Object);
+
     // Act
-    List<String> processed = consumer.pollAndProcess();
-    
+    var processed = consumer.PollAndProcess();
+
     // Assert
-    assertEquals(1, processed.size());
-    assertEquals("value", processed.get(0));
+    Assert.Single(processed);
+    Assert.Equal("value", processed[0]);
 }
 ```
 
@@ -106,23 +113,26 @@ flowchart LR
 
 #### Configuration Testcontainers
 
-```java
-@Testcontainers
-class KafkaIntegrationTest {
+```csharp
+// NuGet: Testcontainers.Kafka, xunit
+public class KafkaIntegrationTest : IAsyncLifetime
+{
+    private readonly KafkaContainer _kafka = new KafkaBuilder()
+        .WithImage("confluentinc/cp-kafka:7.5.0")
+        .Build();
 
-    @Container
-    static KafkaContainer kafka = new KafkaContainer(
-        DockerImageName.parse("confluentinc/cp-kafka:7.5.0")
-    );
-
-    @BeforeAll
-    static void setup() {
+    public async Task InitializeAsync()
+    {
         // Kafka démarre automatiquement
-        String bootstrapServers = kafka.getBootstrapServers();
+        await _kafka.StartAsync();
     }
 
-    @Test
-    void testProduceAndConsume() {
+    public async Task DisposeAsync() => await _kafka.DisposeAsync();
+
+    [Fact]
+    public async Task TestProduceAndConsume()
+    {
+        var bootstrapServers = _kafka.GetBootstrapAddress();
         // Test avec Kafka réel
     }
 }
@@ -132,28 +142,30 @@ class KafkaIntegrationTest {
 
 ### 4. Test du Poll Loop
 
-```java
-@Test
-void testConsumerPollLoop() {
+```csharp
+[Fact]
+public async Task TestConsumerPollLoop()
+{
     // Configuration
-    Properties props = new Properties();
-    props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers());
-    props.put(ConsumerConfig.GROUP_ID_CONFIG, "test-group");
-    props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-    
-    try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
-        consumer.subscribe(List.of("test-topic"));
-        
-        // Produire un message
-        produceTestMessage("test-topic", "key", "value");
-        
-        // Poll avec timeout
-        ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(10));
-        
-        // Assertions
-        assertFalse(records.isEmpty());
-        assertEquals("value", records.iterator().next().value());
-    }
+    var config = new ConsumerConfig
+    {
+        BootstrapServers = _kafka.GetBootstrapAddress(),
+        GroupId = "test-group",
+        AutoOffsetReset = AutoOffsetReset.Earliest
+    };
+
+    using var consumer = new ConsumerBuilder<string, string>(config).Build();
+    consumer.Subscribe("test-topic");
+
+    // Produire un message
+    await ProduceTestMessageAsync("test-topic", "key", "value");
+
+    // Poll avec timeout
+    var result = consumer.Consume(TimeSpan.FromSeconds(10));
+
+    // Assertions
+    Assert.NotNull(result);
+    Assert.Equal("value", result.Message.Value);
 }
 ```
 
@@ -163,82 +175,80 @@ void testConsumerPollLoop() {
 
 ### Prérequis
 
-<details>
-<summary>🐳 <b>Mode Docker</b></summary>
-
-- Java 17+
-- Maven 3.8+
+- .NET 8.0 SDK ou supérieur
 - Docker (pour Testcontainers)
 
-</details>
+```bash
+dotnet --version
+# Attendu : 8.0.x ou supérieur
 
-<details>
-<summary>☸️ <b>Mode OKD/K3s</b></summary>
+docker info
+# Docker doit être en cours d'exécution
+```
 
-- Java 17+
-- Maven 3.8+
-- kubectl configuré
-- Cluster Kafka Strimzi disponible
-
-> **Note** : Les tests d'intégration utilisent Testcontainers qui nécessite Docker. Pour K8s, vous pouvez utiliser un cluster Kafka existant en passant `KAFKA_BOOTSTRAP_SERVERS` comme variable d'environnement.
-
-</details>
+> **Note** : Les tests d'intégration utilisent [Testcontainers.Kafka](https://dotnet.testcontainers.org/) qui nécessite Docker. Pour K8s, vous pouvez utiliser un cluster Kafka existant en passant `KAFKA_BOOTSTRAP_SERVERS` comme variable d'environnement.
 
 ---
 
 ### Étape 1 - Structure du projet de test
 
 ```bash
-cd formation-v2/day-03-integration/module-07-testing/java
+cd day-03-integration/module-07-testing/dotnet
 ```
 
 **Structure** :
 
 ```
-java/
-├── pom.xml
-├── src/
-│   ├── main/java/
-│   │   └── com/data2ai/kafka/
-│   │       ├── producer/MessageProducer.java
-│   │       └── consumer/MessageConsumer.java
-│   └── test/java/
-│       └── com/data2ai/kafka/
-│           ├── unit/
-│           │   ├── ProducerUnitTest.java
-│           │   └── ConsumerUnitTest.java
-│           └── integration/
-│               └── KafkaIntegrationTest.java
+dotnet/
+├── KafkaTests.csproj
+├── Services/
+│   ├── MessageProducer.cs
+│   └── MessageConsumer.cs
+├── Unit/
+│   ├── ProducerUnitTest.cs
+│   └── ConsumerUnitTest.cs
+└── Integration/
+    └── KafkaIntegrationTest.cs
+```
+
+**Restaurer les dépendances** :
+
+```bash
+dotnet restore
 ```
 
 ---
 
 ### Étape 2 - Lab 1 : Tests unitaires Producer
 
-**Fichier** : `src/test/java/com/data2ai/kafka/unit/ProducerUnitTest.java`
+**Fichier** : `Unit/ProducerUnitTest.cs`
 
 ```bash
-# Exécuter les tests unitaires
-mvn test -Dtest=ProducerUnitTest
+# Exécuter les tests unitaires du Producer
+dotnet test --filter "FullyQualifiedName~ProducerUnitTest"
 ```
 
 **Points à vérifier** :
-- ✅ Le message est envoyé au bon topic
+- ✅ Le message est envoyé au bon topic (`SendAsync_ValidMessage_ProducesToCorrectTopic`)
 - ✅ La clé et la valeur sont correctes
-- ✅ Les callbacks sont appelés
+- ✅ Le header `correlation-id` est un GUID valide (`SendAsync_IncludesCorrelationIdHeader`)
+- ✅ Les exceptions `ProduceException` sont propagées (`SendAsync_ProduceException_Propagates`)
 
 ---
 
 ### Étape 3 - Lab 2 : Tests unitaires Consumer
 
+**Fichier** : `Unit/ConsumerUnitTest.cs`
+
 ```bash
-mvn test -Dtest=ConsumerUnitTest
+dotnet test --filter "FullyQualifiedName~ConsumerUnitTest"
 ```
 
 **Points à vérifier** :
-- ✅ Les messages sont consommés
-- ✅ Le traitement métier est appelé
-- ✅ Les offsets sont commités
+- ✅ Un seul message est consommé et retourné (`PollAndProcess_SingleMessage_ReturnsValue`)
+- ✅ Plusieurs messages sont consommés dans l'ordre (`PollAndProcess_MultipleMessages_ReturnsAll`)
+- ✅ Aucun message → liste vide (`PollAndProcess_NoMessages_ReturnsEmpty`)
+- ✅ Le timeout est respecté (`PollAndProcess_TimeoutExpires_ReturnsPartialResults`)
 
 ---
 
@@ -246,41 +256,49 @@ mvn test -Dtest=ConsumerUnitTest
 
 ```bash
 # Exécuter les tests d'intégration (nécessite Docker)
-mvn verify -Dtest=KafkaIntegrationTest
+dotnet test --filter "FullyQualifiedName~KafkaIntegrationTest"
 ```
 
-**Ce test** :
-1. Démarre un conteneur Kafka
-2. Crée un topic
-3. Produit un message
-4. Consomme et vérifie le message
-5. Arrête le conteneur
+**Ce test utilise `IAsyncLifetime`** :
+1. `InitializeAsync()` : Démarre un conteneur Kafka via Testcontainers
+2. Chaque `[Fact]` : Produit et consomme des messages sur un Kafka réel
+3. `DisposeAsync()` : Arrête et supprime le conteneur
+
+**Tests inclus** :
+- `ProduceAndConsume_SingleMessage_RoundTrip` — aller-retour complet
+- `ProduceAndConsume_MultipleMessages_AllReceived` — 10 messages
+- `ProduceWithHeaders_HeadersPreserved` — vérification des headers
+- `ConsumerGroup_TwoConsumers_PartitionsDistributed` — scaling
 
 ---
 
 ### Étape 5 - Lab 4 : Test de bout en bout
 
 ```bash
-mvn verify -Dtest=EndToEndTest
+# Exécuter tous les tests (unitaires + intégration)
+dotnet test
 ```
 
-**Scénario testé** :
-1. Producer envoie N messages
-2. Consumer traite tous les messages
-3. Vérification de la cohérence
+**Scénario E2E testé dans `KafkaIntegrationTest`** :
+1. Producer envoie 10 messages avec `MessageProducer`
+2. Consumer les consomme tous via `MessageConsumer`
+3. Vérification que les 10 valeurs sont présentes
 
 ---
 
 ### Étape 6 - Lab 5 : Tests de résilience
 
+**Exercice** : Ajoutez un fichier `Integration/ResilienceTest.cs` qui teste :
+
 ```bash
-mvn test -Dtest=ResilienceTest
+# Après avoir créé le fichier
+dotnet test --filter "FullyQualifiedName~ResilienceTest"
 ```
 
-**Scénarios** :
-- Test de retry après erreur
-- Test de timeout
-- Test de reconnexion
+**Scénarios à implémenter** :
+- Test de retry après `ProduceException` (mocker un producer qui échoue puis réussit)
+- Test de timeout consumer (poll sans messages, vérifier que le timeout est respecté)
+- Test de reconnexion (arrêter et redémarrer le conteneur Kafka)
 
 ---
 
@@ -304,20 +322,32 @@ docker info
 
 # Vérifier les permissions
 docker run hello-world
+
+# Vérifier que l'image est accessible
+docker pull confluentinc/cp-kafka:7.5.0
 ```
 
 ### Tests lents
 
-- Réutiliser les conteneurs entre tests (`@Container static`)
-- Utiliser `@ReusableContainer`
+- Partager le conteneur Kafka entre tests via `IAsyncLifetime` (le conteneur est démarré une fois par classe)
+- Utiliser `[Collection]` pour partager un conteneur entre plusieurs classes de tests
+- Augmenter le timeout si Docker est lent : `new KafkaBuilder().WithStartupCallback(...)`
+
+### Erreur "No usable version of libssl"
+
+```bash
+# Sur Ubuntu/Debian, installer les dépendances
+sudo apt-get install -y libssl-dev
+```
 
 ---
 
 ## 🧹 Nettoyage
 
 ```bash
-# Nettoyer les artefacts Maven
-mvn clean
+# Nettoyer les artefacts .NET
+dotnet clean
+rm -rf bin/ obj/
 
 # Supprimer les images Docker de test
 docker image prune -f
@@ -329,12 +359,20 @@ docker image prune -f
 
 ### Exercices supplémentaires
 
-1. **Ajoutez des tests de performance** avec JMH
-2. **Testez les transactions** Kafka
-3. **Implémentez des tests de chaos** (kill broker pendant le test)
+1. **Ajoutez des tests de performance** avec BenchmarkDotNet
+2. **Testez les transactions** Kafka (idempotent producer)
+3. **Implémentez des tests de chaos** (kill broker pendant le test via Testcontainers)
+
+### Tutorials pas-à-pas
+
+| IDE | Tutorial | Description |
+|-----|----------|-------------|
+| **VS Code** | [🔷 TUTORIAL-DOTNET.md](./TUTORIAL-DOTNET.md) | xUnit + Moq + Testcontainers.Kafka (.NET 8) |
+| **VS Code / IntelliJ** | [☕ TUTORIAL.md](./TUTORIAL.md) | JUnit 5 + MockProducer + Testcontainers (Java 17) |
 
 ### Ressources
 
-- [Testcontainers Kafka Module](https://www.testcontainers.org/modules/kafka/)
-- [Kafka MockProducer/MockConsumer](https://kafka.apache.org/documentation/#producerapi)
-- [Spring Kafka Testing](https://docs.spring.io/spring-kafka/reference/testing.html)
+- [Testcontainers .NET Kafka Module](https://dotnet.testcontainers.org/modules/kafka/)
+- [Confluent.Kafka .NET API](https://docs.confluent.io/kafka-clients/dotnet/current/overview.html)
+- [Moq Quickstart](https://github.com/devlooped/moq/wiki/Quickstart)
+- [xUnit Documentation](https://xunit.net/docs/getting-started/netcore/cmdline)
