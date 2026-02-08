@@ -792,6 +792,7 @@ KafkaProducerBasic/
 
 #### Code : Program.cs
 
+```csharp
 using Confluent.Kafka;
 using Microsoft.Extensions.Logging;
 
@@ -949,6 +950,8 @@ ENTRYPOINT ["dotnet", "KafkaProducerBasic.dll"]
 ```
 
 **Build & Push** :
+
+```bash
 # Build de l'image
 docker build -t kafka-producer-basic:v1 .
 
@@ -961,14 +964,20 @@ oc registry login
 
 # Push vers registry OpenShift
 docker push image-registry.openshift-image-registry.svc:5000/kafka/producer-basic:v1
+```
 
 💡 **TIP** : Si `oc registry login` échoue, créez un secret manuel :
+
+```bash
 oc create secret docker-registry my-pull-secret \
   --docker-server=image-registry.openshift-image-registry.svc:5000 \
   --docker-username=$(oc whoami) \
   --docker-password=$(oc whoami -t)
+```
 
 **Deployment YAML** :
+
+```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -998,22 +1007,29 @@ spec:
           limits:
             memory: "256Mi"
             cpu: "200m"
+```
 
 **Déployer** :
+
+```bash
 oc apply -f deployment.yaml -n kafka
 
 # Suivre les logs
 oc logs -f deployment/producer-basic -n kafka
+```
 
 #### ✅ Validation
 
 Observer dans les logs :
+
+```text
 info: Program[0]
       ✓ Message 1 delivered → Topic: orders.created, Partition: 3, Offset: 0
 info: Program[0]
       ✓ Message 2 delivered → Topic: orders.created, Partition: 1, Offset: 0
 info: Program[0]
       ✓ Message 3 delivered → Topic: orders.created, Partition: 5, Offset: 0
+```
 
 **Points à noter** :
 - Les messages se répartissent sur les 6 partitions (round-robin car pas de clé)
@@ -1022,12 +1038,15 @@ info: Program[0]
 - Latence d'envoi : ~5-10ms par message
 
 💡 **TIP** : Pour voir les messages produits :
-oc exec -it bhf-kafka-kafka-0 -- \
+
+```bash
+oc exec -it bhf-kafka-broker-0 -- \
   bin/kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic orders.created \
   --from-beginning \
   --max-messages 10
+```
 
 ---
 
@@ -1038,6 +1057,7 @@ Comprendre comment la clé détermine la partition et garantit l'ordre des messa
 
 #### Code : Program.cs (version avec clé)
 
+```csharp
 using Confluent.Kafka;
 using Microsoft.Extensions.Logging;
 
@@ -1101,10 +1121,13 @@ finally
     producer.Flush(TimeSpan.FromSeconds(10));
     logger.LogInformation("Producer closed.");
 }
+```
 
 #### Analyse des Résultats
 
 **Logs attendus** :
+
+```text
 ✓ Delivered → Key: customer-A, Partition: 3, Offset: 0
 ✓ Delivered → Key: customer-B, Partition: 1, Offset: 0
 ✓ Delivered → Key: customer-C, Partition: 5, Offset: 0
@@ -1113,6 +1136,7 @@ finally
 ✓ Delivered → Key: customer-A, Partition: 3, Offset: 1  ← Même partition !
 ✓ Delivered → Key: customer-B, Partition: 1, Offset: 1  ← Même partition !
 ✓ Delivered → Key: customer-C, Partition: 5, Offset: 1  ← Même partition !
+```
 
 **Observation clé** :
 - Tous les messages avec `Key = "customer-A"` vont **toujours** sur **Partition 3**
@@ -1120,10 +1144,15 @@ finally
 - L'ordre des messages est préservé pour chaque client
 
 **Formule de partitionnement** :
+
+```csharp
 // Kafka utilise Murmur2 hash
 partition = Math.Abs(Murmur2.Hash(Encoding.UTF8.GetBytes(key))) % numberOfPartitions
+```
 
 💡 **TIP** : Vous pouvez prédire la partition d'une clé :
+
+```csharp
 using Confluent.Kafka;
 
 var partitioner = new DefaultPartitioner();
@@ -1135,6 +1164,7 @@ var partition = partitioner.Partition(
     new ReadOnlySpan<byte>()
 );
 Console.WriteLine($"customer-A ira sur partition {partition}");
+```
 
 #### Exercice Pratique
 
@@ -1145,6 +1175,8 @@ Console.WriteLine($"customer-A ira sur partition {partition}");
 4. Identifier si certaines partitions reçoivent plus de messages (hot partitions ?)
 
 **Solution** :
+
+```csharp
 var customers = Enumerable.Range(0, 10).Select(i => $"customer-{(char)('A' + i)}").ToArray();
 var partitionCounts = new Dictionary<int, int>();
 
@@ -1165,6 +1197,7 @@ foreach (var kvp in partitionCounts.OrderBy(x => x.Key))
 {
     Console.WriteLine($"Partition {kvp.Key}: {kvp.Value} messages");
 }
+```
 
 #### ✅ Validation
 
@@ -1189,6 +1222,7 @@ foreach (var kvp in partitionCounts.OrderBy(x => x.Key))
 
 #### Pattern de Gestion d'Erreurs Complète
 
+```csharp
 var config = new ProducerConfig
 {
     BootstrapServers = "...",
@@ -1264,9 +1298,11 @@ catch (Exception ex)
     logger.LogError(ex, "Unexpected error during message production");
     await SendToDeadLetterQueueAsync(message, ex);
 }
+```
 
 #### Dead Letter Queue (DLQ) Pattern
 
+```csharp
 private static async Task SendToDeadLetterQueueAsync(
     Message<string, string> failedMessage, 
     Exception originalException)
@@ -1327,6 +1363,7 @@ private static async Task WriteToLocalFailureLog(
         System.Text.Json.JsonSerializer.Serialize(logEntry) + Environment.NewLine
     );
 }
+```
 
 💡 **TIP** : En production, configurez une alerte sur le topic DLQ pour être notifié des échecs.
 
@@ -1376,6 +1413,7 @@ private static async Task WriteToLocalFailureLog(
 
 Un consumer Kafka fonctionne en **polling continu** :
 
+```text
 ┌──────────────────────────────────────────┐
 │         CONSUMER POLL LOOP               │
 └──────────────────────────────────────────┘
@@ -1401,11 +1439,13 @@ Un consumer Kafka fonctionne en **polling continu** :
     └──────────────────┘
             │
             └──────→ Boucler vers Poll
+```
 
 💡 **TIP** : Le poll loop doit être **rapide et non-bloquant**. Si traitement > 5 minutes, augmentez `MaxPollIntervalMs`.
 
 #### Configuration Consumer
 
+```csharp
 var config = new ConsumerConfig
 {
     // ===== OBLIGATOIRE =====
@@ -1434,10 +1474,14 @@ var config = new ConsumerConfig
     // ===== MAX POLL INTERVAL =====
     MaxPollIntervalMs = 300000     // 5 minutes (temps max entre 2 polls)
 };
+```
 
 💡 **TIP** : Relation entre heartbeat et session :
+
+```text
 HeartbeatIntervalMs < SessionTimeoutMs / 3
 Exemple: 3000ms < 10000ms / 3 ✓
+```
 
 ⚠️ **ATTENTION** : `MaxPollIntervalMs` doit être supérieur au temps de traitement d'un batch complet. Sinon, le consumer sera éjecté du groupe.
 
@@ -1445,12 +1489,14 @@ Exemple: 3000ms < 10000ms / 3 ✓
 
 Timeline avec EnableAutoCommit = true :
 
+```text
 T=0s    : Poll() retourne 100 messages, consumer commence traitement
 T=3s    : Traitement de 60 messages terminé
 T=5s    : Auto-commit → offsets des 100 messages sauvegardés (même ceux pas encore traités !)
 T=7s    : Crash du consumer (40 messages en cours de traitement)
 T=10s   : Redémarrage consumer → reprend depuis offset 100 
           → 40 messages perdus ❌
+```
 
 **Trade-off** :
 - ✅ **Avantage** : Simplicité (pas de code de commit), performance (moins d'appels réseau)
@@ -1467,6 +1513,7 @@ T=10s   : Redémarrage consumer → reprend depuis offset 100
 
 Un **Consumer Group** permet de paralléliser la consommation d'un topic.
 
+```text
 Topic: orders.created (6 partitions)
 
 Scenario 1 : 1 consumer dans le groupe "inventory-service"
@@ -1492,6 +1539,7 @@ Scenario 4 : 6 consumers dans le groupe "inventory-service"
 Scenario 5 : 8 consumers dans le groupe "inventory-service"
   Consumer-1 à Consumer-6 → chacun lit 1 partition
   Consumer-7 et Consumer-8 → INACTIFS (plus de partitions disponibles)
+```
 
 **Règle d'or** : `Nombre de consumers ≤ Nombre de partitions` pour utilisation optimale.
 
@@ -1514,6 +1562,8 @@ Scenario 5 : 8 consumers dans le groupe "inventory-service"
 4. Consumers reprennent la consommation avec nouvelles partitions
 
 **Exemple visuel avec timestamps** :
+
+```text
 T=0 : 2 consumers actifs
   Consumer-1 → Partitions [0, 1, 2]
   Consumer-2 → Partitions [3, 4, 5]
@@ -1531,10 +1581,13 @@ T=22 : Rebalancing terminé
   Consumer-1 → REPREND consommation
 
 T=22-T=30 : Consumer-1 traite seul les 6 partitions (throughput réduit de moitié)
+```
 
 ⚠️ **ATTENTION** : Pendant le rebalancing (T=20 à T=22), **aucun** message n'est consommé. C'est le "stop-the-world" du consumer group.
 
 **Configuration du rebalancing** :
+
+```csharp
 var config = new ConsumerConfig
 {
     // ...
@@ -1558,6 +1611,7 @@ var config = new ConsumerConfig
     // Range: partitions consécutives par consumer
     // CooperativeSticky: minimise rebalancing (recommandé production)
 };
+```
 
 💡 **TIP** : Stratégie **CooperativeSticky** (depuis Kafka 2.4+) :
 - Évite le "stop-the-world" complet
