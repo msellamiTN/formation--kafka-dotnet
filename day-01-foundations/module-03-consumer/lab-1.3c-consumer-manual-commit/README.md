@@ -1024,6 +1024,13 @@ flowchart TD
 
 ## ☁️ Alternative : Déploiement sur OpenShift Sandbox
 
+> **🎯 Objectif** : Ce déploiement valide les patterns avancés du **Consumer Kafka** dans un environnement cloud :
+> - **Manual Commit** : les offsets sont commités explicitement après traitement réussi (at-least-once)
+> - **Déduplication** : les messages déjà traités sont détectés et ignorés (exactly-once sémantique)
+> - **Dead Letter Queue (DLQ)** : les messages impossibles à traiter sont redirigés vers un topic DLQ
+> - **Retry avec backoff** : les erreurs transitoires sont retentées avant envoi en DLQ
+> - **Vérification via Kafka CLI** : inspecter les offsets commités et le contenu de la DLQ
+
 Si vous utilisez l'environnement **OpenShift Sandbox**, suivez ces étapes pour déployer et exposer votre Consumer publiquement.
 
 ### 1. Créer les Topics
@@ -1093,17 +1100,100 @@ curl -k -s "https://$URL/api/Audit/log"
 curl -k -s "https://$URL/api/Audit/dlq"
 ```
 
-### 6. Test de Bout-en-Bout (E2E)
+### 6. 🧪 Scénarios de Test et Validation des Concepts (Sandbox)
 
-1. Envoyez une transaction via l'**API Producer** (Lab 1.2a ou 1.2c).
-2. Vérifiez les **Logs** du Consumer :
-   ```bash
-   oc logs deployment/ebanking-audit-api -f
-   ```
-3. Vérifiez l'apparition dans le journal d'audit :
-   ```bash
-   curl -k -s "https://$URL/api/Audit/log" | jq '.count'
-   ```
+#### Scénario 1 : Produire une transaction et vérifier l'audit
+
+```bash
+URL=$(oc get route ebanking-audit-api-secure -o jsonpath='{.spec.host}')
+
+# Produire une transaction via Kafka CLI
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
+  --broker-list localhost:9092 \
+  --topic banking.transactions <<< \
+  '{"transactionId":"AUDIT-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":2500.00,"currency":"EUR","type":1,"description":"Virement audit test","customerId":"CUST-001","timestamp":"2026-02-08T22:00:00Z","riskScore":0,"status":1}'
+
+# Vérifier dans le journal d'audit (attendre 2-3s)
+sleep 3
+curl -k -s "https://$URL/api/Audit/log" | jq .
+curl -k -s "https://$URL/api/Audit/log/AUDIT-001" | jq .
+```
+
+**📖 Concept** : Le consumer traite le message, crée un enregistrement d'audit, puis **commite manuellement** l'offset. Le commit n'a lieu qu'après traitement réussi (at-least-once).
+
+#### Scénario 2 : Tester la déduplication
+
+```bash
+# Envoyer le MÊME message une seconde fois (même transactionId)
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
+  --broker-list localhost:9092 \
+  --topic banking.transactions <<< \
+  '{"transactionId":"AUDIT-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":2500.00,"currency":"EUR","type":1,"description":"Virement audit test","customerId":"CUST-001","timestamp":"2026-02-08T22:00:00Z","riskScore":0,"status":1}'
+
+sleep 3
+# Vérifier les métriques — duplicatesSkipped devrait augmenter
+curl -k -s "https://$URL/api/Audit/metrics" | jq '{duplicatesSkipped, messagesConsumed, auditRecordsCreated}'
+```
+
+**📖 Concept** : Le consumer détecte que `AUDIT-001` existe déjà → le message est ignoré et `duplicatesSkipped` incrémente.
+
+#### Scénario 3 : Vérifier les offsets commités et la DLQ
+
+```bash
+# Vérifier les offsets commités pour le groupe audit-compliance-service
+oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --describe --group audit-compliance-service
+
+# Vérifier les messages dans la DLQ
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic banking.transactions.audit-dlq \
+  --from-beginning --property print.headers=true --max-messages 5
+
+# Voir les messages DLQ via l'API
+curl -k -s "https://$URL/api/Audit/dlq" | jq .
+```
+
+#### Scénario 4 : Vérifier les métriques complètes
+
+```bash
+curl -k -s "https://$URL/api/Audit/metrics" | jq .
+```
+
+**Réponse attendue** :
+
+```json
+{
+  "consumerStatus": "Consuming",
+  "messagesConsumed": 3,
+  "auditRecordsCreated": 1,
+  "manualCommits": 2,
+  "duplicatesSkipped": 1,
+  "messagesSentToDlq": 0,
+  "lastCommitAt": "2026-02-08T22:05:00Z"
+}
+```
+
+#### 📖 Concepts validés
+
+| Concept | Comment le vérifier |
+| ------- | ------------------- |
+| Manual Commit | `manualCommits` augmente après chaque batch traité |
+| At-least-once | `kafka-consumer-groups.sh --describe` montre les offsets commités |
+| Déduplication | `duplicatesSkipped` augmente quand on renvoie le même `transactionId` |
+| DLQ | `GET /dlq` montre les messages impossibles à traiter |
+| Audit log | `GET /log/{transactionId}` retrouve l'enregistrement par ID |
+
+#### Récapitulatif des Endpoints
+
+| Méthode | Endpoint | Objectif pédagogique |
+| ------- | -------- | -------------------- |
+| `GET` | `/api/Audit/log` | Journal d'audit complet |
+| `GET` | `/api/Audit/log/{transactionId}` | Rechercher un enregistrement par ID |
+| `GET` | `/api/Audit/dlq` | Messages envoyés en Dead Letter Queue |
+| `GET` | `/api/Audit/metrics` | Commits manuels, doublons, DLQ |
+| `GET` | `/api/Audit/health` | Health check avec compteur de commits |
 
 ---
 
@@ -1173,10 +1263,35 @@ curl -k -s "https://$URL/api/Audit/metrics"
 curl -k -s "https://$URL/api/Audit/log"
 ```
 
-### 6. Alternative : Déploiement par manifeste YAML
+### 6. 🧪 Validation des concepts (CRC)
 
 ```bash
-# Remplacer ${NAMESPACE} par votre namespace
+URL=$(oc get route ebanking-audit-api-secure -o jsonpath='{.spec.host}')
+
+# Produire une transaction via Kafka CLI
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
+  --broker-list localhost:9092 \
+  --topic banking.transactions <<< \
+  '{"transactionId":"CRC-AUDIT-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":2500.00,"currency":"EUR","type":1,"description":"Test CRC audit","customerId":"CUST-001","timestamp":"2026-02-08T22:00:00Z","riskScore":0,"status":1}'
+
+# Vérifier le journal d'audit
+sleep 3
+curl -k -s "https://$URL/api/Audit/log/CRC-AUDIT-001" | jq .
+curl -k -s "https://$URL/api/Audit/metrics" | jq '{manualCommits, duplicatesSkipped, messagesSentToDlq}'
+
+# Vérifier les offsets commitiés
+oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 --describe --group audit-compliance-service
+
+# Vérifier la DLQ
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 --topic banking.transactions.audit-dlq \
+  --from-beginning --property print.headers=true --max-messages 5
+```
+
+### 7. Alternative : Déploiement par manifeste YAML
+
+```bash
 sed "s/\${NAMESPACE}/ebanking-labs/g" deployment/openshift-deployment.yaml | oc apply -f -
 ```
 
@@ -1247,7 +1362,42 @@ curl http://localhost:8080/api/Audit/dlq
 
 > **Ingress** : Si vous avez un Ingress Controller (nginx, traefik), ajoutez `ebanking-audit-api.local` à votre fichier `/etc/hosts` pointant vers l'IP du cluster.
 
-### 6. OKD : Utiliser les manifestes OpenShift
+### 6. 🧪 Validation des concepts (K8s)
+
+```bash
+# Produire une transaction via Kafka CLI
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
+  --broker-list localhost:9092 \
+  --topic banking.transactions <<< \
+  '{"transactionId":"K8S-AUDIT-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":2500.00,"currency":"EUR","type":1,"description":"Test K8s audit","customerId":"CUST-001","timestamp":"2026-02-08T22:00:00Z","riskScore":0,"status":1}'
+
+# Vérifier le journal d'audit (port-forward actif sur 8080)
+sleep 3
+curl -s "http://localhost:8080/api/Audit/log/K8S-AUDIT-001" | jq .
+curl -s "http://localhost:8080/api/Audit/metrics" | jq '{manualCommits, duplicatesSkipped, messagesSentToDlq}'
+
+# Tester la déduplication — renvoyer le même message
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
+  --broker-list localhost:9092 \
+  --topic banking.transactions <<< \
+  '{"transactionId":"K8S-AUDIT-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":2500.00,"currency":"EUR","type":1,"description":"Test K8s audit","customerId":"CUST-001","timestamp":"2026-02-08T22:00:00Z","riskScore":0,"status":1}'
+
+sleep 3
+curl -s "http://localhost:8080/api/Audit/metrics" | jq '{duplicatesSkipped}'
+
+# Vérifier les offsets commitiés
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 --describe --group audit-compliance-service
+
+# Vérifier la DLQ
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 --topic banking.transactions.audit-dlq \
+  --from-beginning --property print.headers=true --max-messages 5
+```
+
+> **Docker Compose** : Si Kafka tourne via Docker Compose, utilisez `docker exec kafka ...` au lieu de `kubectl exec kafka-0 ...`.
+
+### 7. OKD : Utiliser les manifestes OpenShift
 
 ```bash
 sed "s/\${NAMESPACE}/$(oc project -q)/g" deployment/openshift-deployment.yaml | oc apply -f -

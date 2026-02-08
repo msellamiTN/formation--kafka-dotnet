@@ -811,6 +811,13 @@ Ouvrez `https://localhost:5001/swagger` (ou `http://localhost:5000/swagger`) :
 
 ## ☁️ Alternative : Déploiement sur OpenShift Sandbox
 
+> **🎯 Objectif** : Ce déploiement valide les concepts fondamentaux du **Consumer Kafka** dans un environnement cloud :
+> - **Poll loop** : le consumer consomme les messages en boucle via `Consume()`
+> - **Auto-commit** : les offsets sont commités automatiquement toutes les 5 secondes
+> - **Désérialisation JSON** : chaque message Kafka est désérialisé en objet `Transaction`
+> - **Scoring de fraude** : les transactions sont analysées et un score de risque est calculé
+> - **Vérification via Kafka CLI** : produire un message test, observer sa consommation et l'alerte générée
+
 Si vous utilisez l'environnement **OpenShift Sandbox**, suivez ces étapes pour déployer et exposer votre Consumer publiquement.
 
 ### 1. Préparer le Build et le Déploiement
@@ -869,17 +876,86 @@ curl -k -i "https://$URL/api/FraudDetection/health"
 curl -k -s "https://$URL/api/FraudDetection/metrics"
 ```
 
-### 5. Test de Bout-en-Bout (E2E)
+### 5. 🧪 Scénarios de Test et Validation des Concepts (Sandbox)
 
-1. Envoyez une transaction via l'**API Producer Resilient** (Lab 1.2c).
-2. Vérifiez immédiatement les **Logs** du Consumer :
-   ```bash
-   oc logs deployment/ebanking-fraud-detection-api -f
-   ```
-3. Vérifiez l'apparition de l'alerte dans les métriques :
-   ```bash
-   curl -k -s "https://$URL/api/FraudDetection/alerts/high-risk"
-   ```
+#### Scénario 1 : Produire un message via Kafka CLI et observer la consommation
+
+```bash
+# Produire directement un message JSON dans le topic
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
+  --broker-list localhost:9092 \
+  --topic banking.transactions <<< \
+  '{"transactionId":"TEST-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":15000.00,"currency":"EUR","type":1,"description":"Virement suspect","customerId":"CUST-001","timestamp":"2026-02-08T22:00:00Z","riskScore":0,"status":1}'
+
+# Vérifier dans les logs du consumer
+oc logs deployment/ebanking-fraud-detection-api --tail=20
+```
+
+**📖 Concept** : Le consumer détecte automatiquement le message via le poll loop. La transaction de 15 000€ dépasse le seuil → **alerte de fraude** générée.
+
+#### Scénario 2 : Vérifier les alertes via l'API
+
+```bash
+URL=$(oc get route ebanking-fraud-api-secure -o jsonpath='{.spec.host}')
+
+# Voir toutes les alertes
+curl -k -s "https://$URL/api/FraudDetection/alerts" | jq .
+
+# Voir uniquement les alertes à haut risque (score >= 50)
+curl -k -s "https://$URL/api/FraudDetection/alerts/high-risk" | jq .
+```
+
+#### Scénario 3 : Test E2E avec l'API Producer (Lab 1.2a ou 1.2c)
+
+```bash
+# Depuis le Producer (si déployé sur le même cluster)
+PRODUCER_HOST=$(oc get route ebanking-producer-api -o jsonpath='{.spec.host}')
+
+# Envoyer une transaction à haut montant (> 10 000€ → alerte fraude)
+curl -k -s -X POST "https://$PRODUCER_HOST/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000111111111","toAccount":"GB29NWBK60161331926819","amount":50000.00,"currency":"EUR","type":6,"description":"International transfer suspect","customerId":"CUST-999"}' | jq .
+
+# Attendre 2-3 secondes puis vérifier les alertes
+sleep 3
+curl -k -s "https://$URL/api/FraudDetection/alerts/high-risk" | jq '.alerts[-1]'
+```
+
+#### Scénario 4 : Vérifier les métriques de consommation
+
+```bash
+curl -k -s "https://$URL/api/FraudDetection/metrics" | jq .
+```
+
+**Réponse attendue** :
+
+```json
+{
+  "consumerStatus": "Consuming",
+  "messagesConsumed": 5,
+  "fraudAlerts": 2,
+  "lastMessageAt": "2026-02-08T22:05:00Z",
+  "startedAt": "2026-02-08T21:50:00Z"
+}
+```
+
+#### 📖 Concepts validés
+
+| Concept | Comment le vérifier |
+| ------- | ------------------- |
+| Poll loop | `messagesConsumed` augmente après chaque transaction produite |
+| Auto-commit | Redémarrer le pod → pas de relecture des anciens messages (offsets commités) |
+| Fraud scoring | Transaction > 10 000€ → alerte dans `GET /alerts/high-risk` |
+| Consumer status | `GET /health` retourne `Consuming` quand le consumer est actif |
+
+#### Récapitulatif des Endpoints
+
+| Méthode | Endpoint | Objectif pédagogique |
+| ------- | -------- | -------------------- |
+| `GET` | `/api/FraudDetection/alerts` | Voir toutes les alertes de fraude détectées |
+| `GET` | `/api/FraudDetection/alerts/high-risk` | Filtrer les alertes à score >= 50 |
+| `GET` | `/api/FraudDetection/metrics` | Métriques du consumer (lag, throughput, status) |
+| `GET` | `/api/FraudDetection/health` | Health check avec état du consumer |
 
 ---
 
@@ -936,10 +1012,26 @@ echo "https://$URL/swagger"
 curl -k -i "https://$URL/api/FraudDetection/health"
 ```
 
-### 5. Alternative : Déploiement par manifeste YAML
+### 5. 🧪 Validation des concepts (CRC)
 
 ```bash
-# Remplacer ${NAMESPACE} par votre namespace
+URL=$(oc get route ebanking-fraud-api-secure -o jsonpath='{.spec.host}')
+
+# Produire un message test via Kafka CLI
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
+  --broker-list localhost:9092 \
+  --topic banking.transactions <<< \
+  '{"transactionId":"CRC-TEST-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":25000.00,"currency":"EUR","type":1,"description":"Test CRC fraude","customerId":"CUST-001","timestamp":"2026-02-08T22:00:00Z","riskScore":0,"status":1}'
+
+# Vérifier les alertes (attendre 2-3s)
+sleep 3
+curl -k -s "https://$URL/api/FraudDetection/alerts/high-risk" | jq .
+curl -k -s "https://$URL/api/FraudDetection/metrics" | jq .
+```
+
+### 6. Alternative : Déploiement par manifeste YAML
+
+```bash
 sed "s/\${NAMESPACE}/ebanking-labs/g" deployment/openshift-deployment.yaml | oc apply -f -
 ```
 
@@ -996,9 +1088,24 @@ curl http://localhost:8080/swagger/index.html
 
 > **Ingress** : Si vous avez un Ingress Controller (nginx, traefik), ajoutez `ebanking-fraud-detection-api.local` à votre fichier `/etc/hosts` pointant vers l'IP du cluster.
 
-### 5. OKD : Utiliser les manifestes OpenShift
+### 5. 🧪 Validation des concepts (K8s)
 
-Sur **OKD**, vous pouvez utiliser les manifestes OpenShift qui incluent un `Route` au lieu d'un `Ingress` :
+```bash
+# Produire un message test via Kafka CLI
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
+  --broker-list localhost:9092 \
+  --topic banking.transactions <<< \
+  '{"transactionId":"K8S-TEST-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":25000.00,"currency":"EUR","type":1,"description":"Test K8s fraude","customerId":"CUST-001","timestamp":"2026-02-08T22:00:00Z","riskScore":0,"status":1}'
+
+# Vérifier les alertes (port-forward actif sur 8080)
+sleep 3
+curl -s "http://localhost:8080/api/FraudDetection/alerts/high-risk" | jq .
+curl -s "http://localhost:8080/api/FraudDetection/metrics" | jq .
+```
+
+> **Docker Compose** : Si Kafka tourne via Docker Compose, utilisez `docker exec kafka ...` au lieu de `kubectl exec kafka-0 ...`.
+
+### 6. OKD : Utiliser les manifestes OpenShift
 
 ```bash
 sed "s/\${NAMESPACE}/$(oc project -q)/g" deployment/openshift-deployment.yaml | oc apply -f -

@@ -902,6 +902,13 @@ sequenceDiagram
 
 ## ☁️ Alternative : Déploiement sur OpenShift Sandbox
 
+> **🎯 Objectif** : Ce déploiement valide les concepts de **Consumer Group et Rebalancing** dans un environnement cloud :
+> - **Consumer Group** : plusieurs instances partagent la charge de consommation d'un topic
+> - **Partition Assignment** : chaque consumer reçoit un sous-ensemble de partitions
+> - **Rebalancing** : quand un consumer rejoint ou quitte le groupe, les partitions sont redistribuées
+> - **Calcul de solde** : chaque transaction est agrégée pour calculer le solde par client
+> - **Scaling** : scaler le déploiement pour observer le rebalancing en temps réel
+
 Si vous utilisez l'environnement **OpenShift Sandbox**, suivez ces étapes pour déployer et exposer votre Consumer publiquement.
 
 ### 1. Préparer le Build et le Déploiement
@@ -958,9 +965,33 @@ curl -k -i "https://$URL/api/Balance/health"
 curl -k -s "https://$URL/api/Balance/metrics"
 ```
 
-### 5. Test de Scaling (Consumer Group)
+### 5. 🧪 Scénarios de Test et Validation des Concepts (Sandbox)
 
-Pour tester le rebalancing sur OpenShift, scalez le déploiement :
+#### Scénario 1 : Produire des transactions et vérifier les soldes
+
+```bash
+URL=$(oc get route ebanking-balance-api-secure -o jsonpath='{.spec.host}')
+
+# Produire des transactions via Kafka CLI
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
+  --broker-list localhost:9092 \
+  --topic banking.transactions <<< \
+  '{"transactionId":"BAL-001","fromAccount":"BANK","toAccount":"FR7630001000123456789","amount":5000.00,"currency":"EUR","type":3,"description":"Depot initial","customerId":"CUST-001","timestamp":"2026-02-08T22:00:00Z","riskScore":0,"status":1}'
+
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
+  --broker-list localhost:9092 \
+  --topic banking.transactions <<< \
+  '{"transactionId":"BAL-002","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":1200.00,"currency":"EUR","type":1,"description":"Virement loyer","customerId":"CUST-001","timestamp":"2026-02-08T22:01:00Z","riskScore":0,"status":1}'
+
+# Vérifier les soldes (attendre 2-3s)
+sleep 3
+curl -k -s "https://$URL/api/Balance/balances" | jq .
+curl -k -s "https://$URL/api/Balance/balances/CUST-001" | jq .
+```
+
+**📖 Concept** : Le consumer agrège les transactions pour calculer le solde. CUST-001 devrait avoir un solde de 5000 - 1200 = 3800€.
+
+#### Scénario 2 : Scaling et Rebalancing
 
 ```bash
 # Scaler à 2 instances
@@ -968,12 +999,50 @@ oc scale deployment/ebanking-balance-api --replicas=2
 
 # Vérifier les partitions assignées sur chaque pod
 oc get pods -l deployment=ebanking-balance-api
-oc logs <pod-1> | grep "Partitions ASSIGNED"
-oc logs <pod-2> | grep "Partitions ASSIGNED"
+POD1=$(oc get pods -l deployment=ebanking-balance-api -o jsonpath='{.items[0].metadata.name}')
+POD2=$(oc get pods -l deployment=ebanking-balance-api -o jsonpath='{.items[1].metadata.name}')
+oc logs $POD1 | grep "Partitions ASSIGNED"
+oc logs $POD2 | grep "Partitions ASSIGNED"
+
+# Vérifier l'historique de rebalancing via l'API
+curl -k -s "https://$URL/api/Balance/rebalancing-history" | jq .
+
+# Vérifier le consumer group via Kafka CLI
+oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --describe --group balance-service
 
 # Revenir à 1 instance
 oc scale deployment/ebanking-balance-api --replicas=1
 ```
+
+**📖 Concept** : Avec 6 partitions et 2 consumers, chaque consumer reçoit 3 partitions. Le rebalancing est visible dans les logs et l'API `/rebalancing-history`.
+
+#### Scénario 3 : Vérifier les métriques du consumer group
+
+```bash
+curl -k -s "https://$URL/api/Balance/metrics" | jq .
+```
+
+#### 📖 Concepts validés
+
+| Concept | Comment le vérifier |
+| ------- | ------------------- |
+| Consumer Group | `kafka-consumer-groups.sh --describe` montre les members du groupe |
+| Partition Assignment | Chaque pod log `Partitions ASSIGNED [P0,P1,P2]` |
+| Rebalancing | `GET /rebalancing-history` montre les événements d'assignation/révocation |
+| Calcul de solde | `GET /balances/CUST-001` montre le solde agrégé |
+| Scaling | Scaler à 2 replicas → les 6 partitions sont réparties 3+3 |
+
+#### Récapitulatif des Endpoints
+
+| Méthode | Endpoint | Objectif pédagogique |
+| ------- | -------- | -------------------- |
+| `GET` | `/api/Balance/balances` | Tous les soldes agrégés par client |
+| `GET` | `/api/Balance/balances/{customerId}` | Solde d'un client spécifique |
+| `GET` | `/api/Balance/metrics` | Métriques du consumer group (partitions, offsets) |
+| `GET` | `/api/Balance/rebalancing-history` | Historique des rebalancing |
+| `GET` | `/api/Balance/health` | Health check avec état du consumer group |
 
 ---
 
@@ -1030,22 +1099,36 @@ echo "https://$URL/swagger"
 curl -k -i "https://$URL/api/Balance/health"
 ```
 
-### 5. Test de Scaling (Consumer Group)
+### 5. 🧪 Validation des concepts (CRC)
 
 ```bash
-# Scaler à 2 instances pour tester le rebalancing
-oc scale deployment/ebanking-balance-api --replicas=2
+URL=$(oc get route ebanking-balance-api-secure -o jsonpath='{.spec.host}')
 
-# Vérifier les partitions assignées
-oc get pods -l deployment=ebanking-balance-api
-oc logs <pod-1> | grep "Partitions ASSIGNED"
-oc logs <pod-2> | grep "Partitions ASSIGNED"
+# Produire une transaction via Kafka CLI
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
+  --broker-list localhost:9092 \
+  --topic banking.transactions <<< \
+  '{"transactionId":"CRC-BAL-001","fromAccount":"BANK","toAccount":"FR7630001000123456789","amount":3000.00,"currency":"EUR","type":3,"description":"Depot CRC","customerId":"CUST-001","timestamp":"2026-02-08T22:00:00Z","riskScore":0,"status":1}'
+
+# Vérifier le solde
+sleep 3
+curl -k -s "https://$URL/api/Balance/balances/CUST-001" | jq .
+
+# Scaler et observer le rebalancing
+oc scale deployment/ebanking-balance-api --replicas=2
+sleep 10
+curl -k -s "https://$URL/api/Balance/rebalancing-history" | jq .
+
+# Vérifier le consumer group via Kafka CLI
+oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 --describe --group balance-service
+
+oc scale deployment/ebanking-balance-api --replicas=1
 ```
 
 ### 6. Alternative : Déploiement par manifeste YAML
 
 ```bash
-# Remplacer ${NAMESPACE} par votre namespace
 sed "s/\${NAMESPACE}/ebanking-labs/g" deployment/openshift-deployment.yaml | oc apply -f -
 ```
 
@@ -1112,7 +1195,34 @@ curl http://localhost:8080/api/Balance/metrics
 
 > **Ingress** : Si vous avez un Ingress Controller (nginx, traefik), ajoutez `ebanking-balance-api.local` à votre fichier `/etc/hosts` pointant vers l'IP du cluster.
 
-### 6. OKD : Utiliser les manifestes OpenShift
+### 6. 🧪 Validation des concepts (K8s)
+
+```bash
+# Produire une transaction via Kafka CLI
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
+  --broker-list localhost:9092 \
+  --topic banking.transactions <<< \
+  '{"transactionId":"K8S-BAL-001","fromAccount":"BANK","toAccount":"FR7630001000123456789","amount":3000.00,"currency":"EUR","type":3,"description":"Depot K8s","customerId":"CUST-001","timestamp":"2026-02-08T22:00:00Z","riskScore":0,"status":1}'
+
+# Vérifier le solde (port-forward actif sur 8080)
+sleep 3
+curl -s "http://localhost:8080/api/Balance/balances/CUST-001" | jq .
+
+# Scaler et observer le rebalancing
+kubectl scale deployment/ebanking-balance-api --replicas=2
+sleep 10
+curl -s "http://localhost:8080/api/Balance/rebalancing-history" | jq .
+
+# Vérifier le consumer group
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 --describe --group balance-service
+
+kubectl scale deployment/ebanking-balance-api --replicas=1
+```
+
+> **Docker Compose** : Si Kafka tourne via Docker Compose, utilisez `docker exec kafka ...` au lieu de `kubectl exec kafka-0 ...`.
+
+### 7. OKD : Utiliser les manifestes OpenShift
 
 ```bash
 sed "s/\${NAMESPACE}/$(oc project -q)/g" deployment/openshift-deployment.yaml | oc apply -f -

@@ -1296,6 +1296,26 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
   --max-messages 5
 ```
 
+#### 📖 Concepts validés
+
+| Concept | Comment le vérifier |
+| ------- | ------------------- |
+| Retry avec backoff | Envoyer une transaction → 201 si succès après retries (voir logs) |
+| DLQ | Envoyer quand Kafka est instable → 202 Accepted + message dans `banking.transactions.dlq` |
+| Circuit breaker | Après 5 échecs consécutifs → `GET /health` retourne `circuitBreaker: "OPEN"` |
+| Métriques | `GET /metrics` montre `successRate`, `totalDlq`, `consecutiveFailures` |
+| Fallback file | Si même la DLQ échoue → messages sauvegardés dans un fichier local |
+
+#### Récapitulatif des Endpoints
+
+| Méthode | Endpoint | Objectif pédagogique |
+| ------- | -------- | -------------------- |
+| `POST` | `/api/Transactions` | Produire avec retry + DLQ + circuit breaker |
+| `POST` | `/api/Transactions/batch` | Lot résilient — observer les codes 201 vs 202 |
+| `GET` | `/api/Transactions/metrics` | Taux de succès, compteur DLQ, état du circuit |
+| `GET` | `/api/Transactions/{id}` | Statut d'une transaction |
+| `GET` | `/api/Transactions/health` | Health check avec état du circuit breaker |
+
 ### 7. Troubleshooting Sandbox
 
 - **503 Service Unavailable** : Vérifiez que le pod est `Running` avec `oc get pods -l deployment=ebanking-resilient-api` et consultez les logs avec `oc logs -l deployment=ebanking-resilient-api`.
@@ -1356,7 +1376,30 @@ echo "https://$URL/swagger"
 curl -k -i "https://$URL/api/Transactions/health"
 ```
 
-### 5. Alternative : Déploiement par manifeste YAML
+### 5. 🧪 Validation des concepts (CRC)
+
+```bash
+URL=$(oc get route ebanking-resilient-producer-api-secure -o jsonpath='{.spec.host}')
+
+# Envoyer une transaction
+curl -k -s -X POST "https://$URL/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":250.00,"currency":"EUR","type":1,"description":"Test CRC resilient","customerId":"CUST-001"}' | jq .
+
+# Vérifier les métriques (succès, DLQ, circuit breaker)
+curl -k -s "https://$URL/api/Transactions/metrics" | jq .
+
+# Health check avec état du circuit breaker
+curl -k -s "https://$URL/api/Transactions/health" | jq .
+
+# Vérifier les messages dans la DLQ
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic banking.transactions.dlq \
+  --from-beginning --property print.headers=true --max-messages 5
+```
+
+### 6. Alternative : Déploiement par manifeste YAML
 
 ```bash
 sed "s/\${NAMESPACE}/ebanking-labs/g" deployment/openshift-deployment.yaml | oc apply -f -
@@ -1414,7 +1457,34 @@ curl http://localhost:8080/swagger/index.html
 
 > **Ingress** : Si vous avez un Ingress Controller (nginx, traefik), ajoutez `ebanking-resilient-producer-api.local` à votre fichier `/etc/hosts` pointant vers l'IP du cluster.
 
-### 5. OKD : Utiliser les manifestes OpenShift
+### 5. 🧪 Validation des concepts (K8s)
+
+```bash
+# Envoyer une transaction (port-forward actif sur 8080)
+curl -s -X POST "http://localhost:8080/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":250.00,"currency":"EUR","type":1,"description":"Test K8s resilient","customerId":"CUST-001"}' | jq .
+
+# Vérifier les métriques
+curl -s "http://localhost:8080/api/Transactions/metrics" | jq .
+
+# Health check avec circuit breaker
+curl -s "http://localhost:8080/api/Transactions/health" | jq .
+
+# Vérifier la DLQ dans Kafka
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic banking.transactions.dlq \
+  --from-beginning --property print.headers=true --max-messages 5
+
+# Vérifier les offsets du topic principal
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-run-class.sh kafka.tools.GetOffsetShell \
+  --broker-list localhost:9092 --topic banking.transactions
+```
+
+> **Docker Compose** : Si Kafka tourne via Docker Compose, utilisez `docker exec kafka ...` au lieu de `kubectl exec kafka-0 ...`.
+
+### 6. OKD : Utiliser les manifestes OpenShift
 
 ```bash
 sed "s/\${NAMESPACE}/$(oc project -q)/g" deployment/openshift-deployment.yaml | oc apply -f -
@@ -1422,7 +1492,7 @@ sed "s/\${NAMESPACE}/$(oc project -q)/g" deployment/openshift-deployment.yaml | 
 
 ---
 
-## �🔧 Troubleshooting
+## 🔧 Troubleshooting
 
 | Symptôme | Cause probable | Solution |
 | -------- | -------------- | -------- |
