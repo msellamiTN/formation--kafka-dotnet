@@ -730,13 +730,25 @@ oc set env deployment/ebanking-keyed-producer-api \
   ASPNETCORE_ENVIRONMENT=Development
 ```
 
-### 3. Exposer l'API
-```bash
-oc expose svc/ebanking-keyed-producer-api
-```
+### 3. Exposer publiquement (Secure Edge Route)
 
 > [!IMPORTANT]
-> **Stabilité sur Sandbox** : Si vous rencontrez une erreur `Coordinator load in progress`, assurez-vous que `Acks` est réglé sur `Leader` et `EnableIdempotence` sur `false` dans votre `KeyedKafkaProducerService.cs` pour contourner les limitations de ressources du cluster gratuit.
+> Standard routes may hang on the Sandbox. Use an **edge route** for reliable public access.
+
+```bash
+oc create route edge ebanking-keyed-api --service=ebanking-keyed-producer-api --port=8080-tcp
+```
+
+### 4. Tester l'API déployée
+
+```bash
+HOST=$(oc get route ebanking-keyed-api -o jsonpath='{.spec.host}')
+echo "Swagger UI : https://$HOST/swagger"
+```
+
+### 5. Stability Warning
+
+For Sandbox environments, use `Acks = Acks.Leader` and `EnableIdempotence = false` in `ProducerConfig` to avoid `Coordinator load in progress` hangs.
 
 ---
 

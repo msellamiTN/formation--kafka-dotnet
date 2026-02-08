@@ -4,7 +4,7 @@
 |-------|--------|-----------|
 | 3 heures | Intermédiaire | Modules 01-04 complétés |
 
-## � Scénario E-Banking (suite)
+## 🏦 Scénario E-Banking (suite)
 
 Dans le contexte bancaire BHF, les transactions arrivent en continu via Kafka. Ce module vous apprend à traiter ces flux en temps réel avec **Kafka Streams** :
 
@@ -15,7 +15,7 @@ Dans le contexte bancaire BHF, les transactions arrivent en continu via Kafka. C
 
 > **Note** : Les labs utilisent des topics `sales-events` / `sales-by-product` pour rester cohérents avec le code Java fourni. Les patterns (KStream, KTable, windowing, jointures) s'appliquent directement à un pipeline `banking.transactions`.
 
-## �🎯 Objectifs d'apprentissage
+## 🎯 Objectifs d'apprentissage
 
 À la fin de ce module, vous serez capable de :
 
@@ -721,6 +721,87 @@ curl -s http://localhost:31084/api/v1/stores/sales-by-product/PROD-001 | jq
 - [ ] Fenêtres temporelles configurées
 - [ ] Jointure stream-table testée
 - [ ] Interactive queries fonctionnelles
+
+---
+
+## ☁️ Déploiement sur OpenShift Sandbox
+
+Si vous utilisez le **Red Hat Developer Sandbox** au lieu de Docker local ou K3s, suivez ces étapes pour déployer l'application Kafka Streams.
+
+### 1. Créer les topics sur le Sandbox
+
+```bash
+# Topic d'entrée : événements de vente
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists --topic sales-events --partitions 6 --replication-factor 3
+
+# Topic de sortie : agrégation par produit
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists --topic sales-by-product --partitions 6 --replication-factor 3
+
+# Topic de référentiel produits (KTable)
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists --topic products --partitions 6 --replication-factor 3 \
+  --config cleanup.policy=compact
+```
+
+### 2. Déployer l'application Kafka Streams (Java)
+
+```bash
+cd day-02-development/module-05-kafka-streams/java
+
+oc new-build java:17 --binary=true --name=m05-streams-app
+oc start-build m05-streams-app --from-dir=. --follow
+oc new-app m05-streams-app
+
+oc set env deployment/m05-streams-app \
+  KAFKA_BOOTSTRAP_SERVERS="kafka-svc:9092" \
+  APPLICATION_ID="sales-streams-app" \
+  INPUT_TOPIC="sales-events" \
+  OUTPUT_TOPIC="sales-by-product" \
+  PRODUCTS_TOPIC="products" \
+  SERVER_PORT="8080"
+
+oc expose svc/m05-streams-app
+```
+
+### 3. Tester sur le Sandbox
+
+```bash
+# URL publique
+STREAMS_HOST=$(oc get route m05-streams-app -o jsonpath='{.spec.host}')
+
+# Health check
+curl -s "https://$STREAMS_HOST/health" | jq .
+
+# Produire des événements de vente via console producer
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic sales-events \
+  --property "parse.key=true" \
+  --property "key.separator=:" <<EOF
+PROD-001:{"productId":"PROD-001","quantity":5,"unitPrice":10.0,"timestamp":"2024-01-15T10:00:00Z"}
+PROD-002:{"productId":"PROD-002","quantity":3,"unitPrice":25.0,"timestamp":"2024-01-15T10:01:00Z"}
+PROD-001:{"productId":"PROD-001","quantity":2,"unitPrice":10.0,"timestamp":"2024-01-15T10:02:00Z"}
+EOF
+
+# Vérifier les agrégations
+curl -s "https://$STREAMS_HOST/api/v1/stores/sales-by-product/all" | jq .
+
+# Requête par clé
+curl -s "https://$STREAMS_HOST/api/v1/stores/sales-by-product/PROD-001" | jq .
+```
+
+### 4. Consommer le topic de sortie
+
+```bash
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic sales-by-product --from-beginning --max-messages 10
+```
 
 ---
 

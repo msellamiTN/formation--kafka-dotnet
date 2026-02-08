@@ -165,6 +165,36 @@ kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 
   --create --if-not-exists --topic banking.transactions.dlq --partitions 3 --replication-factor 3
 ```
 
+**OpenShift Sandbox (Cloud)** :
+
+1. **Create Topics** (via Kafka UI or CLI) :
+```bash
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic banking.transactions --partitions 6 --replication-factor 3
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic banking.transactions.dlq --partitions 3 --replication-factor 3
+```
+
+2. **Deploy API** :
+```bash
+oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-resilient-producer-api
+oc start-build ebanking-resilient-producer-api --from-dir=. --follow
+oc new-app ebanking-resilient-producer-api
+```
+
+3. **Configure Environment** :
+```bash
+oc set env deployment/ebanking-resilient-producer-api Kafka__BootstrapServers=kafka-svc:9092 ASPNETCORE_URLS=http://0.0.0.0:8080
+```
+
+4. **Expose Publicly (Secure Edge Route)** :
+> [!IMPORTANT]
+> Standard routes may hang on the Sandbox. Use an **edge route** for reliable public access.
+```bash
+oc create route edge ebanking-resilient-api --service=ebanking-resilient-producer-api --port=8080-tcp
+```
+
+5. **Stability Warning** :
+For Sandbox environments, use `Acks = Acks.Leader` and `EnableIdempotence = false` in `ProducerConfig` to avoid `Coordinator load in progress` hangs.
+
 ---
 
 ## 🚀 Instructions Pas à Pas
@@ -177,8 +207,8 @@ kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 
 cd lab-1.2c-producer-error-handling
 dotnet new webapi -n EBankingResilientProducerAPI
 cd EBankingResilientProducerAPI
-dotnet add package Confluent.Kafka --version 2.3.0
-dotnet add package Swashbuckle.AspNetCore --version 6.5.0
+dotnet add package Confluent.Kafka --version 2.13.0
+dotnet add package Swashbuckle.AspNetCore --version 10.1.2
 ```
 
 #### 🎨 Option B : Visual Studio 2022
@@ -187,8 +217,8 @@ dotnet add package Swashbuckle.AspNetCore --version 6.5.0
 2. Sélectionner **API Web ASP.NET Core**
 3. Nom : `EBankingResilientProducerAPI`, Framework : **.NET 8.0**
 4. Clic droit projet → **Gérer les packages NuGet** :
-   - `Confluent.Kafka` version **2.3.0**
-   - `Swashbuckle.AspNetCore` version **6.5.0**
+   - `Confluent.Kafka` version **2.13.0**
+   - `Swashbuckle.AspNetCore` version **10.1.2**
 
 ---
 
@@ -1157,6 +1187,113 @@ sequenceDiagram
     API-->>Ops: {status: "Degraded", circuitBreaker: "OPEN"}
     Note over Ops: Action corrective requise
 ```
+
+---
+
+## ☁️ Déploiement sur OpenShift Sandbox
+
+Si vous souhaitez déployer cette API directement sur le cluster OpenShift Sandbox (au lieu de l'exécuter localement), suivez ces étapes :
+
+### 1. Préparer le déploiement
+
+```bash
+cd lab-1.2c-producer-error-handling/EBankingResilientProducerAPI
+```
+
+### 2. Créer les topics sur le Sandbox
+
+```bash
+# Topic principal
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists \
+  --topic banking.transactions \
+  --partitions 6 --replication-factor 3
+
+# Topic DLQ
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists \
+  --topic banking.transactions.dlq \
+  --partitions 3 --replication-factor 3
+```
+
+### 3. Déployer avec `oc new-app`
+
+```bash
+# Créer une build binaire pour .NET 8
+oc new-build --name=ebanking-resilient-api dotnet:8.0 --binary=true
+
+# Lancer la build en envoyant le dossier courant
+oc start-build ebanking-resilient-api --from-dir=. --follow
+
+# Créer l'application
+oc new-app ebanking-resilient-api
+
+# Exposer l'API via une Route
+oc expose svc/ebanking-resilient-api
+```
+
+### 4. Configurer les variables d'environnement
+
+```bash
+oc set env deployment/ebanking-resilient-api \
+  Kafka__BootstrapServers="kafka-svc:9092" \
+  Kafka__Topic="banking.transactions" \
+  Kafka__DlqTopic="banking.transactions.dlq" \
+  Kafka__ClientId="ebanking-resilient-producer" \
+  ASPNETCORE_ENVIRONMENT="Development" \
+  ASPNETCORE_URLS="http://0.0.0.0:8080"
+```
+
+> **Note Sandbox** : Si vous observez des erreurs `acks=all` (timeout de coordination),
+> modifiez temporairement le code pour utiliser `Acks = Acks.Leader` et
+> `EnableIdempotence = false`. Voir le commentaire dans `ResilientKafkaProducerService.cs`.
+
+### 5. Tester l'API déployée
+
+```bash
+# Obtenir l'URL publique
+HOST=$(oc get route ebanking-resilient-api -o jsonpath='{.spec.host}')
+echo "Swagger UI : https://$HOST/swagger"
+
+# Health check
+curl -s "https://$HOST/api/transactions/health" | jq .
+
+# Envoyer une transaction
+curl -s -X POST "https://$HOST/api/transactions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fromAccount": "FR7630001000123456789",
+    "toAccount": "FR7630001000987654321",
+    "amount": 250.00,
+    "currency": "EUR",
+    "type": 1,
+    "description": "Virement test Sandbox",
+    "customerId": "CUST-001"
+  }' | jq .
+
+# Vérifier les métriques
+curl -s "https://$HOST/api/transactions/metrics" | jq .
+```
+
+### 6. Vérifier la DLQ sur le Sandbox
+
+```bash
+# Vérifier les messages dans la DLQ (avec headers)
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic banking.transactions.dlq \
+  --from-beginning \
+  --property print.headers=true \
+  --max-messages 5
+```
+
+### 7. Troubleshooting Sandbox
+
+- **503 Service Unavailable** : Vérifiez que le pod est `Running` avec `oc get pods -l deployment=ebanking-resilient-api` et consultez les logs avec `oc logs -l deployment=ebanking-resilient-api`.
+- **Kafka Coordinator load in progress** : Le cluster Sandbox met parfois quelques minutes à élire les leaders. Attendez 5 min ou redémarrez les pods Kafka : `oc delete pods -l app=kafka`.
+- **Circuit breaker immédiatement ouvert** : Si les 5 premières requêtes échouent, le circuit s'ouvre. Vérifiez la connectivité Kafka, puis attendez 1 minute pour que le circuit se ferme automatiquement (half-open).
 
 ---
 

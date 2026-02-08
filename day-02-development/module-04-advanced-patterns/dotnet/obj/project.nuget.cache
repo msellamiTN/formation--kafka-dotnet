@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "dgSpecHash": "f/WtsY7wbSg=",
+  "success": true,
+  "projectFilePath": "D:\\Data2AI Academy\\Kafka\\formation -kafka-dotnet\\day-02-development\\module-04-advanced-patterns\\dotnet\\Module04Consumer.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\mokht\\.nuget\\packages\\confluent.kafka\\2.3.0\\confluent.kafka.2.3.0.nupkg.sha512",
+    "C:\\Users\\mokht\\.nuget\\packages\\librdkafka.redist\\2.3.0\\librdkafka.redist.2.3.0.nupkg.sha512",
+    "C:\\Users\\mokht\\.nuget\\packages\\system.memory\\4.5.0\\system.memory.4.5.0.nupkg.sha512",
+    "C:\\Users\\mokht\\.nuget\\packages\\microsoft.netcore.app.ref\\8.0.23\\microsoft.netcore.app.ref.8.0.23.nupkg.sha512",
+    "C:\\Users\\mokht\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\8.0.23\\microsoft.windowsdesktop.app.ref.8.0.23.nupkg.sha512",
+    "C:\\Users\\mokht\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\8.0.23\\microsoft.aspnetcore.app.ref.8.0.23.nupkg.sha512",
+    "C:\\Users\\mokht\\.nuget\\packages\\microsoft.netcore.app.host.win-x64\\8.0.23\\microsoft.netcore.app.host.win-x64.8.0.23.nupkg.sha512"
+  ],
+  "logs": []
+}

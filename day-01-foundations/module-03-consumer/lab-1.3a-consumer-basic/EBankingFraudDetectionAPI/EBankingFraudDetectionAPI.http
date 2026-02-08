@@ -1,0 +1,17 @@
+@host = https://localhost:5001
+
+### Health Check
+GET {{host}}/api/frauddetection/health
+Accept: application/json
+
+### Get All Fraud Alerts
+GET {{host}}/api/frauddetection/alerts
+Accept: application/json
+
+### Get High Risk Alerts (score >= 50)
+GET {{host}}/api/frauddetection/alerts/high-risk
+Accept: application/json
+
+### Get Consumer Metrics
+GET {{host}}/api/frauddetection/metrics
+Accept: application/json

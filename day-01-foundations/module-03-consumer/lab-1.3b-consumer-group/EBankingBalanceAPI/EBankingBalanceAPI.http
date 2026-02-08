@@ -1,0 +1,21 @@
+@host = https://localhost:5010
+
+### Health Check
+GET {{host}}/api/balance/health
+Accept: application/json
+
+### Get All Customer Balances
+GET {{host}}/api/balance/balances
+Accept: application/json
+
+### Get Balance for a Specific Customer
+GET {{host}}/api/balance/balances/CUST-001
+Accept: application/json
+
+### Get Consumer Metrics (partitions, offsets)
+GET {{host}}/api/balance/metrics
+Accept: application/json
+
+### Get Rebalancing History
+GET {{host}}/api/balance/rebalancing-history
+Accept: application/json

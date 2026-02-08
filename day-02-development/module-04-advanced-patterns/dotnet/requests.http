@@ -1,0 +1,21 @@
+@baseUrl = http://localhost:18083
+
+### Health Check
+GET {{baseUrl}}/health
+Accept: application/json
+
+### Consumer Statistics (messages processed, retries, DLT, rebalancing)
+GET {{baseUrl}}/api/v1/stats
+Accept: application/json
+
+### Partitions Currently Assigned
+GET {{baseUrl}}/api/v1/partitions
+Accept: application/json
+
+### DLT Message Count
+GET {{baseUrl}}/api/v1/dlt/count
+Accept: application/json
+
+### DLT Messages (details of failed messages)
+GET {{baseUrl}}/api/v1/dlt/messages
+Accept: application/json

@@ -1,0 +1,21 @@
+@host = https://localhost:5020
+
+### Health Check
+GET {{host}}/api/audit/health
+Accept: application/json
+
+### Get Full Audit Log
+GET {{host}}/api/audit/log
+Accept: application/json
+
+### Get Audit Record by Transaction ID
+GET {{host}}/api/audit/log/TX-001
+Accept: application/json
+
+### Get Dead Letter Queue Messages
+GET {{host}}/api/audit/dlq
+Accept: application/json
+
+### Get Consumer Metrics (commits, duplicates, DLQ)
+GET {{host}}/api/audit/metrics
+Accept: application/json

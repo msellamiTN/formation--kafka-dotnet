@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "dgSpecHash": "FzZBcngqKc0=",
+  "success": true,
+  "projectFilePath": "D:\\Data2AI Academy\\Kafka\\formation -kafka-dotnet\\day-01-foundations\\module-03-consumer\\lab-1.3b-consumer-group\\EBankingBalanceAPI\\EBankingBalanceAPI.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\mokht\\.nuget\\packages\\confluent.kafka\\2.3.0\\confluent.kafka.2.3.0.nupkg.sha512",
+    "C:\\Users\\mokht\\.nuget\\packages\\librdkafka.redist\\2.3.0\\librdkafka.redist.2.3.0.nupkg.sha512",
+    "C:\\Users\\mokht\\.nuget\\packages\\microsoft.extensions.apidescription.server\\6.0.5\\microsoft.extensions.apidescription.server.6.0.5.nupkg.sha512",
+    "C:\\Users\\mokht\\.nuget\\packages\\microsoft.openapi\\1.2.3\\microsoft.openapi.1.2.3.nupkg.sha512",
+    "C:\\Users\\mokht\\.nuget\\packages\\swashbuckle.aspnetcore\\6.5.0\\swashbuckle.aspnetcore.6.5.0.nupkg.sha512",
+    "C:\\Users\\mokht\\.nuget\\packages\\swashbuckle.aspnetcore.swagger\\6.5.0\\swashbuckle.aspnetcore.swagger.6.5.0.nupkg.sha512",
+    "C:\\Users\\mokht\\.nuget\\packages\\swashbuckle.aspnetcore.swaggergen\\6.5.0\\swashbuckle.aspnetcore.swaggergen.6.5.0.nupkg.sha512",
+    "C:\\Users\\mokht\\.nuget\\packages\\swashbuckle.aspnetcore.swaggerui\\6.5.0\\swashbuckle.aspnetcore.swaggerui.6.5.0.nupkg.sha512",
+    "C:\\Users\\mokht\\.nuget\\packages\\system.memory\\4.5.0\\system.memory.4.5.0.nupkg.sha512",
+    "C:\\Users\\mokht\\.nuget\\packages\\microsoft.netcore.app.ref\\8.0.23\\microsoft.netcore.app.ref.8.0.23.nupkg.sha512",
+    "C:\\Users\\mokht\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\8.0.23\\microsoft.windowsdesktop.app.ref.8.0.23.nupkg.sha512",
+    "C:\\Users\\mokht\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\8.0.23\\microsoft.aspnetcore.app.ref.8.0.23.nupkg.sha512",
+    "C:\\Users\\mokht\\.nuget\\packages\\microsoft.netcore.app.host.win-x64\\8.0.23\\microsoft.netcore.app.host.win-x64.8.0.23.nupkg.sha512"
+  ],
+  "logs": []
+}

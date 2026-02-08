@@ -239,7 +239,7 @@ public class ResilientKafkaProducerService : IDisposable
     private static bool IsRetriableError(ErrorCode code) => code switch
     {
         ErrorCode.Local_Transport => true,
-        ErrorCode.Local_Timeout => true,
+        ErrorCode.Local_TimedOut => true,
         ErrorCode.NotEnoughReplicas => true,
         ErrorCode.LeaderNotAvailable => true,
         ErrorCode.RequestTimedOut => true,

@@ -1,6 +1,63 @@
 @EBankingResilientProducerAPI_HostAddress = http://localhost:5210
 
-GET {{EBankingResilientProducerAPI_HostAddress}}/weatherforecast/
+### Health check (circuit breaker status)
+GET {{EBankingResilientProducerAPI_HostAddress}}/api/transactions/health
 Accept: application/json
 
-###
+### Producer metrics
+GET {{EBankingResilientProducerAPI_HostAddress}}/api/transactions/metrics
+Accept: application/json
+
+### Create a single transaction (retry + DLQ)
+POST {{EBankingResilientProducerAPI_HostAddress}}/api/transactions
+Content-Type: application/json
+
+{
+  "fromAccount": "FR7630001000123456789",
+  "toAccount": "FR7630001000987654321",
+  "amount": 250.00,
+  "currency": "EUR",
+  "type": 1,
+  "description": "Virement mensuel loyer",
+  "customerId": "CUST-001",
+  "riskScore": 5
+}
+
+### Batch of transactions
+POST {{EBankingResilientProducerAPI_HostAddress}}/api/transactions/batch
+Content-Type: application/json
+
+[
+  {
+    "fromAccount": "FR7630001000123456789",
+    "toAccount": "FR7630001000111111111",
+    "amount": 50.00,
+    "currency": "EUR",
+    "type": 2,
+    "description": "Paiement Netflix",
+    "customerId": "CUST-001"
+  },
+  {
+    "fromAccount": "FR7630001000123456789",
+    "toAccount": "FR7630001000222222222",
+    "amount": 1500.00,
+    "currency": "EUR",
+    "type": 1,
+    "description": "Virement épargne",
+    "customerId": "CUST-001"
+  },
+  {
+    "fromAccount": "FR7630001000333333333",
+    "toAccount": "GB29NWBK60161331926819",
+    "amount": 25000.00,
+    "currency": "EUR",
+    "type": 6,
+    "description": "International transfer",
+    "customerId": "CUST-002",
+    "riskScore": 85
+  }
+]
+
+### Get transaction status (placeholder)
+GET {{EBankingResilientProducerAPI_HostAddress}}/api/transactions/a1b2c3d4-e5f6-7890-abcd-ef1234567890
+Accept: application/json

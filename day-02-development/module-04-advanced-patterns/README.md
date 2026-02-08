@@ -4,7 +4,7 @@
 |-------|--------|-----------|
 | 3 heures | Intermédiaire | Modules 01-03 complétés |
 
-## � Scénario E-Banking (suite)
+## 🏦 Scénario E-Banking (suite)
 
 Dans les modules précédents, vous avez construit un Producer et un Consumer pour traiter les transactions bancaires (`banking.transactions`). Dans ce module, vous allez renforcer la **résilience** de ce pipeline en ajoutant :
 
@@ -14,7 +14,7 @@ Dans les modules précédents, vous avez construit un Producer et un Consumer po
 
 > **Note** : Les labs pratiques utilisent un topic `orders` générique configurable via la variable d'environnement `KAFKA_TOPIC`. Les patterns appris s'appliquent directement à votre pipeline `banking.transactions`.
 
-## �🎯 Objectifs d'apprentissage
+## � Objectifs d'apprentissage
 
 À la fin de ce module, vous serez capable de :
 
@@ -279,18 +279,22 @@ bool IsTransient(Exception ex) => ex is TimeoutException
 | Service | Port | Description |
 |---------|------|-------------|
 | Java API (Producer/Consumer) | 18082 | API avec DLT et retries |
-| .NET API (Consumer) | 18083 | Consumer avec rebalancing |
+| .NET API (Consumer) | 18083 | Consumer avec DLT, retries et rebalancing |
 | Kafka UI | 8080 | Visualisation des topics |
 | Kafka | 9092 | Broker externe |
 
 ### 🔷 Code .NET disponible
 
-Le consumer .NET avec rebalancing et manual commit est disponible dans [`dotnet/Program.cs`](./dotnet/Program.cs). Il implémente :
+Le consumer .NET avec DLT, retry et rebalancing est disponible dans [`dotnet/Program.cs`](./dotnet/Program.cs). Il implémente :
 
+- **Dead Letter Topic** : envoi des messages en erreur permanente vers `orders.DLT` avec headers de traçabilité
+- **Retry avec backoff exponentiel + jitter** : erreurs transitoires retentées N fois avant DLT
+- **Classification des erreurs** : transient (timeout, réseau) → retry, permanent (validation, JSON invalide) → DLT immédiat
+- **Validation métier** : rejet des montants négatifs, JSON malformé
 - `CooperativeSticky` partition assignment
 - `SetPartitionsAssignedHandler` / `SetPartitionsRevokedHandler` / `SetPartitionsLostHandler`
 - Manual commit après chaque message
-- API REST pour exposer les stats (`/api/v1/stats`, `/api/v1/partitions`)
+- API REST : `/api/v1/stats`, `/api/v1/partitions`, `/api/v1/dlt/count`, `/api/v1/dlt/messages`
 
 ---
 
@@ -852,6 +856,107 @@ Cochez chaque élément complété :
 - [ ] Retries observés dans les logs
 - [ ] Rebalancing déclenché et observé
 - [ ] Statistiques d'erreurs consultées
+
+---
+
+## ☁️ Déploiement sur OpenShift Sandbox
+
+Si vous utilisez le **Red Hat Developer Sandbox** au lieu de Docker local ou K3s, suivez ces étapes pour déployer les deux services du module.
+
+### 1. Créer les topics sur le Sandbox
+
+```bash
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists --topic orders --partitions 6 --replication-factor 3
+
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists --topic orders.DLT --partitions 3 --replication-factor 3
+
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists --topic orders.retry --partitions 3 --replication-factor 3
+```
+
+### 2. Déployer l'API Java (Producer + DLT)
+
+```bash
+cd day-02-development/module-04-advanced-patterns/java
+
+oc new-build java:17 --binary=true --name=m04-java-api
+oc start-build m04-java-api --from-dir=. --follow
+oc new-app m04-java-api
+
+oc set env deployment/m04-java-api \
+  KAFKA_BOOTSTRAP_SERVERS="kafka-svc:9092" \
+  KAFKA_TOPIC="orders" \
+  KAFKA_DLT_TOPIC="orders.DLT" \
+  KAFKA_RETRY_TOPIC="orders.retry" \
+  MAX_RETRIES="3" \
+  RETRY_BACKOFF_MS="1000" \
+  SERVER_PORT="8080"
+
+oc expose svc/m04-java-api
+```
+
+### 3. Déployer le Consumer .NET (Rebalancing)
+
+```bash
+cd ../dotnet
+
+oc new-build dotnet:8.0-ubi8 --binary=true --name=m04-dotnet-consumer
+oc start-build m04-dotnet-consumer --from-dir=. --follow
+oc new-app m04-dotnet-consumer
+
+oc set env deployment/m04-dotnet-consumer \
+  KAFKA_BOOTSTRAP_SERVERS="kafka-svc:9092" \
+  KAFKA_TOPIC="orders" \
+  KAFKA_GROUP_ID="orders-consumer-group" \
+  KAFKA_AUTO_OFFSET_RESET="earliest" \
+  ASPNETCORE_URLS="http://0.0.0.0:8080"
+
+oc expose svc/m04-dotnet-consumer
+```
+
+### 4. Tester sur le Sandbox
+
+```bash
+# URLs publiques
+JAVA_HOST=$(oc get route m04-java-api -o jsonpath='{.spec.host}')
+DOTNET_HOST=$(oc get route m04-dotnet-consumer -o jsonpath='{.spec.host}')
+
+# Envoyer un message valide
+curl -s -X POST "https://$JAVA_HOST/api/v1/orders" \
+  -H "Content-Type: application/json" \
+  -d '{"orderId": "ORD-1", "amount": 100, "status": "PENDING"}' | jq .
+
+# Envoyer un message invalide (→ DLT)
+curl -s -X POST "https://$JAVA_HOST/api/v1/orders" \
+  -H "Content-Type: application/json" \
+  -d '{"orderId": "ORD-INVALID", "amount": -50, "status": "PENDING"}' | jq .
+
+# Statistiques du consumer .NET
+curl -s "https://$DOTNET_HOST/api/v1/stats" | jq .
+
+# Vérifier le DLT
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic orders.DLT --from-beginning --max-messages 5
+```
+
+### 5. Observer le Rebalancing sur le Sandbox
+
+```bash
+# Scaler à 2 replicas
+oc scale deployment/m04-dotnet-consumer --replicas=2
+
+# Observer les logs de rebalancing
+oc logs -l deployment=m04-dotnet-consumer --tail=20 | grep -i rebalance
+
+# Revenir à 1 replica
+oc scale deployment/m04-dotnet-consumer --replicas=1
+```
 
 ---
 

@@ -230,7 +230,7 @@ flowchart TB
 
 | Module | Titre | Durée | Description | Tutoriels |
 |--------|-------|-------|-------------|-----------|
-| [**M04**](./module-04-advanced-patterns/README.md) | Patterns Avancés | 90-120 min | DLT, Retry, Rebalancing | [🔷 .NET](../day-01-foundations/module-02-producer/TUTORIAL-DOTNET.md) |
+| [**M04**](./module-04-advanced-patterns/README.md) | Patterns Avancés | 90-120 min | DLT, Retry, Rebalancing | [🔷 .NET](./module-04-advanced-patterns/TUTORIAL-DOTNET.md) / [🔷 VS2022](./module-04-advanced-patterns/TUTORIAL-VS2022.md) |
 | [**M05**](./module-05-kafka-streams/README.md) | Kafka Streams | 90-120 min | KStream, KTable, Aggregations | - |
 
 ### 📚 Tutoriels de Référence
@@ -271,7 +271,7 @@ docker-compose -f docker-compose.module.yml up -d --build
 | Service | Port | Description |
 |---------|------|-------------|
 | M04 Java API | 18082 | Producer avec DLT |
-| M04 .NET Consumer | 18083 | Consumer avec rebalancing |
+| M04 .NET Consumer | 18083 | Consumer avec DLT, retries et rebalancing |
 | M05 Streams App | 18084 | Kafka Streams + REST |
 
 ---

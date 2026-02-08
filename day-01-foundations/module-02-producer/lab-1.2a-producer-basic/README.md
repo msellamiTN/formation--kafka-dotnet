@@ -777,16 +777,13 @@ Nous allons utiliser la stratégie "Source-to-Image" (S2I) ou "Binary Build" de 
 
 ```bash
 # Créer une build binaire pour .NET
-oc new-build --name=ebanking-producer-api dotnet:8.0 --binary=true
+oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-producer-api
 
 # Lancer la build en envoyant le dossier courant
 oc start-build ebanking-producer-api --from-dir=. --follow
 
 # Créer l'application
 oc new-app ebanking-producer-api
-
-# Exposer l'API via une Route (HTTPS)
-oc expose svc/ebanking-producer-api
 ```
 
 ### 3. Configurer les variables d'environnement
@@ -794,13 +791,23 @@ oc expose svc/ebanking-producer-api
 L'API doit savoir où se trouve Kafka (interne au cluster).
 
 ```bash
-oc set env dc/ebanking-producer-api \
-  Kafka__BootstrapServers="kafka-svc:9092" \
-  Kafka__Topic="banking.transactions" \
-  ASPNETCORE_ENVIRONMENT="Development"
+oc set env deployment/ebanking-producer-api \
+  Kafka__BootstrapServers=kafka-svc:9092 \
+  Kafka__Topic=banking.transactions \
+  ASPNETCORE_URLS=http://0.0.0.0:8080 \
+  ASPNETCORE_ENVIRONMENT=Development
 ```
 
-### 4. Tester l'API déployée
+### 4. Exposer publiquement (Secure Edge Route)
+
+> [!IMPORTANT]
+> Standard routes may hang on the Sandbox. Use an **edge route** for reliable public access.
+
+```bash
+oc create route edge ebanking-producer-api --service=ebanking-producer-api --port=8080-tcp
+```
+
+### 5. Tester l'API déployée
 
 ```bash
 # Obtenir l'URL publique
@@ -810,7 +817,11 @@ echo "Swagger UI : https://$HOST/swagger"
 
 Ouvrez cette URL dans votre navigateur pour tester l'API déployée sur le cloud !
 
-### 5. Troubleshooting (Sandbox)
+### 6. Stability Warning
+
+For Sandbox environments, use `Acks = Acks.Leader` and `EnableIdempotence = false` in `ProducerConfig` to avoid `Coordinator load in progress` hangs.
+
+### 7. Troubleshooting (Sandbox)
 
 - **503 Service Unavailable** :
     - Vérifiez que le pod est `Running` : `oc get pods -l deployment=ebanking-producer-api`

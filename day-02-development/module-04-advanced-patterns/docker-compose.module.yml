@@ -31,6 +31,9 @@ services:
       KAFKA_TOPIC: orders
       KAFKA_GROUP_ID: orders-consumer-group
       KAFKA_AUTO_OFFSET_RESET: earliest
+      KAFKA_DLT_TOPIC: orders.DLT
+      MAX_RETRIES: 3
+      RETRY_BACKOFF_MS: 1000
     ports:
       - "18083:8080"
     networks:
