@@ -1628,6 +1628,7 @@ Créer un consumer .NET qui lit les messages du topic `orders.created` et les tr
 
 #### Code : Program.cs
 
+```csharp
 using Confluent.Kafka;
 using Microsoft.Extensions.Logging;
 
@@ -1807,12 +1808,15 @@ string ExtractOrderId(string json)
     var match = System.Text.RegularExpressions.Regex.Match(json, @"""orderId"":\s*""([^""]+)""");
     return match.Success ? match.Groups[1].Value : "unknown";
 }
+```
 
 💡 **TIP** : Utilisez `SetPartitionsAssignedHandler` pour initialiser des ressources locales (connexion DB, cache) avant de consommer.
 
 #### Déploiement sur OpenShift
 
 **Dockerfile** (même structure que Producer) :
+
+```dockerfile
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /app
 COPY *.csproj .
@@ -1825,8 +1829,11 @@ WORKDIR /app
 COPY --from=build /app/out .
 USER 1001
 ENTRYPOINT ["dotnet", "KafkaConsumerBasic.dll"]
+```
 
 **Deployment YAML** :
+
+```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -1868,8 +1875,11 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 10
           failureThreshold: 3
+```
 
 **Déployer** :
+
+```bash
 # Build & push image
 docker build -t consumer-basic:v1 .
 docker tag consumer-basic:v1 image-registry.openshift-image-registry.svc:5000/kafka/consumer-basic:v1
@@ -1880,10 +1890,13 @@ oc apply -f deployment.yaml -n kafka
 
 # Observer les logs
 oc logs -f deployment/consumer-basic -n kafka
+```
 
 #### ✅ Validation
 
 Logs attendus :
+
+```text
 info: Program[0]
       Consumer started. Subscribed to topic 'orders.created', Group: 'inventory-service'
 info: Program[0]
@@ -1896,6 +1909,7 @@ info: Program[0]
       📦 Message received → Topic: orders.created, Partition: 3, Offset: 0, Key: customer-A, Timestamp: 2026-02-05T10:30:45.123Z
 info: Program[0]
         ✓ Inventory updated for order ORD-customer-A-0001
+```
 
 **Points à noter** :
 - Les 6 partitions sont assignées au seul consumer
@@ -1904,7 +1918,9 @@ info: Program[0]
 - Latence de traitement : ~100ms par message
 
 💡 **TIP** : Pour voir le consumer lag en temps réel :
-oc exec -it bhf-kafka-kafka-0 -- \
+
+```bash
+oc exec -it bhf-kafka-broker-0 -- \
   bin/kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092 \
   --group inventory-service \
@@ -1914,6 +1930,7 @@ oc exec -it bhf-kafka-kafka-0 -- \
 # GROUP           TOPIC          PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG
 # inventory-...   orders.created 0          15              15              0
 # inventory-...   orders.created 1          12              12              0
+```
 
 ---
 
@@ -1924,6 +1941,7 @@ Observer le rebalancing en déployant 2 consumers dans le même groupe, puis en 
 
 #### Étape 1 : Scaler le Deployment à 2 Replicas
 
+```bash
 # Scaler à 2 instances
 oc scale deployment/consumer-basic --replicas=2 -n kafka
 
@@ -1933,10 +1951,13 @@ oc get pods -l app=consumer-basic -n kafka
 
 # Suivre les logs des 2 pods simultanément
 oc logs -f deployment/consumer-basic --all-containers=true --max-log-requests=10 -n kafka
+```
 
 #### Logs Attendus : Rebalancing Automatique
 
 **Pod 1** (consumer existant) :
+
+```text
 info: Program[0]
       ✓ Partitions assigned: orders.created[0], orders.created[1], orders.created[2], orders.created[3], orders.created[4], orders.created[5]
 info: Program[0]
@@ -1947,8 +1968,11 @@ info: Program[0]
       ✓ Partitions assigned: orders.created[0], orders.created[1], orders.created[2]  ← Réduit à 3 partitions
 info: Program[0]
       📦 Message received → Partition: 0, Offset: 10...
+```
 
 **Pod 2** (nouveau consumer) :
+
+```text
 info: Program[0]
       Consumer started. Subscribed to topic 'orders.created', Group: 'inventory-service'
 info: Program[0]
@@ -1959,6 +1983,7 @@ info: Program[0]
         → Partition 5: starting from offset 12
 info: Program[0]
       📦 Message received → Partition: 3, Offset: 8, Key: customer-D...
+```
 
 **Observation** :
 - ✅ Pod 1 a d'abord les 6 partitions (consumer unique)
@@ -1970,6 +1995,7 @@ info: Program[0]
 
 #### Étape 2 : Simuler Crash d'un Consumer
 
+```bash
 # Identifier les pods
 oc get pods -l app=consumer-basic
 
@@ -1978,8 +2004,11 @@ oc delete pod consumer-basic-xxxx-yyyy --grace-period=0 --force
 
 # Observer les logs du pod survivant
 oc logs -f deployment/consumer-basic --tail=50
+```
 
 **Logs du pod survivant** :
+
+```text
 info: Program[0]
       📦 Message received → Partition: 1, Offset: 25...
 # (Pod 2 crashe ici)
@@ -1991,6 +2020,7 @@ info: Program[0]
       ✓ Partitions assigned: orders.created[0], orders.created[1], orders.created[2], orders.created[3], orders.created[4], orders.created[5]  ← Récupère toutes les partitions
 info: Program[0]
         → Partition 3: starting from offset 15  ← Reprend depuis dernier offset commité
+```
 
 **Observation** :
 - ⚠️ Rebalancing déclenché après `SessionTimeoutMs` (10 secondes sans heartbeat de Pod 2)
@@ -2002,6 +2032,7 @@ info: Program[0]
 
 #### Étape 3 : Scaler à 6 Replicas (Optimal)
 
+```bash
 # Topic a 6 partitions, scaler à 6 consumers
 oc scale deployment/consumer-basic --replicas=6 -n kafka
 
@@ -2015,27 +2046,35 @@ oc logs deployment/consumer-basic --tail=10 | grep "Partitions assigned"
 # Pod 4: orders.created[3]
 # Pod 5: orders.created[4]
 # Pod 6: orders.created[5]
+```
 
 **Distribution optimale** :
+
+```text
 Pod 1: Partition [0] uniquement
 Pod 2: Partition [1] uniquement
 Pod 3: Partition [2] uniquement
 Pod 4: Partition [3] uniquement
 Pod 5: Partition [4] uniquement
 Pod 6: Partition [5] uniquement
+```
 
 Chaque consumer lit exactement 1 partition → **parallélisme maximal** → throughput maximal.
 
 💡 **TIP** : Formule pour throughput total :
+
+```text
 Throughput_total = Throughput_par_consumer × min(N_consumers, N_partitions)
 
 Exemple :
 - 1 consumer traite 100 msgs/sec
 - Topic a 6 partitions
 - Throughput max = 100 × 6 = 600 msgs/sec
+```
 
 #### Étape 4 : Scaler à 8 Replicas (Sur-capacité)
 
+```bash
 # Scaler à 8 consumers (plus que de partitions)
 oc scale deployment/consumer-basic --replicas=8 -n kafka
 
@@ -2044,11 +2083,15 @@ oc get pods -l app=consumer-basic
 
 # Observer logs
 oc logs deployment/consumer-basic --tail=20 | grep -E "(Partitions assigned|started)"
+```
 
 **Observation** :
+
+```text
 Pod 1 à Pod 6: Chacun a 1 partition
 Pod 7: ✓ Partitions assigned: (empty)  ← AUCUNE partition assignée
 Pod 8: ✓ Partitions assigned: (empty)  ← AUCUNE partition assignée
+```
 
 **Pod 7 et 8 sont INACTIFS** car il n'y a plus de partitions disponibles.
 
@@ -2070,6 +2113,7 @@ Pod 8: ✓ Partitions assigned: (empty)  ← AUCUNE partition assignée
 
 #### Pattern de Retry avec Exponential Backoff
 
+```csharp
 private static async Task<bool> ProcessWithRetryAsync(
     ConsumeResult<string, string> consumeResult, 
     ILogger logger,
@@ -2106,12 +2150,17 @@ private static async Task<bool> ProcessWithRetryAsync(
     
     return false;  // Échec après tous les retries
 }
+```
 
 💡 **TIP** : Ajoutez du **jitter** au backoff pour éviter les retry storms :
+
+```csharp
 var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1) + Random.Shared.NextDouble());
+```
 
 #### Dead Letter Queue (DLQ) pour Consumer
 
+```csharp
 private static async Task SendToDeadLetterQueueAsync(ConsumeResult<string, string> failedMessage)
 {
     using var dlqProducer = new ProducerBuilder<string, string>(new ProducerConfig
@@ -2152,16 +2201,20 @@ private static async Task SendToDeadLetterQueueAsync(ConsumeResult<string, strin
     logger.LogWarning("Message sent to DLQ: Key={Key}, OriginalOffset={Offset}", 
         failedMessage.Message.Key, failedMessage.Offset.Value);
 }
+```
 
 💡 **TIP** : Créez un consumer séparé pour monitorer le DLQ et alerter l'équipe ops :
+
+```bash
 # Vérifier nombre de messages dans DLQ
-oc exec -it bhf-kafka-kafka-0 -- \
+oc exec -it bhf-kafka-broker-0 -- \
   bin/kafka-run-class.sh kafka.tools.GetOffsetShell \
   --broker-list localhost:9092 \
   --topic orders.dlq \
   --time -1
 
 # Si offset > 0 → alerter équipe
+```
 
 ---
 
