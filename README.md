@@ -84,32 +84,43 @@ flowchart LR
 
 > **🔒 Toujours activer l'idempotence en production**
 
-```java
-props.put("enable.idempotence", "true");
-props.put("acks", "all");
-props.put("retries", Integer.MAX_VALUE);
+```csharp
+var config = new ProducerConfig
+{
+    EnableIdempotence = true,
+    Acks = Acks.All,
+    MessageSendMaxRetries = int.MaxValue
+};
 ```
 
 > **⚡ Optimiser le throughput avec le batching**
 
-```java
-props.put("linger.ms", "5");      // Attendre 5ms pour grouper
-props.put("batch.size", "16384"); // 16KB par batch
+```csharp
+var config = new ProducerConfig
+{
+    LingerMs = 5,       // Attendre 5ms pour grouper
+    BatchSize = 16384   // 16KB par batch
+};
 ```
 
 ### Consumer
 
 > **📖 Préférer `read_committed` pour les données transactionnelles**
 
-```java
-props.put("isolation.level", "read_committed");
+```csharp
+var config = new ConsumerConfig
+{
+    IsolationLevel = IsolationLevel.ReadCommitted
+};
 ```
 
 > **🔄 Gérer le rebalancing avec CooperativeSticky**
 
-```java
-props.put("partition.assignment.strategy", 
-          "org.apache.kafka.clients.consumer.CooperativeStickyAssignor");
+```csharp
+var config = new ConsumerConfig
+{
+    PartitionAssignmentStrategy = PartitionAssignmentStrategy.CooperativeSticky
+};
 ```
 
 ---
@@ -179,12 +190,12 @@ cd infra/scripts
 | Service | URL | Description |
 | --- | --- | --- |
 | Kafka UI | <http://localhost:8080> | Interface web |
-| Kafka | <http://localhost:9092> | Bootstrap servers |
+| Kafka | `localhost:9092` | Bootstrap servers (TCP) |
 
 ### Arrêter
 
 ```powershell
-docker-compose -f docker-compose.single-node.yml down
+docker compose -f docker-compose.single-node.yml down
 ```
 
 ---

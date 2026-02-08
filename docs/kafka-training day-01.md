@@ -115,6 +115,7 @@ Cette formation suit une méthodologie **hands-on first** avec des labs intensif
 
 #### ❌ Approche 1 : Appels REST Synchrones
 
+```csharp
 // OrderService.cs - Approche synchrone (problématique)
 public async Task<IActionResult> CreateOrder(OrderDto order)
 {
@@ -129,6 +130,7 @@ public async Task<IActionResult> CreateOrder(OrderDto order)
     
     return Ok(createdOrder);
 }
+```
 
 **Problèmes** :
 - ⏱️ **Latence cumulée** : 5 services × 200ms = 1 seconde de réponse
@@ -139,10 +141,12 @@ public async Task<IActionResult> CreateOrder(OrderDto order)
 
 #### ❌ Approche 2 : File d'Attente Classique (RabbitMQ)
 
+```csharp
 // Avec RabbitMQ
 await _rabbitMqPublisher.Publish("orders.created", order);
 // Problème : Pas de rejouabilité (message consommé = supprimé)
 // Problème : Nouveau service = duplication de messages
+```
 
 **Limites** :
 - 📦 **Messages éphémères** : une fois consommés, ils disparaissent
@@ -152,6 +156,7 @@ await _rabbitMqPublisher.Publish("orders.created", order);
 
 #### ✅ Approche 3 : Event Streaming avec Kafka
 
+```csharp
 // OrderService.cs - Approche event-driven
 public async Task<IActionResult> CreateOrder(OrderDto order)
 {
@@ -166,6 +171,7 @@ public async Task<IActionResult> CreateOrder(OrderDto order)
     
     return Accepted(createdOrder); // Réponse immédiate (202)
 }
+```
 
 **Avantages** :
 - ⚡ **Latence faible** : réponse en ~50ms (juste écriture dans Kafka)
@@ -381,7 +387,8 @@ oc get pods -n kafka
 
 Créer le fichier `kafka-cluster.yaml` :
 
-apiVersion: kafka.strimzi.io/v1beta2
+```yaml
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: bhf-kafka
@@ -392,7 +399,7 @@ metadata:
 spec:
   kafka:
     version: 4.0.0
-    replicas: 1
+    replicas: 3  # K3s: 3, OpenShift CRC: 1
     listeners:
       - name: plain
         port: 9092
@@ -438,8 +445,11 @@ spec:
         limits:
           memory: 512Mi
           cpu: 500m
+```
 
 Déployer :
+
+```bash
 oc apply -f kafka-cluster.yaml -n kafka
 
 # Suivre le déploiement (prend 3-5 minutes)
@@ -447,40 +457,53 @@ oc get kafka bhf-kafka -n kafka -w
 
 # Attendez status: Ready
 # NAME        DESIRED KAFKA REPLICAS   READY   WARNINGS
-# bhf-kafka   1                        True
+# bhf-kafka   3                        True
+```
 
 Vérifier les pods :
 
+```bash
 oc get pods -n kafka
+```
 
-# Attendez que ces pods soient Running (K3s) :
-# bhf-kafka-broker-0                           1/1     Running   0          5m
-# bhf-kafka-broker-1                           1/1     Running   0          5m
-# bhf-kafka-broker-2                           1/1     Running   0          5m
-# bhf-kafka-controller-3                       1/1     Running   0          6m
-# bhf-kafka-controller-4                       1/1     Running   0          6m
-# bhf-kafka-controller-5                       1/1     Running   0          6m
-# bhf-kafka-entity-operator-xxx               2/2     Running   0          4m
+**Résultat attendu (K3s, 3 replicas)** :
 
-# Attendez que ces pods soient Running (OpenShift CRC) :
-# bhf-kafka-broker-0                           1/1     Running   0          5m
-# bhf-kafka-controller-0                       1/1     Running   0          6m
-# bhf-kafka-entity-operator-xxx               2/2     Running   0          4m
+```text
+bhf-kafka-broker-0                           1/1     Running   0          5m
+bhf-kafka-broker-1                           1/1     Running   0          5m
+bhf-kafka-broker-2                           1/1     Running   0          5m
+bhf-kafka-controller-3                       1/1     Running   0          6m
+bhf-kafka-controller-4                       1/1     Running   0          6m
+bhf-kafka-controller-5                       1/1     Running   0          6m
+bhf-kafka-entity-operator-xxx               2/2     Running   0          4m
+```
+
+**Résultat attendu (OpenShift CRC, 1 replica)** :
+
+```text
+bhf-kafka-broker-0                           1/1     Running   0          5m
+bhf-kafka-controller-0                       1/1     Running   0          6m
+bhf-kafka-entity-operator-xxx               2/2     Running   0          4m
+```
 
 💡 **TIP** : Si un pod reste en Pending, vérifiez le PVC : `oc get pvc`. Assurez-vous qu'un StorageClass par défaut existe.
 
 ⚠️ **TROUBLESHOOTING** : Pod CrashLoopBackOff ?
+
+```bash
 # Vérifier les logs
-oc logs bhf-kafka-kafka-0
+oc logs bhf-kafka-broker-0
 
 # Erreur courante : Insufficient memory
 # Solution : Réduire resources.requests.memory à 1Gi pour les tests
+```
 
 #### Étape 3 : Créer un Topic
 
 Créer le fichier `first-topic.yaml` :
 
-apiVersion: kafka.strimzi.io/v1beta2
+```yaml
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: orders.created
@@ -499,8 +522,11 @@ spec:
     cleanup.policy: delete
     # Max message size (1 MB par défaut)
     max.message.bytes: 1048576
+```
 
 Appliquer :
+
+```bash
 oc apply -f first-topic.yaml -n kafka
 
 # Vérifier la création
@@ -508,21 +534,27 @@ oc get kafkatopic orders.created -n kafka
 
 # Détails du topic
 oc describe kafkatopic orders.created
+```
 
 💡 **TIP** : Vous pouvez aussi créer des topics via CLI Kafka :
-oc exec -it bhf-kafka-kafka-0 -- \
+
+```bash
+oc exec -it bhf-kafka-broker-0 -- \
   bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --create \
   --topic test-topic \
   --partitions 3 \
   --replication-factor 3
+```
 
 #### Étape 4 : Test avec Console Producer/Consumer
 
 Lancer un producer :
+
+```bash
 oc run kafka-producer -ti \
-  --image=quay.io/strimzi/kafka:latest-kafka-3.6.0 \
+  --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
   --rm=true \
   --restart=Never \
   -- bin/kafka-console-producer.sh \
@@ -530,14 +562,17 @@ oc run kafka-producer -ti \
   --topic orders.created
 
 # Taper quelques messages :
-> {"orderId": "ORD-001", "customerId": "CUST-123", "amount": 99.99}
-> {"orderId": "ORD-002", "customerId": "CUST-456", "amount": 149.50}
-> {"orderId": "ORD-003", "customerId": "CUST-789", "amount": 249.99}
-> (Ctrl+C pour quitter)
+# {"orderId": "ORD-001", "customerId": "CUST-123", "amount": 99.99}
+# {"orderId": "ORD-002", "customerId": "CUST-456", "amount": 149.50}
+# {"orderId": "ORD-003", "customerId": "CUST-789", "amount": 249.99}
+# (Ctrl+C pour quitter)
+```
 
 Lancer un consumer (dans un autre terminal) :
+
+```bash
 oc run kafka-consumer -ti \
-  --image=quay.io/strimzi/kafka:latest-kafka-3.6.0 \
+  --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
   --rm=true \
   --restart=Never \
   -- bin/kafka-console-consumer.sh \
@@ -546,19 +581,21 @@ oc run kafka-consumer -ti \
   --from-beginning
 
 # Vous devriez voir les 3 messages précédents
+```
 
 💡 **TIP** : Ajouter `--property print.key=true` pour voir les clés des messages.
 
 #### Étape 5 : Vérifier le Cluster
 
+```bash
 # Lister tous les topics
-oc exec -it bhf-kafka-kafka-0 -- \
+oc exec -it bhf-kafka-broker-0 -- \
   bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --list
 
 # Décrire un topic
-oc exec -it bhf-kafka-kafka-0 -- \
+oc exec -it bhf-kafka-broker-0 -- \
   bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --describe \
@@ -569,11 +606,12 @@ oc exec -it bhf-kafka-kafka-0 -- \
 # Partition: 0  Leader: 0  Replicas: 0,1,2  Isr: 0,1,2
 # Partition: 1  Leader: 1  Replicas: 1,2,0  Isr: 1,2,0
 # ...
+```
 
 #### ✅ Validation
 
 - [ ] Cluster Kafka 3 brokers Running
-- [ ] ZooKeeper 3 nodes Running
+- [ ] Controllers 3 nodes Running (KRaft)
 - [ ] Entity Operator Running
 - [ ] Topic `orders.created` créé avec 6 partitions et replication factor 3
 - [ ] Messages produits et consommés avec succès via CLI
@@ -582,9 +620,12 @@ oc exec -it bhf-kafka-kafka-0 -- \
 **📸 Screenshot à prendre** : `oc get pods` montrant tous les pods Running
 
 💡 **TIP** : Créez un alias pour faciliter l'accès aux outils Kafka :
-alias kafka-topics="oc exec -it bhf-kafka-kafka-0 -- bin/kafka-topics.sh --bootstrap-server localhost:9092"
-alias kafka-console-producer="oc exec -it bhf-kafka-kafka-0 -- bin/kafka-console-producer.sh --bootstrap-server localhost:9092"
-alias kafka-console-consumer="oc exec -it bhf-kafka-kafka-0 -- bin/kafka-console-consumer.sh --bootstrap-server localhost:9092"
+
+```bash
+alias kafka-topics="oc exec -it bhf-kafka-broker-0 -- bin/kafka-topics.sh --bootstrap-server localhost:9092"
+alias kafka-console-producer="oc exec -it bhf-kafka-broker-0 -- bin/kafka-console-producer.sh --bootstrap-server localhost:9092"
+alias kafka-console-consumer="oc exec -it bhf-kafka-broker-0 -- bin/kafka-console-consumer.sh --bootstrap-server localhost:9092"
+```
 
 ---
 
@@ -603,6 +644,7 @@ alias kafka-console-consumer="oc exec -it bhf-kafka-kafka-0 -- bin/kafka-console
 
 Un message Kafka est composé de plusieurs parties :
 
+```text
 ┌─────────────────────────────────────────┐
 │           MESSAGE KAFKA                 │
 ├─────────────────────────────────────────┤
@@ -613,6 +655,7 @@ Un message Kafka est composé de plusieurs parties :
 │ Partition         : int                 │  → Calculé par Kafka (si key fournie)
 │ Offset            : long                │  → Assigné par le broker après écriture
 └─────────────────────────────────────────┘
+```
 
 #### Key vs Value
 
@@ -630,6 +673,7 @@ Un message Kafka est composé de plusieurs parties :
 
 #### Partitionnement avec Clé
 
+```csharp
 // Exemple 1 : Sans clé → round-robin (sticky partitioner depuis Kafka 2.4+)
 await producer.ProduceAsync("orders", new Message<Null, string>
 {
@@ -642,9 +686,13 @@ await producer.ProduceAsync("orders", new Message<string, string>
     Key = "customer-123",  // Ira TOUJOURS sur la même partition
     Value = "{...}"
 });
+```
 
 **Formule de partitionnement** :
+
+```text
 partition = murmur2_hash(key) % nombre_partitions
+```
 
 **Pourquoi c'est important ?** :
 - **Ordre garanti** : tous les événements d'un client arrivent dans l'ordre
@@ -661,13 +709,16 @@ partition = murmur2_hash(key) % nombre_partitions
 
 #### NuGet Packages Requis
 
+```xml
 <!-- Dans votre .csproj -->
 <PackageReference Include="Confluent.Kafka" Version="2.3.0" />
 <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
 <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+```
 
 #### Configuration Minimale
 
+```csharp
 using Confluent.Kafka;
 
 var config = new ProducerConfig
@@ -691,11 +742,13 @@ var config = new ProducerConfig
     // ===== IDEMPOTENCE (RECOMMANDÉ PRODUCTION) =====
     EnableIdempotence = false  // On verra ça plus tard
 };
+```
 
 💡 **TIP** : Pour production, utilisez toujours `Acks = Acks.All` avec `min.insync.replicas >= 2` pour garantir durabilité.
 
 #### Paramètres de Performance
 
+```csharp
 var config = new ProducerConfig
 {
     // ... config de base ...
@@ -714,6 +767,7 @@ var config = new ProducerConfig
     // ===== MAX IN-FLIGHT =====
     MaxInFlight = 5  // Max requêtes non-ackées en parallèle
 };
+```
 
 💡 **TIP** : Trade-off latence vs throughput :
 - **Latence critique** : `LingerMs = 0`, `BatchSize = 16384`, `CompressionType = None`
@@ -728,11 +782,13 @@ Créer une application console .NET qui envoie des messages simples (string) à 
 
 #### Structure du Projet
 
+```text
 KafkaProducerBasic/
 ├── KafkaProducerBasic.csproj
 ├── Program.cs
 ├── appsettings.json
 └── Dockerfile
+```
 
 #### Code : Program.cs
 
@@ -841,6 +897,7 @@ finally
     producer.Flush(TimeSpan.FromSeconds(10));
     logger.LogInformation("Producer closed gracefully.");
 }
+```
 
 💡 **TIP** : Utilisez toujours `Flush()` avant de fermer le producer pour éviter la perte de messages en attente.
 
@@ -848,6 +905,7 @@ finally
 
 #### Configuration : appsettings.json
 
+```json
 {
   "Logging": {
     "LogLevel": {
@@ -862,10 +920,13 @@ finally
     "TopicName": "orders.created"
   }
 }
+```
 
 #### Déploiement sur OpenShift
 
 **Dockerfile** :
+
+```dockerfile
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /app
 
@@ -885,6 +946,7 @@ COPY --from=build /app/out .
 USER 1001
 
 ENTRYPOINT ["dotnet", "KafkaProducerBasic.dll"]
+```
 
 **Build & Push** :
 # Build de l'image

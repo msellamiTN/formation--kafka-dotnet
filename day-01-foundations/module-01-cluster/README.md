@@ -996,7 +996,7 @@ NAME                        TYPE        CLUSTER-IP      PORT(S)
 bhf-kafka-kafka-bootstrap   ClusterIP   10.43.x.x       9091/TCP,9092/TCP,9093/TCP
 bhf-kafka-kafka-brokers     ClusterIP   None            9090/TCP,9091/TCP,9092/TCP
 bhf-kafka-kafka-external    NodePort    10.43.x.x       9094:32092/TCP
-```text
+```
 
 **✅ Checkpoint 1** : Le cluster affiche `READY: True` et les pods sont `Running`.
 
@@ -1023,7 +1023,7 @@ kafka   3/3     5m
 
 NAME        TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)
 kafka-svc   ClusterIP   None         <none>        9092/TCP,9093/TCP
-```text
+```
 
 **✅ Checkpoint 1** : Le StatefulSet a 3/3 pods prêts.
 
@@ -1180,6 +1180,23 @@ orders-retry
 
 </details>
 
+<details>
+<summary>☁️ <b>Mode OpenShift Sandbox</b></summary>
+
+**Explication** : Sur le Sandbox, Kafka est déployé via StatefulSet natif (sans Strimzi). Nous exécutons la commande directement dans le pod `kafka-0`.
+
+**Commande** :
+
+```bash
+oc exec -it kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server kafka-0.kafka-svc:9092 \
+  --list
+```
+
+**Résultat attendu** : Liste vide ou quelques topics internes (commençant par `__`).
+
+</details>
+
 ---
 
 ### Étape 5 - Création d'un topic avec 3 partitions
@@ -1264,6 +1281,31 @@ kafkatopic.kafka.strimzi.io/bhf-demo created
 
 </details>
 
+<details>
+<summary>☁️ <b>Mode OpenShift Sandbox</b></summary>
+
+**Commande** :
+
+```bash
+oc exec -it kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server kafka-0.kafka-svc:9092 \
+  --create \
+  --if-not-exists \
+  --topic bhf-demo \
+  --partitions 3 \
+  --replication-factor 3
+```
+
+**Résultat attendu** :
+
+```
+Created topic bhf-demo.
+```
+
+> 📝 **Note** : Le Sandbox dispose de 3 replicas Kafka, donc `--replication-factor 3` est approprié.
+
+</details>
+
 ---
 
 ### Étape 6 - Description du topic
@@ -1309,6 +1351,29 @@ kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 
   --restart=Never -n kafka -- \
   bin/kafka-topics.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
   --describe --topic bhf-demo
+```
+
+**Résultat attendu** :
+
+```
+Topic: bhf-demo	TopicId: xxxxx	PartitionCount: 3	ReplicationFactor: 3	Configs: 
+	Topic: bhf-demo	Partition: 0	Leader: 0	Replicas: 0,1,2	Isr: 0,1,2
+	Topic: bhf-demo	Partition: 1	Leader: 1	Replicas: 1,2,0	Isr: 1,2,0
+	Topic: bhf-demo	Partition: 2	Leader: 2	Replicas: 2,0,1	Isr: 2,0,1
+```
+
+</details>
+
+<details>
+<summary>☁️ <b>Mode OpenShift Sandbox</b></summary>
+
+**Commande** :
+
+```bash
+oc exec -it kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server kafka-0.kafka-svc:9092 \
+  --describe \
+  --topic bhf-demo
 ```
 
 **Résultat attendu** :
@@ -1386,6 +1451,26 @@ echo "$MSG" | kubectl run kafka-producer -i --rm --image=quay.io/strimzi/kafka:l
 
 </details>
 
+<details>
+<summary>☁️ <b>Mode OpenShift Sandbox</b></summary>
+
+**Commande** :
+
+```bash
+# Générer un message unique avec timestamp
+MSG="hello-bhf-$(date +%s)"
+echo "Message à envoyer: $MSG"
+
+# Envoyer le message directement dans le pod kafka-0
+echo "$MSG" | oc exec -i kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
+  --bootstrap-server kafka-0.kafka-svc:9092 \
+  --topic bhf-demo
+```
+
+**Résultat attendu** : Pas de message d'erreur (la commande se termine silencieusement).
+
+</details>
+
 ---
 
 ### Étape 8 - Consommation du message
@@ -1428,6 +1513,27 @@ kubectl run kafka-consumer -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4
   --restart=Never -n kafka -- \
   bin/kafka-console-consumer.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
   --topic bhf-demo --from-beginning --timeout-ms 10000
+```
+
+**Résultat attendu** :
+
+```
+hello-bhf-1706390000
+```
+
+</details>
+
+<details>
+<summary>☁️ <b>Mode OpenShift Sandbox</b></summary>
+
+**Commande** :
+
+```bash
+oc exec -it kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server kafka-0.kafka-svc:9092 \
+  --topic bhf-demo \
+  --from-beginning \
+  --timeout-ms 10000
 ```
 
 **Résultat attendu** :
