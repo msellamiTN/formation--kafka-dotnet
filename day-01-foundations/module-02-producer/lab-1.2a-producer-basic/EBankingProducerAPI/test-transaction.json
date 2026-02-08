@@ -1,0 +1,9 @@
+{
+  "fromAccount": "FR7630001000123456",
+  "toAccount": "FR7630001000987654",
+  "amount": 1500.00,
+  "currency": "EUR",
+  "type": 1,
+  "description": "Lab 1.2a test transaction",
+  "customerId": "CUST-001"
+}

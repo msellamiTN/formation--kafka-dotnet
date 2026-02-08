@@ -710,7 +710,39 @@ Ouvrir Swagger UI : **<https://localhost:5001/swagger>**
 > - **Distribution équitable** : des clients différents se répartissent sur des partitions différentes
 > - **Vérification via Kafka CLI** : lire une partition spécifique pour prouver l'isolation par client
 
-Si vous utilisez l'OpenShift Developer Sandbox, suivez ces étapes pour déployer l'API :
+### 🚀 Déploiement Automatisé (Recommandé)
+
+> [!TIP]
+> Utilisez les scripts de déploiement automatisé pour un déploiement complet avec validation des objectifs du lab.
+
+**Option 1 : Script Bash (Linux/macOS/WSL)**
+```bash
+# Depuis la racine du repository
+cd day-01-foundations/scripts
+./deploy-and-test-1.2b.sh
+```
+
+**Option 2 : Script PowerShell (Windows)**
+```powershell
+# Depuis la racine du repository
+cd day-01-foundations/scripts
+.\deploy-and-test-1.2b.ps1
+```
+
+Ces scripts effectuent automatiquement :
+- ✅ Build de l'application
+- ✅ Déploiement sur OpenShift
+- ✅ Configuration des variables d'environnement
+- ✅ Création de la route sécurisée
+- ✅ Tests d'accessibilité (Health, Swagger)
+- ✅ Validation des objectifs du lab (partitionnement par clé, garantie d'ordre, distribution)
+- ✅ Vérification des statistiques de partition
+
+---
+
+### Déploiement Manuel (Étape par Étape)
+
+Si vous préférez déployer manuellement pour comprendre chaque étape :
 
 ### 1. Créer le Build et l'Application
 Depuis le dossier `EBankingKeyedProducerAPI` :

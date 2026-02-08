@@ -57,11 +57,10 @@ function Get-JsonResponse($url) {
     } catch { return $null }
 }
 
-function Post-JsonRequest($url, $body) {
+function Send-JsonRequest($url, $body) {
     try {
-        $resp = Invoke-RestMethod -Uri $url -SkipCertificateCheck -Method POST `
+        return Invoke-RestMethod -Uri $url -SkipCertificateCheck -Method POST `
             -ContentType "application/json" -Body $body -ErrorAction Stop
-        return $resp
     } catch { return $null }
 }
 
@@ -115,8 +114,8 @@ if (-not $routeHost) { Write-Skip "Route 'ebanking-producer-api-secure' not foun
 
     Write-Step "POST /api/Transactions/batch (3 tx)"
     $batch = '[{"fromAccount":"FR76300010001111","toAccount":"FR76300010002222","amount":100,"currency":"EUR","type":1,"description":"Batch1","customerId":"CUST-B1"},{"fromAccount":"FR76300010003333","toAccount":"FR76300010004444","amount":250,"currency":"EUR","type":2,"description":"Batch2","customerId":"CUST-B2"},{"fromAccount":"FR76300010005555","toAccount":"FR76300010006666","amount":5000,"currency":"EUR","type":6,"description":"Batch3","customerId":"CUST-B3"}]'
-    $r = Post-JsonRequest "$base/api/Transactions/batch" $batch
-    if ($r) { Write-Pass "Batch sent" } else { Write-Info "Batch response empty" }
+    $r = Send-JsonRequest "$base/api/Transactions/batch" $batch
+    if ($null -ne $r) { Write-Pass "Batch sent" } else { Write-Info "Batch response empty" }
 }
 
 # =============================================================================

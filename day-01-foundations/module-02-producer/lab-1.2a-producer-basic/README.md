@@ -768,7 +768,39 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
 > - **Acknowledgment (acks)** : le broker confirme la réception du message
 > - **Vérification via Kafka CLI** : consommer les messages produits pour confirmer le flux de bout en bout
 
-Si vous souhaitez déployer cette API directement sur le cluster OpenShift Sandbox (au lieu de l'exécuter localement), suivez ces étapes :
+### 🚀 Déploiement Automatisé (Recommandé)
+
+> [!TIP]
+> Utilisez les scripts de déploiement automatisé pour un déploiement complet avec validation des objectifs du lab.
+
+**Option 1 : Script Bash (Linux/macOS/WSL)**
+```bash
+# Depuis la racine du repository
+cd day-01-foundations/scripts
+./deploy-and-test-1.2a.sh
+```
+
+**Option 2 : Script PowerShell (Windows)**
+```powershell
+# Depuis la racine du repository
+cd day-01-foundations/scripts
+.\deploy-and-test-1.2a.ps1
+```
+
+Ces scripts effectuent automatiquement :
+- ✅ Build de l'application
+- ✅ Déploiement sur OpenShift
+- ✅ Configuration des variables d'environnement
+- ✅ Création de la route sécurisée
+- ✅ Tests d'accessibilité (Health, Swagger)
+- ✅ Validation des objectifs du lab (production, sérialisation, partition, batch)
+- ✅ Vérification du topic Kafka
+
+---
+
+### Déploiement Manuel (Étape par Étape)
+
+Si vous préférez déployer manuellement pour comprendre chaque étape :
 
 ### 1. Préparer le déploiement
 
@@ -822,7 +854,105 @@ echo "Swagger UI : https://$HOST/swagger"
 
 Ouvrez cette URL dans votre navigateur pour accéder à Swagger UI.
 
-### 6. 🧪 Scénarios de Test et Validation des Concepts
+### 5.1 ✅ Vérification du Déploiement
+
+Après avoir exécuté les étapes ci-dessus, vérifiez que tout fonctionne correctement :
+
+#### Étape 1 : Vérifier le build
+```bash
+# Le build doit afficher "Build successful!" à la fin
+oc start-build ebanking-producer-api --from-dir=. --follow
+```
+**Résultat attendu** : `Build successful! Now deploying the application:`
+
+#### Étape 2 : Vérifier le déploiement
+```bash
+# Vérifier que le pod est en cours d'exécution
+oc get pod -l app=ebanking-producer-api
+```
+**Résultat attendu** : Pod avec status `Running` et `1/1` dans la colonne `READY`
+
+#### Étape 3 : Vérifier la configuration
+```bash
+# Vérifier les variables d'environnement
+oc env deployment/ebanking-producer-api --list
+```
+**Résultat attendu** : Doit contenir `Kafka__BootstrapServers=kafka-svc:9092`
+
+#### Étape 4 : Vérifier la route
+```bash
+# Vérifier que la route a été créée
+oc get route ebanking-producer-api-secure
+```
+**Résultat attendu** : Route avec le bon HOST et service `ebanking-producer-api`
+
+#### Étape 5 : Vérifier le health endpoint
+```bash
+# Tester le endpoint de santé
+curl -k -s "https://$HOST/api/Transactions/health"
+```
+**Résultat attendu** :
+```json
+{
+  "status": "Healthy",
+  "service": "EBanking Producer API",
+  "timestamp": "2026-02-08T23:38:25.2965637Z"
+}
+```
+
+#### Étape 6 : Envoyer une transaction de test
+```bash
+# Créer un fichier de test
+cat > test-transaction.json << EOF
+{
+  "fromAccount": "FR7630001000123456",
+  "toAccount": "FR7630001000987654",
+  "amount": 1500.00,
+  "currency": "EUR",
+  "type": 1,
+  "description": "Test transaction",
+  "customerId": "CUST-001"
+}
+EOF
+
+# Envoyer la transaction
+curl -k -s -X POST "https://$HOST/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d @test-transaction.json
+```
+**Résultat attendu** :
+```json
+{
+  "transactionId": "b4692c60-873c-4c43-83d1-586dbeda75b9",
+  "status": "Processing",
+  "kafkaPartition": 1,
+  "kafkaOffset": 1,
+  "timestamp": "2026-02-08T23:39:11.109Z"
+}
+```
+
+#### Étape 7 : Vérifier dans Kafka
+```bash
+# Vérifier que le message est bien dans Kafka
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic banking.transactions \
+  --from-beginning \
+  --max-messages 1
+```
+**Résultat attendu** : Le message JSON de la transaction doit apparaître
+
+### 📊 Résumé du Déploiement Réussi
+
+✅ **Build completed** - .NET 8 application built successfully  
+✅ **Deployment created** - Pod is running on OpenShift  
+✅ **Environment configured** - Kafka connection set to `kafka-svc:9092`  
+✅ **Route created** - API accessible at: `https://ebanking-producer-api-secure-msellamitn-dev.apps.rm3.7wse.p1.openshiftapps.com`  
+✅ **Health check passed** - API responding correctly  
+✅ **Transaction sent** - Successfully sent to Kafka topic `banking.transactions`  
+✅ **Message verified** - Confirmed in Kafka with partition 1, offset 1
+
+### 7. 🧪 Scénarios de Test et Validation des Concepts
 
 #### Scénario 1 : Envoyer une transaction simple (POST /api/Transactions)
 
@@ -876,7 +1006,7 @@ curl -k -s -X POST "https://$HOST/api/Transactions" \
 | `kafkaOffset: 0` | Offset séquentiel — premier message de cette partition |
 | `status: "Processing"` | Envoi **fire-and-forget** — le producer n'attend pas le traitement |
 
-#### Scénario 2 : Envoyer un lot de transactions (POST /api/Transactions/batch)
+#### Scénario 3 : Envoyer un lot de transactions (POST /api/Transactions/batch)
 
 ```bash
 curl -k -s -X POST "https://$HOST/api/Transactions/batch" \
@@ -893,7 +1023,7 @@ curl -k -s -X POST "https://$HOST/api/Transactions/batch" \
 - Chaque message reçoit un **offset séquentiel** au sein de sa partition
 - Le batch n'est **pas atomique** : chaque message est produit indépendamment
 
-#### Scénario 3 : Vérifier les messages dans Kafka (CLI)
+#### Scénario 4 : Vérifier les messages dans Kafka (CLI)
 
 ```bash
 # Consommer les messages du topic depuis le début
@@ -926,7 +1056,7 @@ banking.transactions:5:0
 
 Chaque ligne montre `topic:partition:dernier_offset`. Cela confirme la **distribution round-robin** des messages sans clé.
 
-#### Scénario 4 : Health Check et monitoring
+#### Scénario 5 : Health Check et monitoring
 
 ```bash
 curl -k -s "https://$HOST/api/Transactions/health" | jq .
@@ -951,11 +1081,11 @@ curl -k -s "https://$HOST/api/Transactions/health" | jq .
 | `GET` | `/api/Transactions/{id}` | Obtenir le statut d'une transaction |
 | `GET` | `/api/Transactions/health` | Vérifier la disponibilité du service |
 
-### 7. Stability Warning
+### 8. Stability Warning
 
 For Sandbox environments, use `Acks = Acks.Leader` and `EnableIdempotence = false` in `ProducerConfig` to avoid `Coordinator load in progress` hangs.
 
-### 8. Troubleshooting (Sandbox)
+### 9. Troubleshooting (Sandbox)
 
 - **503 Service Unavailable** :
     - Vérifiez que le pod est `Running` : `oc get pods -l deployment=ebanking-producer-api`
