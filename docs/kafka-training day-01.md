@@ -2274,6 +2274,7 @@ oc exec -it bhf-kafka-broker-0 -- \
 
 #### Code : OrderAPI (Minimal Producer)
 
+```csharp
 // Program.cs - API REST avec Kafka Producer intégré
 using Confluent.Kafka;
 using Microsoft.AspNetCore.Mvc;
@@ -2375,20 +2376,24 @@ app.Run();
 
 // DTOs
 record OrderDto(string CustomerId, List<string> Items, decimal TotalAmount);
+```
 
 💡 **TIP** : Utilisez toujours un **singleton Producer** en ASP.NET Core. Créer un producer par requête est extrêmement inefficace (connexion TCP à chaque fois).
 
 #### Déploiement & Test
 
 **1. Déployer OrderAPI** :
+```bash
 oc apply -f order-api-deployment.yaml
 oc expose svc/order-api
 
 # Récupérer URL
 ORDER_API_URL=$(oc get route order-api -o jsonpath='{.spec.host}')
 echo "Order API URL: https://$ORDER_API_URL"
+```
 
 **2. Envoyer commandes** :
+```bash
 # Test 1 : Commande valide
 curl -X POST https://$ORDER_API_URL/orders \
   -H "Content-Type: application/json" \
@@ -2413,8 +2418,10 @@ for i in {1..5}; do
   echo ""
   sleep 0.5
 done
+```
 
 **3. Observer les Consumers** :
+```bash
 # InventoryService logs
 oc logs -f deployment/inventory-service
 
@@ -2422,9 +2429,11 @@ oc logs -f deployment/inventory-service
 # 📦 Message received → Key: customer-123, Partition: 3, Offset: 15
 # 📦 Message received → Key: customer-456, Partition: 1, Offset: 8
 # 📦 Message received → Key: customer-456, Partition: 1, Offset: 9  ← Même partition !
+```
 
 **4. Vérifier dans Kafka** :
-oc exec -it bhf-kafka-kafka-0 -- \
+```bash
+oc exec -it bhf-kafka-broker-0 -- \
   bin/kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic orders.created \
@@ -2436,6 +2445,7 @@ oc exec -it bhf-kafka-kafka-0 -- \
 # Output :
 # customer-123 → {"orderId":"...","customerId":"customer-123",...}
 # customer-456 → {"orderId":"...","customerId":"customer-456",...}
+```
 
 #### ✅ Validation End-to-End
 
