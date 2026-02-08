@@ -1,0 +1,9 @@
+D:\Data2AI Academy\Kafka\formation -kafka-dotnet\day-01-foundations\module-02-producer\lab-1.2b-producer-keyed\EBankingKeyedProducerAPI\obj\Debug\net10.0\EBankingKeyedProducerAPI.csproj.AssemblyReference.cache
+D:\Data2AI Academy\Kafka\formation -kafka-dotnet\day-01-foundations\module-02-producer\lab-1.2b-producer-keyed\EBankingKeyedProducerAPI\obj\Debug\net10.0\rpswa.dswa.cache.json
+D:\Data2AI Academy\Kafka\formation -kafka-dotnet\day-01-foundations\module-02-producer\lab-1.2b-producer-keyed\EBankingKeyedProducerAPI\obj\Debug\net10.0\EBankingKeyedProducerAPI.GeneratedMSBuildEditorConfig.editorconfig
+D:\Data2AI Academy\Kafka\formation -kafka-dotnet\day-01-foundations\module-02-producer\lab-1.2b-producer-keyed\EBankingKeyedProducerAPI\obj\Debug\net10.0\EBankingKeyedProducerAPI.AssemblyInfoInputs.cache
+D:\Data2AI Academy\Kafka\formation -kafka-dotnet\day-01-foundations\module-02-producer\lab-1.2b-producer-keyed\EBankingKeyedProducerAPI\obj\Debug\net10.0\EBankingKeyedProducerAPI.AssemblyInfo.cs
+D:\Data2AI Academy\Kafka\formation -kafka-dotnet\day-01-foundations\module-02-producer\lab-1.2b-producer-keyed\EBankingKeyedProducerAPI\obj\Debug\net10.0\EBankingKeyedProducerAPI.csproj.CoreCompileInputs.cache
+D:\Data2AI Academy\Kafka\formation -kafka-dotnet\day-01-foundations\module-02-producer\lab-1.2b-producer-keyed\EBankingKeyedProducerAPI\obj\Debug\net10.0\EBankingKeyedProducerAPI.MvcApplicationPartsAssemblyInfo.cs
+D:\Data2AI Academy\Kafka\formation -kafka-dotnet\day-01-foundations\module-02-producer\lab-1.2b-producer-keyed\EBankingKeyedProducerAPI\obj\Debug\net10.0\EBankingKeyedProducerAPI.MvcApplicationPartsAssemblyInfo.cache
+D:\Data2AI Academy\Kafka\formation -kafka-dotnet\day-01-foundations\module-02-producer\lab-1.2b-producer-keyed\EBankingKeyedProducerAPI\obj\Debug\net10.0\EBankingKeyedProducerAPI.sourcelink.json

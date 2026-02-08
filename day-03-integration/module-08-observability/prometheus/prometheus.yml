@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'kafka-jmx'
+    static_configs:
+      - targets: ['jmx-exporter:9404']
+
+  - job_name: 'kafka-ui'
+    static_configs:
+      - targets: ['kafka-ui:8080']
+    metrics_path: /actuator/prometheus

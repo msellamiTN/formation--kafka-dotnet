@@ -1,0 +1,119 @@
+services:
+  # ============================================
+  # Kafka Connect with Debezium plugins
+  # ============================================
+  kafka-connect:
+    image: debezium/connect:2.5
+    container_name: kafka-connect
+    ports:
+      - "8083:8083"
+    environment:
+      BOOTSTRAP_SERVERS: kafka:29092
+      GROUP_ID: kafka-connect-group
+      CONFIG_STORAGE_TOPIC: _connect-configs
+      OFFSET_STORAGE_TOPIC: _connect-offsets
+      STATUS_STORAGE_TOPIC: _connect-status
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+    networks:
+      - bhf-kafka-network
+    depends_on:
+      postgres-banking:
+        condition: service_healthy
+      sqlserver-banking:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  # ============================================
+  # PostgreSQL - Core Banking System
+  # ============================================
+  postgres-banking:
+    image: postgres:15-alpine
+    container_name: postgres-banking
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: banking
+      POSTGRES_PASSWORD: banking123
+      POSTGRES_DB: core_banking
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"
+      - "-c"
+      - "max_replication_slots=4"
+      - "-c"
+      - "max_wal_senders=4"
+    volumes:
+      - ./init-scripts/postgres:/docker-entrypoint-initdb.d
+      - postgres-banking-data:/var/lib/postgresql/data
+    networks:
+      - bhf-kafka-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U banking -d core_banking"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # SQL Server - Transaction Processing System
+  # ============================================
+  sqlserver-banking:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sqlserver-banking
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "BankingStr0ng!Pass"
+      MSSQL_AGENT_ENABLED: "true"
+    volumes:
+      - ./init-scripts/sqlserver:/docker-entrypoint-initdb.d
+      - sqlserver-banking-data:/var/opt/mssql
+    networks:
+      - bhf-kafka-network
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "BankingStr0ng!Pass" -C -Q "SELECT 1" -b
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ============================================
+  # SQL Server Init Container
+  # ============================================
+  sqlserver-init:
+    image: mcr.microsoft.com/mssql-tools:latest
+    container_name: sqlserver-init
+    depends_on:
+      sqlserver-banking:
+        condition: service_healthy
+    volumes:
+      - ./init-scripts/sqlserver:/scripts
+    networks:
+      - bhf-kafka-network
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "Waiting for SQL Server to be ready..."
+        sleep 10
+        /opt/mssql-tools18/bin/sqlcmd -S sqlserver-banking -U sa -P "BankingStr0ng!Pass" -C -i /scripts/init-banking.sql
+        echo "SQL Server banking database initialized!"
+
+volumes:
+  postgres-banking-data:
+  sqlserver-banking-data:
+
+networks:
+  bhf-kafka-network:
+    external: true

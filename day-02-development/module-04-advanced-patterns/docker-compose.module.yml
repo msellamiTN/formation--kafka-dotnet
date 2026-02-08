@@ -1,0 +1,47 @@
+services:
+  java-api:
+    build:
+      context: ./java
+    container_name: m04-java-api
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SERVER_PORT: 8080
+      KAFKA_TOPIC: orders
+      KAFKA_DLT_TOPIC: orders.DLT
+      KAFKA_RETRY_TOPIC: orders.retry
+      MAX_RETRIES: 3
+      RETRY_BACKOFF_MS: 1000
+    ports:
+      - "18082:8080"
+    networks:
+      - bhf-kafka-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  dotnet-consumer:
+    build:
+      context: ./dotnet
+    container_name: m04-dotnet-consumer
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC: orders
+      KAFKA_GROUP_ID: orders-consumer-group
+      KAFKA_AUTO_OFFSET_RESET: earliest
+    ports:
+      - "18083:8080"
+    networks:
+      - bhf-kafka-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+networks:
+  bhf-kafka-network:
+    external: true

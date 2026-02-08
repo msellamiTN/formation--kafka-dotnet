@@ -1,0 +1,28 @@
+{
+  "name": "sqlserver-banking-cdc",
+  "config": {
+    "connector.class": "io.debezium.connector.sqlserver.SqlServerConnector",
+    "database.hostname": "sqlserver-banking",
+    "database.port": "1433",
+    "database.user": "sa",
+    "database.password": "BankingStr0ng!Pass",
+    "database.names": "transaction_banking",
+    "topic.prefix": "banking.sqlserver",
+    "table.include.list": "dbo.Cards,dbo.CardTransactions,dbo.FraudAlerts,dbo.Merchants",
+    "database.encrypt": "false",
+    "database.trustServerCertificate": "true",
+    "schema.history.internal.kafka.bootstrap.servers": "kafka:29092",
+    "schema.history.internal.kafka.topic": "schema-changes.sqlserver",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+    "transforms": "unwrap",
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+    "transforms.unwrap.drop.tombstones": "false",
+    "transforms.unwrap.delete.handling.mode": "rewrite",
+    "transforms.unwrap.add.fields": "op,table,source.ts_ms",
+    "snapshot.mode": "initial",
+    "decimal.handling.mode": "string"
+  }
+}

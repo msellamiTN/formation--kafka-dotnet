@@ -1,0 +1,26 @@
+services:
+  streams-app:
+    build:
+      context: ./java
+    container_name: m05-streams-app
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      APPLICATION_ID: sales-streams-app
+      INPUT_TOPIC: sales-events
+      OUTPUT_TOPIC: sales-by-product
+      PRODUCTS_TOPIC: products
+      SERVER_PORT: 8080
+    ports:
+      - "18084:8080"
+    networks:
+      - bhf-kafka-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+
+networks:
+  bhf-kafka-network:
+    external: true
