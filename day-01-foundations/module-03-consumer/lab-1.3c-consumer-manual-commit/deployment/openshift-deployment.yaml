@@ -1,0 +1,83 @@
+# OpenShift Deployment for E-Banking Audit API (Lab 1.3c)
+# Usage: oc apply -f deployment/openshift-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ebanking-audit-api
+  labels:
+    app: ebanking-audit-api
+    module: consumer
+    lab: "1.3c"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ebanking-audit-api
+  template:
+    metadata:
+      labels:
+        app: ebanking-audit-api
+    spec:
+      containers:
+        - name: api
+          image: image-registry.openshift-image-registry.svc:5000/${NAMESPACE}/ebanking-audit-api:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: Kafka__BootstrapServers
+              value: "kafka-svc:9092"
+            - name: Kafka__GroupId
+              value: "audit-compliance-service"
+            - name: Kafka__Topic
+              value: "banking.transactions"
+            - name: Kafka__DlqTopic
+              value: "banking.transactions.audit-dlq"
+            - name: ASPNETCORE_ENVIRONMENT
+              value: "Development"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /api/Audit/health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /api/Audit/health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ebanking-audit-api
+  labels:
+    app: ebanking-audit-api
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app: ebanking-audit-api
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ebanking-audit-api
+spec:
+  to:
+    kind: Service
+    name: ebanking-audit-api
+  port:
+    targetPort: 8080
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

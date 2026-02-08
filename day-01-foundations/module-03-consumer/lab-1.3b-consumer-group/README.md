@@ -977,6 +977,149 @@ oc scale deployment/ebanking-balance-api --replicas=1
 
 ---
 
+## 🖥️ Déploiement Local OpenShift (CRC / OpenShift Local)
+
+Si vous disposez d'un cluster **OpenShift Local** (anciennement CRC — CodeReady Containers), vous pouvez déployer l'API directement depuis votre machine.
+
+### 1. Prérequis
+
+```bash
+# Vérifier que le cluster est démarré
+crc status
+
+# Se connecter au cluster
+oc login -u developer https://api.crc.testing:6443
+oc project ebanking-labs
+```
+
+### 2. Build et Déploiement (Binary Build)
+
+```bash
+cd EBankingBalanceAPI
+
+# Créer la build config et lancer le build
+oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-balance-api
+oc start-build ebanking-balance-api --from-dir=. --follow
+
+# Créer l'application
+oc new-app ebanking-balance-api
+```
+
+### 3. Configurer les variables d'environnement
+
+```bash
+oc set env deployment/ebanking-balance-api \
+  Kafka__BootstrapServers=kafka-svc:9092 \
+  Kafka__GroupId=balance-service \
+  Kafka__Topic=banking.transactions \
+  ASPNETCORE_URLS=http://0.0.0.0:8080 \
+  ASPNETCORE_ENVIRONMENT=Development
+```
+
+### 4. Exposer et tester
+
+```bash
+# Créer une route edge
+oc create route edge ebanking-balance-api-secure --service=ebanking-balance-api --port=8080-tcp
+
+# Obtenir l'URL
+URL=$(oc get route ebanking-balance-api-secure -o jsonpath='{.spec.host}')
+echo "https://$URL/swagger"
+
+# Tester
+curl -k -i "https://$URL/api/Balance/health"
+```
+
+### 5. Test de Scaling (Consumer Group)
+
+```bash
+# Scaler à 2 instances pour tester le rebalancing
+oc scale deployment/ebanking-balance-api --replicas=2
+
+# Vérifier les partitions assignées
+oc get pods -l deployment=ebanking-balance-api
+oc logs <pod-1> | grep "Partitions ASSIGNED"
+oc logs <pod-2> | grep "Partitions ASSIGNED"
+```
+
+### 6. Alternative : Déploiement par manifeste YAML
+
+```bash
+# Remplacer ${NAMESPACE} par votre namespace
+sed "s/\${NAMESPACE}/ebanking-labs/g" deployment/openshift-deployment.yaml | oc apply -f -
+```
+
+---
+
+## ☸️ Déploiement Kubernetes / OKD (K3s, K8s, OKD)
+
+Pour un cluster **Kubernetes standard** (K3s, K8s, Minikube) ou **OKD**, utilisez les manifestes YAML fournis dans le dossier `deployment/`.
+
+### 1. Construire l'image Docker
+
+```bash
+cd EBankingBalanceAPI
+
+# Build de l'image
+docker build -t ebanking-balance-api:latest .
+
+# Pour un registry distant (adapter l'URL du registry)
+docker tag ebanking-balance-api:latest <registry>/ebanking-balance-api:latest
+docker push <registry>/ebanking-balance-api:latest
+```
+
+> **K3s / Minikube** : Si vous utilisez un cluster local, l'image locale suffit avec `imagePullPolicy: IfNotPresent`.
+
+### 2. Déployer les manifestes
+
+```bash
+# Appliquer le Deployment + Service + Ingress
+kubectl apply -f deployment/k8s-deployment.yaml
+
+# Vérifier le déploiement
+kubectl get pods -l app=ebanking-balance-api
+kubectl get svc ebanking-balance-api
+```
+
+### 3. Configurer le Kafka Bootstrap (si différent)
+
+```bash
+# Adapter l'adresse Kafka selon votre cluster (Strimzi, Confluent, etc.)
+kubectl set env deployment/ebanking-balance-api \
+  Kafka__BootstrapServers=<kafka-bootstrap>:9092
+```
+
+### 4. Tester le Consumer Group Scaling
+
+```bash
+# Scaler à 2 replicas pour tester le rebalancing
+kubectl scale deployment/ebanking-balance-api --replicas=2
+
+# Vérifier la distribution des partitions
+kubectl logs -l app=ebanking-balance-api | grep "Partitions ASSIGNED"
+```
+
+### 5. Accéder à l'API
+
+```bash
+# Port-forward pour accès local
+kubectl port-forward svc/ebanking-balance-api 8080:8080
+
+# Tester
+curl http://localhost:8080/api/Balance/health
+curl http://localhost:8080/api/Balance/metrics
+```
+
+> **Ingress** : Si vous avez un Ingress Controller (nginx, traefik), ajoutez `ebanking-balance-api.local` à votre fichier `/etc/hosts` pointant vers l'IP du cluster.
+
+### 6. OKD : Utiliser les manifestes OpenShift
+
+```bash
+sed "s/\${NAMESPACE}/$(oc project -q)/g" deployment/openshift-deployment.yaml | oc apply -f -
+```
+
+---
+
 ## 🏋️ Exercices Pratiques
 
 ### Exercice 1 : Comparer les stratégies

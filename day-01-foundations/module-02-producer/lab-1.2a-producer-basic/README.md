@@ -837,6 +837,124 @@ For Sandbox environments, use `Acks = Acks.Leader` and `EnableIdempotence = fals
 
 ---
 
+## 🖥️ Déploiement Local OpenShift (CRC / OpenShift Local)
+
+Si vous disposez d'un cluster **OpenShift Local** (anciennement CRC — CodeReady Containers), vous pouvez déployer l'API directement depuis votre machine.
+
+### 1. Prérequis
+
+```bash
+# Vérifier que le cluster est démarré
+crc status
+
+# Se connecter au cluster
+oc login -u developer https://api.crc.testing:6443
+oc project ebanking-labs
+```
+
+### 2. Build et Déploiement (Binary Build)
+
+```bash
+cd EBankingProducerAPI
+
+# Créer la build config et lancer le build
+oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-producer-api
+oc start-build ebanking-producer-api --from-dir=. --follow
+
+# Créer l'application
+oc new-app ebanking-producer-api
+```
+
+### 3. Configurer les variables d'environnement
+
+```bash
+oc set env deployment/ebanking-producer-api \
+  Kafka__BootstrapServers=kafka-svc:9092 \
+  Kafka__Topic=banking.transactions \
+  ASPNETCORE_URLS=http://0.0.0.0:8080 \
+  ASPNETCORE_ENVIRONMENT=Development
+```
+
+### 4. Exposer et tester
+
+```bash
+# Créer une route edge
+oc create route edge ebanking-producer-api-secure --service=ebanking-producer-api --port=8080-tcp
+
+# Obtenir l'URL
+URL=$(oc get route ebanking-producer-api-secure -o jsonpath='{.spec.host}')
+echo "https://$URL/swagger"
+
+# Tester
+curl -k -i "https://$URL/api/Transactions/health"
+```
+
+### 5. Alternative : Déploiement par manifeste YAML
+
+```bash
+sed "s/\${NAMESPACE}/ebanking-labs/g" deployment/openshift-deployment.yaml | oc apply -f -
+```
+
+---
+
+## ☸️ Déploiement Kubernetes / OKD (K3s, K8s, OKD)
+
+Pour un cluster **Kubernetes standard** (K3s, K8s, Minikube) ou **OKD**, utilisez les manifestes YAML fournis dans le dossier `deployment/`.
+
+### 1. Construire l'image Docker
+
+```bash
+cd EBankingProducerAPI
+
+# Build de l'image
+docker build -t ebanking-producer-api:latest .
+
+# Pour un registry distant (adapter l'URL du registry)
+docker tag ebanking-producer-api:latest <registry>/ebanking-producer-api:latest
+docker push <registry>/ebanking-producer-api:latest
+```
+
+> **K3s / Minikube** : Si vous utilisez un cluster local, l'image locale suffit avec `imagePullPolicy: IfNotPresent`.
+
+### 2. Déployer les manifestes
+
+```bash
+# Appliquer le Deployment + Service + Ingress
+kubectl apply -f deployment/k8s-deployment.yaml
+
+# Vérifier le déploiement
+kubectl get pods -l app=ebanking-producer-api
+kubectl get svc ebanking-producer-api
+```
+
+### 3. Configurer le Kafka Bootstrap (si différent)
+
+```bash
+kubectl set env deployment/ebanking-producer-api \
+  Kafka__BootstrapServers=<kafka-bootstrap>:9092
+```
+
+### 4. Accéder à l'API
+
+```bash
+# Port-forward pour accès local
+kubectl port-forward svc/ebanking-producer-api 8080:8080
+
+# Tester
+curl http://localhost:8080/api/Transactions/health
+curl http://localhost:8080/swagger/index.html
+```
+
+> **Ingress** : Si vous avez un Ingress Controller (nginx, traefik), ajoutez `ebanking-producer-api.local` à votre fichier `/etc/hosts` pointant vers l'IP du cluster.
+
+### 5. OKD : Utiliser les manifestes OpenShift
+
+```bash
+sed "s/\${NAMESPACE}/$(oc project -q)/g" deployment/openshift-deployment.yaml | oc apply -f -
+```
+
+---
+
 ## 🎯 Concepts Clés Expliqués
 
 ### Architecture du Producer Kafka

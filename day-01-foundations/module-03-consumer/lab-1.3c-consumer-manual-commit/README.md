@@ -1107,6 +1107,154 @@ curl -k -s "https://$URL/api/Audit/dlq"
 
 ---
 
+## 🖥️ Déploiement Local OpenShift (CRC / OpenShift Local)
+
+Si vous disposez d'un cluster **OpenShift Local** (anciennement CRC — CodeReady Containers), vous pouvez déployer l'API directement depuis votre machine.
+
+### 1. Prérequis
+
+```bash
+# Vérifier que le cluster est démarré
+crc status
+
+# Se connecter au cluster
+oc login -u developer https://api.crc.testing:6443
+oc project ebanking-labs
+```
+
+### 2. Créer le topic DLQ
+
+```bash
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists \
+  --topic banking.transactions.audit-dlq \
+  --partitions 3 --replication-factor 3
+```
+
+### 3. Build et Déploiement (Binary Build)
+
+```bash
+cd EBankingAuditAPI
+
+# Créer la build config et lancer le build
+oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-audit-api
+oc start-build ebanking-audit-api --from-dir=. --follow
+
+# Créer l'application
+oc new-app ebanking-audit-api
+```
+
+### 4. Configurer les variables d'environnement
+
+```bash
+oc set env deployment/ebanking-audit-api \
+  Kafka__BootstrapServers=kafka-svc:9092 \
+  Kafka__GroupId=audit-compliance-service \
+  Kafka__Topic=banking.transactions \
+  Kafka__DlqTopic=banking.transactions.audit-dlq \
+  ASPNETCORE_URLS=http://0.0.0.0:8080 \
+  ASPNETCORE_ENVIRONMENT=Development
+```
+
+### 5. Exposer et tester
+
+```bash
+# Créer une route edge
+oc create route edge ebanking-audit-api-secure --service=ebanking-audit-api --port=8080-tcp
+
+# Obtenir l'URL
+URL=$(oc get route ebanking-audit-api-secure -o jsonpath='{.spec.host}')
+echo "https://$URL/swagger"
+
+# Tester
+curl -k -i "https://$URL/api/Audit/health"
+curl -k -s "https://$URL/api/Audit/metrics"
+curl -k -s "https://$URL/api/Audit/log"
+```
+
+### 6. Alternative : Déploiement par manifeste YAML
+
+```bash
+# Remplacer ${NAMESPACE} par votre namespace
+sed "s/\${NAMESPACE}/ebanking-labs/g" deployment/openshift-deployment.yaml | oc apply -f -
+```
+
+---
+
+## ☸️ Déploiement Kubernetes / OKD (K3s, K8s, OKD)
+
+Pour un cluster **Kubernetes standard** (K3s, K8s, Minikube) ou **OKD**, utilisez les manifestes YAML fournis dans le dossier `deployment/`.
+
+### 1. Construire l'image Docker
+
+```bash
+cd EBankingAuditAPI
+
+# Build de l'image
+docker build -t ebanking-audit-api:latest .
+
+# Pour un registry distant (adapter l'URL du registry)
+docker tag ebanking-audit-api:latest <registry>/ebanking-audit-api:latest
+docker push <registry>/ebanking-audit-api:latest
+```
+
+> **K3s / Minikube** : Si vous utilisez un cluster local, l'image locale suffit avec `imagePullPolicy: IfNotPresent`.
+
+### 2. Créer le topic DLQ
+
+```bash
+# Si Kafka est déployé via Strimzi
+kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
+  --command -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server kafka-svc:9092 \
+  --create --if-not-exists \
+  --topic banking.transactions.audit-dlq \
+  --partitions 3 --replication-factor 3
+```
+
+### 3. Déployer les manifestes
+
+```bash
+# Appliquer le Deployment + Service + Ingress
+kubectl apply -f deployment/k8s-deployment.yaml
+
+# Vérifier le déploiement
+kubectl get pods -l app=ebanking-audit-api
+kubectl get svc ebanking-audit-api
+```
+
+### 4. Configurer le Kafka Bootstrap (si différent)
+
+```bash
+# Adapter l'adresse Kafka selon votre cluster (Strimzi, Confluent, etc.)
+kubectl set env deployment/ebanking-audit-api \
+  Kafka__BootstrapServers=<kafka-bootstrap>:9092
+```
+
+### 5. Accéder à l'API
+
+```bash
+# Port-forward pour accès local
+kubectl port-forward svc/ebanking-audit-api 8080:8080
+
+# Tester
+curl http://localhost:8080/api/Audit/health
+curl http://localhost:8080/api/Audit/metrics
+curl http://localhost:8080/api/Audit/log
+curl http://localhost:8080/api/Audit/dlq
+```
+
+> **Ingress** : Si vous avez un Ingress Controller (nginx, traefik), ajoutez `ebanking-audit-api.local` à votre fichier `/etc/hosts` pointant vers l'IP du cluster.
+
+### 6. OKD : Utiliser les manifestes OpenShift
+
+```bash
+sed "s/\${NAMESPACE}/$(oc project -q)/g" deployment/openshift-deployment.yaml | oc apply -f -
+```
+
+---
+
 ## 🏋️ Exercices Pratiques
 
 ### Exercice 1 : Commit par intervalle de temps

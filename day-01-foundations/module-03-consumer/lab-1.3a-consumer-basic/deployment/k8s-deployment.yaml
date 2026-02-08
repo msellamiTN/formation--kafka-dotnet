@@ -1,0 +1,87 @@
+# Kubernetes Deployment for E-Banking Fraud Detection API (Lab 1.3a)
+# Usage: kubectl apply -f deployment/k8s-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ebanking-fraud-detection-api
+  labels:
+    app: ebanking-fraud-detection-api
+    module: consumer
+    lab: "1.3a"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ebanking-fraud-detection-api
+  template:
+    metadata:
+      labels:
+        app: ebanking-fraud-detection-api
+    spec:
+      containers:
+        - name: api
+          image: ebanking-fraud-detection-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: Kafka__BootstrapServers
+              value: "kafka-svc:9092"
+            - name: Kafka__GroupId
+              value: "fraud-detection-service"
+            - name: Kafka__Topic
+              value: "banking.transactions"
+            - name: ASPNETCORE_ENVIRONMENT
+              value: "Development"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /api/FraudDetection/health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /api/FraudDetection/health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ebanking-fraud-detection-api
+  labels:
+    app: ebanking-fraud-detection-api
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app: ebanking-fraud-detection-api
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ebanking-fraud-detection-api
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+    - host: ebanking-fraud-detection-api.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ebanking-fraud-detection-api
+                port:
+                  number: 8080
