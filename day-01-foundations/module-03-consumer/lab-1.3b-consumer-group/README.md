@@ -900,6 +900,83 @@ sequenceDiagram
 
 ---
 
+## ☁️ Alternative : Déploiement sur OpenShift Sandbox
+
+Si vous utilisez l'environnement **OpenShift Sandbox**, suivez ces étapes pour déployer et exposer votre Consumer publiquement.
+
+### 1. Préparer le Build et le Déploiement
+
+```bash
+# Se placer dans le dossier du projet
+cd EBankingBalanceAPI
+
+# Créer une build binaire pour .NET
+oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-balance-api
+
+# Lancer la build en envoyant le dossier courant
+oc start-build ebanking-balance-api --from-dir=. --follow
+
+# Créer l'application
+oc new-app ebanking-balance-api
+```
+
+### 2. Configurer les variables d'environnement
+
+```bash
+oc set env deployment/ebanking-balance-api \
+  Kafka__BootstrapServers=kafka-svc:9092 \
+  Kafka__GroupId=balance-service \
+  Kafka__Topic=banking.transactions \
+  ASPNETCORE_URLS=http://0.0.0.0:8080 \
+  ASPNETCORE_ENVIRONMENT=Development
+```
+
+### 3. Exposer publiquement (Secure Edge Route)
+
+> [!IMPORTANT]
+> Standard routes may hang on the Sandbox. Use an **edge route** for reliable public access.
+
+```bash
+oc create route edge ebanking-balance-api-secure --service=ebanking-balance-api --port=8080-tcp
+```
+
+### Stability Warning
+
+For Sandbox environments, use `Acks = Acks.Leader` and `EnableIdempotence = false` in any `ProducerConfig` to avoid `Coordinator load in progress` hangs.
+
+### 4. Tester l'API déployée
+
+```bash
+# Obtenir l'URL publique
+URL=$(oc get route ebanking-balance-api-secure -o jsonpath='{.spec.host}')
+echo "https://$URL/swagger"
+
+# Tester le Health Check
+curl -k -i "https://$URL/api/Balance/health"
+
+# Voir les métriques et partitions
+curl -k -s "https://$URL/api/Balance/metrics"
+```
+
+### 5. Test de Scaling (Consumer Group)
+
+Pour tester le rebalancing sur OpenShift, scalez le déploiement :
+
+```bash
+# Scaler à 2 instances
+oc scale deployment/ebanking-balance-api --replicas=2
+
+# Vérifier les partitions assignées sur chaque pod
+oc get pods -l deployment=ebanking-balance-api
+oc logs <pod-1> | grep "Partitions ASSIGNED"
+oc logs <pod-2> | grep "Partitions ASSIGNED"
+
+# Revenir à 1 instance
+oc scale deployment/ebanking-balance-api --replicas=1
+```
+
+---
+
 ## 🏋️ Exercices Pratiques
 
 ### Exercice 1 : Comparer les stratégies

@@ -1022,6 +1022,91 @@ flowchart TD
 
 ---
 
+## ☁️ Alternative : Déploiement sur OpenShift Sandbox
+
+Si vous utilisez l'environnement **OpenShift Sandbox**, suivez ces étapes pour déployer et exposer votre Consumer publiquement.
+
+### 1. Créer les Topics
+
+```bash
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic banking.transactions.audit-dlq --partitions 3 --replication-factor 3
+```
+
+### 2. Préparer le Build et le Déploiement
+
+```bash
+# Se placer dans le dossier du projet
+cd EBankingAuditAPI
+
+# Créer une build binaire pour .NET
+oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-audit-api
+
+# Lancer la build en envoyant le dossier courant
+oc start-build ebanking-audit-api --from-dir=. --follow
+
+# Créer l'application
+oc new-app ebanking-audit-api
+```
+
+### 3. Configurer les variables d'environnement
+
+```bash
+oc set env deployment/ebanking-audit-api \
+  Kafka__BootstrapServers=kafka-svc:9092 \
+  Kafka__GroupId=audit-compliance-service \
+  Kafka__Topic=banking.transactions \
+  Kafka__DlqTopic=banking.transactions.audit-dlq \
+  ASPNETCORE_URLS=http://0.0.0.0:8080 \
+  ASPNETCORE_ENVIRONMENT=Development
+```
+
+### 4. Exposer publiquement (Secure Edge Route)
+
+> [!IMPORTANT]
+> Standard routes may hang on the Sandbox. Use an **edge route** for reliable public access.
+
+```bash
+oc create route edge ebanking-audit-api-secure --service=ebanking-audit-api --port=8080-tcp
+```
+
+### Stability Warning
+
+For Sandbox environments, use `Acks = Acks.Leader` and `EnableIdempotence = false` in any `ProducerConfig` (including the DLQ producer) to avoid `Coordinator load in progress` hangs.
+
+### 5. Tester l'API déployée
+
+```bash
+# Obtenir l'URL publique
+URL=$(oc get route ebanking-audit-api-secure -o jsonpath='{.spec.host}')
+echo "https://$URL/swagger"
+
+# Tester le Health Check
+curl -k -i "https://$URL/api/Audit/health"
+
+# Voir les métriques (commits manuels, doublons, DLQ)
+curl -k -s "https://$URL/api/Audit/metrics"
+
+# Voir le journal d'audit
+curl -k -s "https://$URL/api/Audit/log"
+
+# Voir les messages en DLQ
+curl -k -s "https://$URL/api/Audit/dlq"
+```
+
+### 6. Test de Bout-en-Bout (E2E)
+
+1. Envoyez une transaction via l'**API Producer** (Lab 1.2a ou 1.2c).
+2. Vérifiez les **Logs** du Consumer :
+   ```bash
+   oc logs deployment/ebanking-audit-api -f
+   ```
+3. Vérifiez l'apparition dans le journal d'audit :
+   ```bash
+   curl -k -s "https://$URL/api/Audit/log" | jq '.count'
+   ```
+
+---
+
 ## 🏋️ Exercices Pratiques
 
 ### Exercice 1 : Commit par intervalle de temps

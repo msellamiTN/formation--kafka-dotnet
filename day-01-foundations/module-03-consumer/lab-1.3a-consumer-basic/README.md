@@ -844,9 +844,16 @@ oc set env deployment/ebanking-fraud-detection-api \
 
 ### 3. Exposer publiquement (Secure Edge Route)
 
+> [!IMPORTANT]
+> Standard routes may hang on the Sandbox. Use an **edge route** for reliable public access.
+
 ```bash
 oc create route edge ebanking-fraud-api-secure --service=ebanking-fraud-detection-api --port=8080-tcp
 ```
+
+### Stability Warning
+
+For Sandbox environments, use `Acks = Acks.Leader` and `EnableIdempotence = false` in any `ProducerConfig` to avoid `Coordinator load in progress` hangs.
 
 ### 4. Tester l'API déployée
 
