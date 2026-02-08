@@ -1,0 +1,139 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "day-02-development", "day-02-development", "{65413FF6-A565-0651-031B-1832644AA00B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "day-03-integration", "day-03-integration", "{A91E58CE-8306-6DD8-BD72-2E12F52ED546}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "day-01-foundations", "day-01-foundations", "{0739A722-204F-062C-BC40-1126AF00412B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "module-04-advanced-patterns", "module-04-advanced-patterns", "{E7432CEB-6FE1-2114-B468-1DE0A4ABF5C0}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "dotnet", "dotnet", "{E3FCB76E-C35A-9B30-6437-D231B57EB1E4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Module04Consumer", "day-02-development\module-04-advanced-patterns\dotnet\Module04Consumer.csproj", "{E53B1CC6-A04F-D9A1-E7CE-AA80CAF81F70}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "module-07-testing", "module-07-testing", "{A4413589-3155-9E1F-6776-3C56023746CF}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "dotnet", "dotnet", "{5A83621A-5625-8FD0-983F-C95E7D85FB29}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KafkaTests", "day-03-integration\module-07-testing\dotnet\KafkaTests.csproj", "{E775B567-65C6-C853-B156-9F30A41301E1}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "module-02-producer", "module-02-producer", "{9FD48193-1AAC-55B9-694A-8581E736AA43}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "lab-1.2a-producer-basic", "lab-1.2a-producer-basic", "{AF7D209B-68F2-13D3-2CD4-A3DB2D9E67FA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EBankingProducerAPI", "day-01-foundations\module-02-producer\lab-1.2a-producer-basic\EBankingProducerAPI\EBankingProducerAPI.csproj", "{907E78D4-7CC4-D09B-B4B0-A19A2D1F8660}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KafkaProducerBasic", "day-01-foundations\module-02-producer\lab-1.2a-producer-basic\KafkaProducerBasic\KafkaProducerBasic.csproj", "{35D1E5C1-BFCA-DC22-FAFA-3E33A8AB4238}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "lab-1.2b-producer-keyed", "lab-1.2b-producer-keyed", "{82A841C8-3780-256D-1FF9-90D2ABEB695B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EBankingKeyedProducerAPI", "day-01-foundations\module-02-producer\lab-1.2b-producer-keyed\EBankingKeyedProducerAPI\EBankingKeyedProducerAPI.csproj", "{5D993E5D-A22C-8057-ACE2-9D898F39AC1E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KafkaProducerKeyed", "day-01-foundations\module-02-producer\lab-1.2b-producer-keyed\KafkaProducerKeyed\KafkaProducerKeyed.csproj", "{F00E8216-E42F-EC7B-7E3C-74F8CE3010EC}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "lab-1.2c-producer-error-handling", "lab-1.2c-producer-error-handling", "{66B7C909-C295-6A79-34F3-B75DB7BD15DB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EBankingResilientProducerAPI", "day-01-foundations\module-02-producer\lab-1.2c-producer-error-handling\EBankingResilientProducerAPI\EBankingResilientProducerAPI.csproj", "{1CFCD308-9649-3FE6-4E91-7292E3710EDD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KafkaProducerErrorHandling", "day-01-foundations\module-02-producer\lab-1.2c-producer-error-handling\KafkaProducerErrorHandling\KafkaProducerErrorHandling.csproj", "{127C6A70-2698-AFF0-04EF-5B28C3E059A2}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "module-03-consumer", "module-03-consumer", "{B6418E76-7C2A-16F3-F6BB-82D167E9C70E}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "lab-1.3a-consumer-basic", "lab-1.3a-consumer-basic", "{9737C3B7-6835-089A-C248-0BEC0BEC51A5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EBankingFraudDetectionAPI", "day-01-foundations\module-03-consumer\lab-1.3a-consumer-basic\EBankingFraudDetectionAPI\EBankingFraudDetectionAPI.csproj", "{1A36D81C-FE13-1A70-03DB-1381537D93E6}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "lab-1.3b-consumer-group", "lab-1.3b-consumer-group", "{660B89B3-1189-89AA-172F-790D31CE57EB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EBankingBalanceAPI", "day-01-foundations\module-03-consumer\lab-1.3b-consumer-group\EBankingBalanceAPI\EBankingBalanceAPI.csproj", "{7C5E5A51-CFD7-D6F8-5EC1-7E4F6323F4BD}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "lab-1.3c-consumer-manual-commit", "lab-1.3c-consumer-manual-commit", "{8EF0438B-AE7D-2687-A0AC-D338850BC23E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EBankingAuditAPI", "day-01-foundations\module-03-consumer\lab-1.3c-consumer-manual-commit\EBankingAuditAPI\EBankingAuditAPI.csproj", "{D6B1D667-1072-2318-44EC-39A3AE4789EE}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E53B1CC6-A04F-D9A1-E7CE-AA80CAF81F70}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E53B1CC6-A04F-D9A1-E7CE-AA80CAF81F70}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E53B1CC6-A04F-D9A1-E7CE-AA80CAF81F70}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E53B1CC6-A04F-D9A1-E7CE-AA80CAF81F70}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E775B567-65C6-C853-B156-9F30A41301E1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E775B567-65C6-C853-B156-9F30A41301E1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E775B567-65C6-C853-B156-9F30A41301E1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E775B567-65C6-C853-B156-9F30A41301E1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{907E78D4-7CC4-D09B-B4B0-A19A2D1F8660}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{907E78D4-7CC4-D09B-B4B0-A19A2D1F8660}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{907E78D4-7CC4-D09B-B4B0-A19A2D1F8660}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{907E78D4-7CC4-D09B-B4B0-A19A2D1F8660}.Release|Any CPU.Build.0 = Release|Any CPU
+		{35D1E5C1-BFCA-DC22-FAFA-3E33A8AB4238}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{35D1E5C1-BFCA-DC22-FAFA-3E33A8AB4238}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{35D1E5C1-BFCA-DC22-FAFA-3E33A8AB4238}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{35D1E5C1-BFCA-DC22-FAFA-3E33A8AB4238}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5D993E5D-A22C-8057-ACE2-9D898F39AC1E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5D993E5D-A22C-8057-ACE2-9D898F39AC1E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5D993E5D-A22C-8057-ACE2-9D898F39AC1E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5D993E5D-A22C-8057-ACE2-9D898F39AC1E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F00E8216-E42F-EC7B-7E3C-74F8CE3010EC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F00E8216-E42F-EC7B-7E3C-74F8CE3010EC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F00E8216-E42F-EC7B-7E3C-74F8CE3010EC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F00E8216-E42F-EC7B-7E3C-74F8CE3010EC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1CFCD308-9649-3FE6-4E91-7292E3710EDD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1CFCD308-9649-3FE6-4E91-7292E3710EDD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1CFCD308-9649-3FE6-4E91-7292E3710EDD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1CFCD308-9649-3FE6-4E91-7292E3710EDD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{127C6A70-2698-AFF0-04EF-5B28C3E059A2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{127C6A70-2698-AFF0-04EF-5B28C3E059A2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{127C6A70-2698-AFF0-04EF-5B28C3E059A2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{127C6A70-2698-AFF0-04EF-5B28C3E059A2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1A36D81C-FE13-1A70-03DB-1381537D93E6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1A36D81C-FE13-1A70-03DB-1381537D93E6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1A36D81C-FE13-1A70-03DB-1381537D93E6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1A36D81C-FE13-1A70-03DB-1381537D93E6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7C5E5A51-CFD7-D6F8-5EC1-7E4F6323F4BD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7C5E5A51-CFD7-D6F8-5EC1-7E4F6323F4BD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7C5E5A51-CFD7-D6F8-5EC1-7E4F6323F4BD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7C5E5A51-CFD7-D6F8-5EC1-7E4F6323F4BD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D6B1D667-1072-2318-44EC-39A3AE4789EE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D6B1D667-1072-2318-44EC-39A3AE4789EE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D6B1D667-1072-2318-44EC-39A3AE4789EE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D6B1D667-1072-2318-44EC-39A3AE4789EE}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{E7432CEB-6FE1-2114-B468-1DE0A4ABF5C0} = {65413FF6-A565-0651-031B-1832644AA00B}
+		{E3FCB76E-C35A-9B30-6437-D231B57EB1E4} = {E7432CEB-6FE1-2114-B468-1DE0A4ABF5C0}
+		{E53B1CC6-A04F-D9A1-E7CE-AA80CAF81F70} = {E3FCB76E-C35A-9B30-6437-D231B57EB1E4}
+		{A4413589-3155-9E1F-6776-3C56023746CF} = {A91E58CE-8306-6DD8-BD72-2E12F52ED546}
+		{5A83621A-5625-8FD0-983F-C95E7D85FB29} = {A4413589-3155-9E1F-6776-3C56023746CF}
+		{E775B567-65C6-C853-B156-9F30A41301E1} = {5A83621A-5625-8FD0-983F-C95E7D85FB29}
+		{9FD48193-1AAC-55B9-694A-8581E736AA43} = {0739A722-204F-062C-BC40-1126AF00412B}
+		{AF7D209B-68F2-13D3-2CD4-A3DB2D9E67FA} = {9FD48193-1AAC-55B9-694A-8581E736AA43}
+		{907E78D4-7CC4-D09B-B4B0-A19A2D1F8660} = {AF7D209B-68F2-13D3-2CD4-A3DB2D9E67FA}
+		{35D1E5C1-BFCA-DC22-FAFA-3E33A8AB4238} = {AF7D209B-68F2-13D3-2CD4-A3DB2D9E67FA}
+		{82A841C8-3780-256D-1FF9-90D2ABEB695B} = {9FD48193-1AAC-55B9-694A-8581E736AA43}
+		{5D993E5D-A22C-8057-ACE2-9D898F39AC1E} = {82A841C8-3780-256D-1FF9-90D2ABEB695B}
+		{F00E8216-E42F-EC7B-7E3C-74F8CE3010EC} = {82A841C8-3780-256D-1FF9-90D2ABEB695B}
+		{66B7C909-C295-6A79-34F3-B75DB7BD15DB} = {9FD48193-1AAC-55B9-694A-8581E736AA43}
+		{1CFCD308-9649-3FE6-4E91-7292E3710EDD} = {66B7C909-C295-6A79-34F3-B75DB7BD15DB}
+		{127C6A70-2698-AFF0-04EF-5B28C3E059A2} = {66B7C909-C295-6A79-34F3-B75DB7BD15DB}
+		{B6418E76-7C2A-16F3-F6BB-82D167E9C70E} = {0739A722-204F-062C-BC40-1126AF00412B}
+		{9737C3B7-6835-089A-C248-0BEC0BEC51A5} = {B6418E76-7C2A-16F3-F6BB-82D167E9C70E}
+		{1A36D81C-FE13-1A70-03DB-1381537D93E6} = {9737C3B7-6835-089A-C248-0BEC0BEC51A5}
+		{660B89B3-1189-89AA-172F-790D31CE57EB} = {B6418E76-7C2A-16F3-F6BB-82D167E9C70E}
+		{7C5E5A51-CFD7-D6F8-5EC1-7E4F6323F4BD} = {660B89B3-1189-89AA-172F-790D31CE57EB}
+		{8EF0438B-AE7D-2687-A0AC-D338850BC23E} = {B6418E76-7C2A-16F3-F6BB-82D167E9C70E}
+		{D6B1D667-1072-2318-44EC-39A3AE4789EE} = {8EF0438B-AE7D-2687-A0AC-D338850BC23E}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {732D3258-12B1-40BA-8A51-D9BB335322E1}
+	EndGlobalSection
+EndGlobal
