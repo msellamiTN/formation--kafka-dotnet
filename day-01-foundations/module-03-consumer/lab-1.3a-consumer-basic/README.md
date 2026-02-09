@@ -1245,6 +1245,29 @@ Ajoutez un endpoint `DELETE /api/frauddetection/alerts` pour vider la liste des 
 
 ---
 
+## 🔧 Troubleshooting
+
+| Symptom | Probable Cause | Solution |
+| ------- | -------------- | -------- |
+| Consumer status `Starting` indefinitely | Kafka not reachable | Verify `kafka-svc:9092` is accessible: `oc exec kafka-0 -- /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092` |
+| `messagesConsumed` stays at 0 | No messages in topic or wrong offset | Send transactions via Producer API. Check `AutoOffsetReset = Earliest` is set |
+| Health returns 503 | Consumer is in `Rebalancing` state | Wait 10-15s for Kafka to stabilize partitions. Check Kafka pod health |
+| No fraud alerts generated | Transaction amounts below threshold | Send a transaction with `amount > 10000` to trigger fraud scoring |
+| `partitionOffsets` empty | Consumer hasn't consumed yet | Wait for auto-commit (every 5s). Send transactions and check again |
+| Pod CrashLoopBackOff | Missing env vars or Kafka DNS error | Check: `oc set env deployment/ebanking-fraud-detection-api --list` and verify `Kafka__BootstrapServers=kafka-svc:9092` |
+| Swagger not accessible | Wrong `ASPNETCORE_URLS` | Set: `oc set env deployment/ebanking-fraud-detection-api ASPNETCORE_URLS=http://0.0.0.0:8080` |
+| Route returns 503/504 | Pod not ready or wrong port | Check: `oc get pods`, verify route targets port `8080-tcp` |
+
+### Tips for Sandbox
+
+- **Resource quota**: The Sandbox limits total replicas. Scale down unused deployments: `oc scale deployment/<name> --replicas=0`
+- **Kafka 3-node cluster**: Requires 3 pods. If quota is tight, keep only 1 producer + needed consumers running
+- **Edge routes**: Always use `oc create route edge` on Sandbox (standard routes may hang)
+- **Pod restart**: If consumer stops consuming after Kafka restart, delete the pod to force reconnect: `oc delete pod -l deployment=ebanking-fraud-detection-api`
+- **Consumer group reset**: To re-read all messages: `oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group fraud-detection-service --reset-offsets --to-earliest --topic banking.transactions --execute`
+
+---
+
 ## ✅ Validation
 
 - [ ] Le BackgroundService démarre automatiquement avec l'application

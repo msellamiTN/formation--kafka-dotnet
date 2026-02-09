@@ -1447,6 +1447,34 @@ Ajoutez une logique qui fait échouer aléatoirement 10% des persistances (simul
 
 ---
 
+## 🔧 Troubleshooting
+
+| Symptom | Probable Cause | Solution |
+| ------- | -------------- | -------- |
+| Consumer status `Rebalancing` permanently | Kafka coordinator unstable or `Coordinator load in progress` | Wait 30s. If persists, delete the pod: `oc delete pod -l deployment=ebanking-audit-api`. Use `Acks = Acks.Leader` for DLQ producer on Sandbox |
+| Health returns 503 | Consumer not yet assigned partitions | Wait 10-15s for partition assignment. Check Kafka pods health |
+| `manualCommits` stays at 0 | No messages consumed or commit failed | Send transactions via Producer API. Check consumer logs: `oc logs -l deployment=ebanking-audit-api` |
+| `messagesConsumed` > `auditRecordsCreated` | Duplicates detected and skipped | This is expected behavior — check `duplicatesSkipped` counter in metrics |
+| DLQ messages appearing | Processing failures after 3 retries | Check `dlq` endpoint for error details. Verify transaction JSON format |
+| Audit log empty | Consumer on wrong partition or no data | Verify topic has messages. Check consumer group offset: `oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group audit-compliance-service` |
+| `committedOffsets` empty in metrics | Consumer hasn't committed yet | Send transactions, wait 8-10s for processing + manual commit cycle |
+| Pod CrashLoopBackOff | Missing env vars or Kafka DNS error | Check: `oc set env deployment/ebanking-audit-api --list` and verify `Kafka__BootstrapServers=kafka-svc:9092` |
+| Swagger not accessible | Wrong `ASPNETCORE_URLS` | Set: `oc set env deployment/ebanking-audit-api ASPNETCORE_URLS=http://0.0.0.0:8080` |
+| `Coordinator load in progress` in logs | Sandbox Kafka idempotent producer issue | Set DLQ producer to `Acks = Acks.Leader` and `EnableIdempotence = false` |
+
+### Tips for Sandbox
+
+- **Resource quota**: The Sandbox limits total replicas. Scale down unused deployments: `oc scale deployment/<name> --replicas=0`
+- **Edge routes**: Always use `oc create route edge` on Sandbox (standard routes may hang)
+- **Manual commit timing**: Unlike auto-commit (Lab 1.3a), manual commit happens only after successful processing. Allow 8-10s for the full cycle
+- **Idempotence testing**: Send the same transaction twice (same `transactionId`) — `duplicatesSkipped` should increment while `auditRecordsCreated` stays the same
+- **DLQ producer on Sandbox**: Use `Acks.Leader` instead of `Acks.All` to avoid `Coordinator load in progress` hangs
+- **Pod restart**: If consumer stops consuming after Kafka restart, delete the pod: `oc delete pod -l deployment=ebanking-audit-api`
+- **Consumer group reset**: To re-read all messages: `oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group audit-compliance-service --reset-offsets --to-earliest --topic banking.transactions --execute`
+- **DLQ inspection**: `oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic banking.transactions.audit-dlq --from-beginning --property print.headers=true --max-messages 5`
+
+---
+
 ## ✅ Validation
 
 - [ ] `EnableAutoCommit = false` dans la config

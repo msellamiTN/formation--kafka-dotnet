@@ -1282,6 +1282,31 @@ Démarrez 8 instances (plus que les 6 partitions). Vérifiez que 2 instances n'o
 
 ---
 
+## 🔧 Troubleshooting
+
+| Symptom | Probable Cause | Solution |
+| ------- | -------------- | -------- |
+| Consumer status `Rebalancing` for a long time | Kafka coordinator unstable | Wait 30s. If persists, delete the pod: `oc delete pod -l deployment=ebanking-balance-api` |
+| No balances computed | No messages consumed | Send transactions via Producer API. Check topic has data: `oc exec kafka-0 -- /opt/kafka/bin/kafka-run-class.sh kafka.tools.GetOffsetShell --broker-list localhost:9092 --topic banking.transactions` |
+| `assignedPartitions` is empty | Consumer not yet joined group | Wait for partition assignment (~10s after startup). Check Kafka pods are all ready |
+| Balance lookup returns 404 | Customer not in consumed partitions | Customer data may be on a partition assigned to a different instance. Check `/balances` for all customers |
+| Rebalancing history empty | No rebalancing events occurred | This is normal for a single consumer. Scale to 2 replicas to trigger rebalancing |
+| Pod CrashLoopBackOff | Missing env vars or Kafka DNS error | Check: `oc set env deployment/ebanking-balance-api --list` and verify `Kafka__BootstrapServers=kafka-svc:9092` |
+| Swagger not accessible | Wrong `ASPNETCORE_URLS` | Set: `oc set env deployment/ebanking-balance-api ASPNETCORE_URLS=http://0.0.0.0:8080` |
+| Route returns 503/504 | Pod not ready or wrong port | Check: `oc get pods`, verify route targets port `8080-tcp` |
+| Scaling to 2 replicas fails | Sandbox quota reached | Scale down unused deployments first: `oc scale deployment/ebanking-producer-api --replicas=0` |
+
+### Tips for Sandbox
+
+- **Resource quota**: The Sandbox limits total replicas. Scale down unused deployments before scaling consumers: `oc scale deployment/<name> --replicas=0`
+- **Edge routes**: Always use `oc create route edge` on Sandbox (standard routes may hang)
+- **Observe rebalancing**: Scale to 2 replicas → check `/rebalancing-history` → scale back to 1. This demonstrates CooperativeSticky in action
+- **Pod restart**: If consumer stops consuming after Kafka restart, delete the pod: `oc delete pod -l deployment=ebanking-balance-api`
+- **Consumer group inspection**: `oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group balance-service`
+- **Consumer group reset**: To re-read all messages: `oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group balance-service --reset-offsets --to-earliest --topic banking.transactions --execute`
+
+---
+
 ## ✅ Validation
 
 - [ ] 1 instance reçoit les 6 partitions (consumer unique)
