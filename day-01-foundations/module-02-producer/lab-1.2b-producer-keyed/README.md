@@ -784,11 +784,23 @@ HOST=$(oc get route ebanking-keyed-api-secure -o jsonpath='{.spec.host}')
 echo "Swagger UI : https://$HOST/swagger"
 ```
 
-### 5. Stability Warning
+### 5. ✅ Success Criteria — Deployment
+
+```bash
+# Pod running?
+oc get pod -l deployment=ebanking-keyed-producer-api
+# Expected: STATUS=Running, READY=1/1
+
+# Route reachable?
+curl -k -s "https://$(oc get route ebanking-keyed-api-secure -o jsonpath='{.spec.host}')/health" | jq .
+# Expected: {"status":"Healthy"} or Swagger UI accessible
+```
+
+### 6. Stability Warning
 
 For Sandbox environments, use `Acks = Acks.Leader` and `EnableIdempotence = false` in `ProducerConfig` to avoid `Coordinator load in progress` hangs.
 
-### 6. 🧪 Scénarios de Test et Validation des Concepts (Sandbox)
+### 7. 🧪 Scénarios de Test et Validation des Concepts (Sandbox)
 
 > Les scénarios Swagger détaillés ci-dessous (Tests OpenAPI) fonctionnent aussi bien en local qu'en Sandbox.
 > Pour le Sandbox, utilisez `https://$HOST` au lieu de `https://localhost:5001`.

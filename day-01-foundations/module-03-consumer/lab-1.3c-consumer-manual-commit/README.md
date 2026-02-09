@@ -92,6 +92,8 @@ flowchart TB
 | **At-least-once** | ❌ Non | ✅ Oui | Moyenne | **Audit, conformité** (ce lab) |
 | **Exactly-once** | ❌ Non | ❌ Non | Élevée | Paiements, virements |
 
+> **⚠️ Note pédagogique** : La garantie *exactly-once* native de Kafka repose sur l'API Transactions (producer + consumer dans une même transaction atomique). Ce lab implémente **at-least-once + idempotence applicative** (déduplication par `TransactionId`), ce qui produit un *effet* équivalent à exactly-once sans recourir aux transactions Kafka.
+
 ### Scénarios d'Audit Réglementaire
 
 | Réglementation | Exigence | Impact d'une perte |
@@ -252,7 +254,7 @@ docker exec kafka /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --create --if-not-exists \
   --topic banking.transactions.audit-dlq \
-  --partitions 3 \
+  --partitions 6 \
   --replication-factor 1
 ```
 
@@ -417,6 +419,7 @@ public class AuditConsumerService : BackgroundService
 
             // *** MANUAL COMMIT : clé de ce lab ***
             EnableAutoCommit = false,
+            EnableAutoOffsetStore = false,  // offsets are NOT stored on Consume() — we control via StoreOffset()
 
             SessionTimeoutMs = 10000,
             HeartbeatIntervalMs = 3000,
@@ -904,7 +907,7 @@ docker exec kafka /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --create --if-not-exists \
   --topic banking.transactions.audit-dlq \
-  --partitions 3 \
+  --partitions 6 \
   --replication-factor 1
 ```
 
@@ -1026,7 +1029,7 @@ flowchart TD
 
 > **🎯 Objectif** : Ce déploiement valide les patterns avancés du **Consumer Kafka** dans un environnement cloud :
 > - **Manual Commit** : les offsets sont commités explicitement après traitement réussi (at-least-once)
-> - **Déduplication** : les messages déjà traités sont détectés et ignorés (exactly-once sémantique)
+> - **Déduplication** : les messages déjà traités sont détectés et ignorés (at-least-once + idempotence applicative)
 > - **Dead Letter Queue (DLQ)** : les messages impossibles à traiter sont redirigés vers un topic DLQ
 > - **Retry avec backoff** : les erreurs transitoires sont retentées avant envoi en DLQ
 > - **Vérification via Kafka CLI** : inspecter les offsets commités et le contenu de la DLQ
@@ -1036,7 +1039,7 @@ Si vous utilisez l'environnement **OpenShift Sandbox**, suivez ces étapes pour 
 ### 1. Créer les Topics
 
 ```bash
-oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic banking.transactions.audit-dlq --partitions 3 --replication-factor 3
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic banking.transactions.audit-dlq --partitions 6 --replication-factor 3
 ```
 
 ### 2. Préparer le Build et le Déploiement
@@ -1080,7 +1083,27 @@ oc create route edge ebanking-audit-api-secure --service=ebanking-audit-api --po
 
 For Sandbox environments, use `Acks = Acks.Leader` and `EnableIdempotence = false` in any `ProducerConfig` (including the DLQ producer) to avoid `Coordinator load in progress` hangs.
 
-### 5. Tester l'API déployée
+### 5. ✅ Success Criteria — Deployment
+
+```bash
+# Pod running?
+oc get pod -l deployment=ebanking-audit-api
+# Expected: STATUS=Running, READY=1/1
+
+# Consumer active?
+curl -k -s "https://$(oc get route ebanking-audit-api-secure -o jsonpath='{.spec.host}')/api/Audit/health" | jq .
+# Expected: status=Consuming, manualCommits >= 0
+
+# Consumer group registered?
+oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group audit-compliance-service
+# Expected: GROUP listed with assigned partitions
+
+# DLQ topic exists?
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic banking.transactions.audit-dlq
+# Expected: PartitionCount: 6
+```
+
+### 6. Tester l'API déployée
 
 ```bash
 # Obtenir l'URL publique
@@ -1149,10 +1172,16 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh \
 
 ### 6.1 Automated Testing Script
 
-```powershell
-# Run the full deployment and test script
+```bash
+# Run the full deployment and test script (Bash)
 cd day-01-foundations/scripts
-./deploy-and-test-1.3c.ps1
+./bash/deploy-and-test-1.3c.sh
+```
+
+```powershell
+# Run the full deployment and test script (PowerShell)
+cd day-01-foundations/scripts
+.\powershell\deploy-and-test-1.3c.ps1
 ```
 
 #### Scénario avancé : Vérifier les offsets commités et la DLQ
@@ -1237,7 +1266,7 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --create --if-not-exists \
   --topic banking.transactions.audit-dlq \
-  --partitions 3 --replication-factor 3
+  --partitions 6 --replication-factor 3
 ```
 
 ### 3. Build et Déploiement (Binary Build)
@@ -1343,7 +1372,7 @@ kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 
   --bootstrap-server kafka-svc:9092 \
   --create --if-not-exists \
   --topic banking.transactions.audit-dlq \
-  --partitions 3 --replication-factor 3
+  --partitions 6 --replication-factor 3
 ```
 
 ### 3. Déployer les manifestes
@@ -1492,7 +1521,8 @@ Ajoutez une logique qui fait échouer aléatoirement 10% des persistances (simul
 
 | Concept | Ce qu'il faut retenir |
 | ------- | -------------------- |
-| **Manual commit** | `EnableAutoCommit = false` + `Commit()` explicite après traitement |
+| **Manual commit** | `EnableAutoCommit = false` + `EnableAutoOffsetStore = false` + `Commit()` explicite après traitement |
+| **EnableAutoOffsetStore** | `= false` empêche le stockage automatique de l'offset après `Consume()` ; on contrôle via `StoreOffset()` |
 | **StoreOffset + Commit** | `StoreOffset()` = mémoire locale, `Commit()` = envoi au broker |
 | **At-least-once** | Aucune perte, mais doublons possibles → idempotence obligatoire |
 | **Idempotence** | Vérifier par `TransactionId` avant d'écrire (UNIQUE constraint en prod) |

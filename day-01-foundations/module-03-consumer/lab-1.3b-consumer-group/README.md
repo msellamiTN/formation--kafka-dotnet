@@ -1099,7 +1099,23 @@ echo "https://$URL/swagger"
 curl -k -i "https://$URL/api/Balance/health"
 ```
 
-### 5. 🧪 Validation des concepts (Sandbox / CRC)
+### 5. ✅ Success Criteria — Deployment
+
+```bash
+# Pod running?
+oc get pod -l deployment=ebanking-balance-api
+# Expected: STATUS=Running, READY=1/1
+
+# Consumer active?
+curl -k -s "https://$(oc get route ebanking-balance-api-secure -o jsonpath='{.spec.host}')/api/Balance/health" | jq .
+# Expected: consumerStatus=Consuming, assignedPartitions populated
+
+# Consumer group registered?
+oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group balance-service
+# Expected: GROUP listed with assigned partitions
+```
+
+### 6. 🧪 Validation des concepts (Sandbox / CRC)
 
 ```bash
 URL=$(oc get route ebanking-balance-api-secure -o jsonpath='{.spec.host}')
@@ -1145,10 +1161,16 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh \
 
 ### 5.1 Automated Testing Script
 
-```powershell
-# Run the full deployment and test script
+```bash
+# Run the full deployment and test script (Bash)
 cd day-01-foundations/scripts
-./deploy-and-test-1.3b.ps1
+./bash/deploy-and-test-1.3b.sh
+```
+
+```powershell
+# Run the full deployment and test script (PowerShell)
+cd day-01-foundations/scripts
+.\powershell\deploy-and-test-1.3b.ps1
 ```
 
 ### 6. Alternative : Déploiement par manifeste YAML

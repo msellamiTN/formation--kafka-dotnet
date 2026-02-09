@@ -147,7 +147,7 @@ docker exec kafka /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --create --if-not-exists \
   --topic banking.transactions.dlq \
-  --partitions 3 \
+  --partitions 6 \
   --replication-factor 1
 ```
 
@@ -162,7 +162,7 @@ kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 
 kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
   --restart=Never -n kafka -- \
   bin/kafka-topics.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
-  --create --if-not-exists --topic banking.transactions.dlq --partitions 3 --replication-factor 3
+  --create --if-not-exists --topic banking.transactions.dlq --partitions 6 --replication-factor 3
 ```
 
 **OpenShift Sandbox (Cloud)** :
@@ -170,7 +170,7 @@ kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 
 1. **Create Topics** (via Kafka UI or CLI) :
 ```bash
 oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic banking.transactions --partitions 6 --replication-factor 3
-oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic banking.transactions.dlq --partitions 3 --replication-factor 3
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --if-not-exists --topic banking.transactions.dlq --partitions 6 --replication-factor 3
 ```
 
 2. **Deploy API** :
@@ -194,6 +194,21 @@ oc create route edge ebanking-resilient-api --service=ebanking-resilient-produce
 
 5. **Stability Warning** :
 For Sandbox environments, use `Acks = Acks.Leader` and `EnableIdempotence = false` in `ProducerConfig` to avoid `Coordinator load in progress` hangs.
+
+6. **✅ Success Criteria — Deployment** :
+```bash
+# Pod running?
+oc get pod -l deployment=ebanking-resilient-producer-api
+# Expected: STATUS=Running, READY=1/1
+
+# Route reachable?
+curl -k -s "https://$(oc get route ebanking-resilient-api -o jsonpath='{.spec.host}')/health" | jq .
+# Expected: {"status":"Healthy"} or Swagger UI accessible
+
+# DLQ topic exists?
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic banking.transactions.dlq
+# Expected: PartitionCount: 6
+```
 
 ---
 
@@ -1222,7 +1237,7 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --create --if-not-exists \
   --topic banking.transactions.dlq \
-  --partitions 3 --replication-factor 3
+  --partitions 6 --replication-factor 3
 ```
 
 ### 3. Déployer avec `oc new-app`

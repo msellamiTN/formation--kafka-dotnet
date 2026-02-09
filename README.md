@@ -1,218 +1,236 @@
-# 📅 Day 01 - Fondamentaux Kafka
+# Formation Apache Kafka avec .NET
 
-> **Durée estimée** : 4-5 heures | **Niveau** : Débutant → Intermédiaire
-
----
-
-## 🎯 Objectifs pédagogiques
-
-À la fin de cette journée, vous serez capable de :
-
-| # | Objectif | Module |
-| --- | --- | --- |
-| 1 | Comprendre l'**architecture interne** de Kafka (brokers, topics, partitions) | M01 |
-| 2 | Expliquer le mode **KRaft** et ses avantages vs ZooKeeper | M01 |
-| 3 | Configurer un **producer idempotent** avec gestion des retries | M02 |
-| 4 | Implémenter l'envoi **synchrone vs asynchrone** avec callbacks | M02 |
-| 5 | Comprendre les **transactions Kafka** et l'isolation `read_committed` | M03 |
-| 6 | Développer un **consumer transactionnel** qui ignore les messages abortés | M03 |
+> **Programme complet** : 3 jours | **Stack** : .NET 8, Confluent.Kafka, Docker, OpenShift | **Scénario** : E-Banking
 
 ---
 
-## 📚 Concepts fondamentaux
+## � Contexte
 
-### Architecture Kafka
-
-```mermaid
-flowchart TB
-    subgraph Cluster["🔷 Kafka Cluster"]
-        subgraph B1["Broker 1"]
-            P0L["orders-0<br/>🟢 Leader"]
-            P1F["orders-1<br/>⚪ Follower"]
-        end
-        subgraph B2["Broker 2"]
-            P0F["orders-0<br/>⚪ Follower"]
-            P1L["orders-1<br/>🟢 Leader"]
-        end
-        subgraph B3["Broker 3"]
-            P2L["orders-2<br/>🟢 Leader"]
-        end
-    end
-    
-    Producer["📤 Producer"] -->|"key hash"| Cluster
-    Cluster --> Consumer["📥 Consumer Group"]
-    
-    P0L -.->|"replicate"| P0F
-    P1L -.->|"replicate"| P1F
-```
-
-### Concepts clés
-
-| Concept | Description | Importance |
-| --- | --- | --- |
-| **Topic** | Canal de messages nommé | Organisation des données |
-| **Partition** | Subdivision pour parallélisme | Scalabilité |
-| **Offset** | Position d'un message dans une partition | Reprise après erreur |
-| **Consumer Group** | Ensemble de consumers partageant la charge | Load balancing |
-| **Replication Factor** | Nombre de copies d'une partition | Haute disponibilité |
-
-### Garanties de livraison
+Cette formation utilise un scénario **E-Banking** de bout en bout : des transactions bancaires (virements, paiements, retraits) sont produites vers Kafka, puis consommées par des services de **détection de fraude**, **calcul de solde** et **audit réglementaire**.
 
 ```mermaid
 flowchart LR
-    subgraph Guarantees["📊 Garanties Kafka"]
-        AL["At Least Once<br/>✅ Défaut"]
-        AM["At Most Once<br/>⚠️ Perte possible"]
-        EO["Exactly Once<br/>🎯 Idempotence"]
+    subgraph Clients["🏦 Clients"]
+        Web["🌐 Web Banking"]
+        Mobile["📱 Mobile App"]
     end
-    
-    AL -->|"enable.idempotence=true"| EO
-    AM -->|"acks=0"| AL
-```
 
-| Garantie | Configuration | Cas d'usage |
-| --- | --- | --- |
-| **At Most Once** | `acks=0` | Logs non critiques |
-| **At Least Once** | `acks=1` ou `acks=all` | Défaut, peut dupliquer |
-| **Exactly Once** | `enable.idempotence=true` | Transactions financières |
-
----
-
-## 💡 Tips & Best Practices
-
-### Producer
-
-> **🔒 Toujours activer l'idempotence en production**
-
-```csharp
-var config = new ProducerConfig
-{
-    EnableIdempotence = true,
-    Acks = Acks.All,
-    MessageSendMaxRetries = int.MaxValue
-};
-```
-
-> **⚡ Optimiser le throughput avec le batching**
-
-```csharp
-var config = new ProducerConfig
-{
-    LingerMs = 5,       // Attendre 5ms pour grouper
-    BatchSize = 16384   // 16KB par batch
-};
-```
-
-### Consumer
-
-> **📖 Préférer `read_committed` pour les données transactionnelles**
-
-```csharp
-var config = new ConsumerConfig
-{
-    IsolationLevel = IsolationLevel.ReadCommitted
-};
-```
-
-> **🔄 Gérer le rebalancing avec CooperativeSticky**
-
-```csharp
-var config = new ConsumerConfig
-{
-    PartitionAssignmentStrategy = PartitionAssignmentStrategy.CooperativeSticky
-};
-```
-
----
-
-## 🏗️ Architecture du Lab
-
-```mermaid
-flowchart TB
-    subgraph Docker["🐳 Docker Network: bhf-kafka-network"]
-        subgraph Infra["Infrastructure"]
-            K["📦 Kafka<br/>:9092 / :29092"]
-            UI["🖥️ Kafka UI<br/>:8080"]
-        end
-        
-        subgraph M02["Module 02"]
-            JAVA02["☕ Java API<br/>:18080"]
-            NET02["🔷 .NET API<br/>:18081"]
-            TOXI["🧪 Toxiproxy<br/>:8474"]
-        end
-        
-        subgraph M03["Module 03"]
-            JAVA03["☕ Java API<br/>:18090"]
-            NET03["🔷 .NET API<br/>:18091"]
-        end
+    subgraph Producers["📤 Producers (.NET)"]
+        P1["Basic Producer"]
+        P2["Keyed Producer"]
+        P3["Resilient Producer"]
     end
-    
-    JAVA02 & NET02 --> K
-    JAVA03 & NET03 --> K
-    TOXI --> K
-    UI --> K
+
+    subgraph Kafka["🔥 Apache Kafka"]
+        T["banking.transactions<br/>(6 partitions)"]
+        DLQ["banking.transactions.dlq"]
+    end
+
+    subgraph Consumers["📥 Consumers (.NET)"]
+        C1["🔍 Fraud Detection"]
+        C2["� Balance Service"]
+        C3["📋 Audit Service"]
+    end
+
+    Clients --> Producers --> T
+    T --> Consumers
+    P3 --> DLQ
+    C3 --> DLQ
+
+    style Kafka fill:#fff3e0,stroke:#f57c00
+    style Producers fill:#e8f5e9,stroke:#388e3c
+    style Consumers fill:#e3f2fd,stroke:#1976d2
 ```
 
 ---
 
-## 📦 Modules
+## 📋 Prérequis
 
-| Module | Titre | Durée | Description |
-| --- | --- | --- | --- |
-| [**M01**](./module-01-cluster/README.md) | Architecture Kafka & KRaft | 30-45 min | Théorie + Lab CLI |
-| [**M02**](./module-02-producer/README.md) | Producer Reliability | 60-90 min | Idempotence, Java/.NET |
-| [**M03**](./module-03-consumer/README.md) | Consumer Read Committed | 60-90 min | Transactions, Java/.NET |
+- **.NET 8 SDK**
+- **Docker Desktop 4.x+** (ou accès OpenShift Sandbox)
+- **IDE** : Visual Studio 2022 / VS Code / Rider
+- **Confluent.Kafka** NuGet package (2.3.0+)
+
+---
+
+## 📅 Programme
+
+### Day 01 — Fondamentaux Kafka
+
+> **Durée** : 4-5h | **Niveau** : Debutant → Intermediaire | [README Day 01](./day-01-foundations/module-01-cluster/README.md)
+
+| Module | Titre | Labs | Description |
+| ------ | ----- | ---- | ----------- |
+| [**M01**](./day-01-foundations/module-01-cluster/README.md) | Architecture Kafka & KRaft | CLI | Cluster setup (Docker, K3s, OpenShift Sandbox), topics, partitions, KRaft mode |
+| [**M02**](./day-01-foundations/module-02-producer/README.md) | Producer API (.NET) | 3 labs | Producer basique, partitionnement par cle, gestion d'erreurs & DLQ |
+| [**M03**](./day-01-foundations/module-03-consumer/README.md) | Consumer API (.NET) | 3 labs | Consumer auto-commit, consumer groups & rebalancing, manual commit & idempotence |
+
+<details>
+<summary>Labs Day 01 (6 labs)</summary>
+
+| Lab | Titre | Service | Concepts cles |
+| --- | ----- | ------- | ------------- |
+| [**1.2a**](./day-01-foundations/module-02-producer/lab-1.2a-producer-basic/README.md) | Producer Basique | `ebanking-producer-api` | `ProduceAsync()`, `Acks.All`, `DeliveryResult`, round-robin partitioning |
+| [**1.2b**](./day-01-foundations/module-02-producer/lab-1.2b-producer-keyed/README.md) | Producer avec Cle | `ebanking-keyed-producer-api` | Partitionnement par `CustomerId`, ordering guarantee, hot partition detection |
+| [**1.2c**](./day-01-foundations/module-02-producer/lab-1.2c-producer-error-handling/README.md) | Producer Resilient | `ebanking-resilient-producer-api` | Retry, circuit breaker, Dead Letter Queue (`banking.transactions.dlq`) |
+| [**1.3a**](./day-01-foundations/module-03-consumer/lab-1.3a-consumer-basic/README.md) | Consumer Basique | `ebanking-fraud-detection-api` | Auto-commit, `EnableAutoOffsetStore`, fraud detection (amount > 10000) |
+| [**1.3b**](./day-01-foundations/module-03-consumer/lab-1.3b-consumer-group/README.md) | Consumer Group | `ebanking-balance-api` | Consumer groups, CooperativeSticky rebalancing, balance calculation |
+| [**1.3c**](./day-01-foundations/module-03-consumer/lab-1.3c-consumer-manual-commit/README.md) | Manual Commit | `ebanking-audit-api` | `EnableAutoCommit=false`, `StoreOffset()`, idempotence, audit DLQ |
+
+</details>
+
+---
+
+### Day 02 — Developpement Avance & Kafka Streams
+
+> **Durée** : 5-6h | **Niveau** : Intermediaire → Avance | [README Day 02](./day-02-development/README.md)
+
+| Module | Titre | Stack | Description |
+| ------ | ----- | ----- | ----------- |
+| [**M04**](./day-02-development/module-04-advanced-patterns/README.md) | Advanced Consumer Patterns | .NET / Java | Dead Letter Topic, retry avec backoff exponentiel, rebalancing, erreurs transient vs permanent |
+| [**M05**](./day-02-development/module-05-kafka-streams/README.md) | Kafka Streams | Java | KStream, KTable, aggregations windowed, joins, State Stores, Interactive Queries |
+
+<details>
+<summary>Details Day 02</summary>
+
+- **M04** inclut des tutoriels [.NET](./day-02-development/module-04-advanced-patterns/TUTORIAL-DOTNET.md), [Java](./day-02-development/module-04-advanced-patterns/TUTORIAL-JAVA.md), et [Visual Studio 2022](./day-02-development/module-04-advanced-patterns/TUTORIAL-VS2022.md)
+- **M05** inclut un tutoriel [Java Kafka Streams](./day-02-development/module-05-kafka-streams/TUTORIAL-JAVA.md) avec topologies completes
+
+</details>
+
+---
+
+### Day 03 — Integration, Tests & Observabilite
+
+> **Durée** : 5-6h | **Niveau** : Avance → Production | [README Day 03](./day-03-integration/README.md)
+
+| Module | Titre | Stack | Description |
+| ------ | ----- | ----- | ----------- |
+| [**M06**](./day-03-integration/module-06-kafka-connect/README.md) | Kafka Connect | Connect API | Source & Sink connectors, REST API management, SQL Server CDC |
+| [**M07**](./day-03-integration/module-07-testing/README.md) | Testing Kafka | .NET / Java | Unit tests (MockProducer/MockConsumer), integration tests (Testcontainers) |
+| [**M08**](./day-03-integration/module-08-observability/README.md) | Observabilite | Prometheus/Grafana | Metriques JMX, consumer lag, tracing distribue |
+
+<details>
+<summary>Details Day 03</summary>
+
+- **M06** inclut des [exemples SQL Server CDC](./day-03-integration/module-06-kafka-connect/SQLSERVER-CDC-EXAMPLES.md) et un [tutoriel Connect](./day-03-integration/module-06-kafka-connect/TUTORIAL.md)
+- **M07** inclut des tutoriels [.NET](./day-03-integration/module-07-testing/TUTORIAL-DOTNET.md) et [Java](./day-03-integration/module-07-testing/TUTORIAL.md)
+- **M08** inclut un stack Prometheus + Grafana + JMX Exporter preconfigure
+
+</details>
 
 ---
 
 ## 🚀 Quick Start
 
-### Prérequis
+### 1. Cloner le repository
 
-- Docker Desktop 4.x+
-- Docker Compose plugin (`docker compose`)
-
-### Démarrer l'infrastructure
-
-```powershell
-# Depuis day-01-foundations/module-01-cluster/
-cd infra/scripts
-
-# Démarrer Kafka (Docker)
-./up.sh
-
-# Ou sur K3s/OpenShift
-./03-install-kafka.sh
+```bash
+git clone <repo-url>
+cd formation-kafka-dotnet
 ```
 
-### URLs
+### 2. Demarrer l'infrastructure Kafka
 
-| Service | URL | Description |
-| --- | --- | --- |
-| Kafka UI | <http://localhost:8080> | Interface web |
-| Kafka | `localhost:9092` | Bootstrap servers (TCP) |
+<details>
+<summary>🐳 Docker</summary>
 
-### Arrêter
+```bash
+cd day-01-foundations/module-01-cluster
+./scripts/up.sh
+# Verifier : docker ps (kafka et kafka-ui doivent etre healthy)
+```
 
-```powershell
-docker compose -f docker-compose.single-node.yml down
+</details>
+
+<details>
+<summary>☁️ OpenShift Sandbox</summary>
+
+```bash
+oc login --token=<TOKEN> --server=<SERVER>
+cd day-01-foundations/module-01-cluster/infra/scripts
+./08-install-kafka-sandbox.sh
+```
+
+</details>
+
+### 3. Creer le topic principal
+
+```bash
+# Docker
+docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists \
+  --topic banking.transactions \
+  --partitions 6 --replication-factor 1
+```
+
+### 4. Commencer le premier lab
+
+```bash
+cd day-01-foundations/module-02-producer/lab-1.2a-producer-basic/EBankingProducerAPI
+dotnet run
+# Ouvrir https://localhost:5001/swagger
 ```
 
 ---
 
-## ⚠️ Erreurs courantes
+## 🏗️ Structure du Repository
+
+```text
+formation-kafka-dotnet/
+├── day-01-foundations/           # Jour 1 : Fondamentaux
+│   ├── module-01-cluster/       # M01 : Architecture & Setup
+│   ├── module-02-producer/      # M02 : Producer API
+│   │   ├── lab-1.2a-producer-basic/
+│   │   ├── lab-1.2b-producer-keyed/
+│   │   └── lab-1.2c-producer-error-handling/
+│   ├── module-03-consumer/      # M03 : Consumer API
+│   │   ├── lab-1.3a-consumer-basic/
+│   │   ├── lab-1.3b-consumer-group/
+│   │   └── lab-1.3c-consumer-manual-commit/
+│   └── scripts/                 # Scripts de deploiement automatise
+│       ├── bash/
+│       └── powershell/
+├── day-02-development/          # Jour 2 : Avance
+│   ├── module-04-advanced-patterns/
+│   └── module-05-kafka-streams/
+├── day-03-integration/          # Jour 3 : Production
+│   ├── module-06-kafka-connect/
+│   ├── module-07-testing/
+│   └── module-08-observability/
+└── docs/                        # Documentation curriculum
+```
+
+---
+
+## 📊 Services URLs (Docker)
+
+| Service | URL | Description |
+| ------- | --- | ----------- |
+| Kafka | `localhost:9092` | Bootstrap servers |
+| Kafka UI | <http://localhost:8080> | Interface web de gestion |
+| Producer API | <https://localhost:5001/swagger> | Lab 1.2a |
+| Keyed Producer API | <https://localhost:5011/swagger> | Lab 1.2b |
+| Resilient Producer API | <https://localhost:5021/swagger> | Lab 1.2c |
+| Fraud Detection API | <https://localhost:5101/swagger> | Lab 1.3a |
+| Balance API | <https://localhost:5111/swagger> | Lab 1.3b |
+| Audit API | <https://localhost:5121/swagger> | Lab 1.3c |
+
+---
+
+## ⚠️ Troubleshooting
 
 | Erreur | Cause | Solution |
-| --- | --- | --- |
-| `Connection refused :9092` | Kafka pas démarré | Attendre 30s, vérifier `docker ps` |
-| `Topic not found` | Topic inexistant | Créer avec `kafka-topics.sh --create` |
-| `Offset out of range` | Consumer reset | Utiliser `--from-beginning` |
+| ------ | ----- | -------- |
+| `Broker transport failure` | Kafka non demarre | `docker ps` puis `./scripts/up.sh` |
+| `UnknownTopicOrPartition` | Topic non cree | `kafka-topics.sh --create --topic banking.transactions` |
+| `Coordinator load in progress` | Cluster Sandbox froid | Attendre 5 min ou `oc delete pods -l app=kafka` |
+| `Connection refused :9092` | Port non expose | Verifier Docker ou port-forward OpenShift |
 | `Rebalancing in progress` | Consumer group instable | Attendre fin du rebalance |
 
 ---
 
-## ➡️ Suite
+## 📜 Licence
 
-Après Day 01, passez à :
-
-👉 **[Day 02 - Développement avancé](../day-02-development/README.md)**
+Formation interne — Usage pedagogique uniquement.

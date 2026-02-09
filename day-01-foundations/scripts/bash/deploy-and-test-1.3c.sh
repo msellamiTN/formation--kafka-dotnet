@@ -72,12 +72,12 @@ oc new-app "$AppName" || {
 write_step "Configuring environment variables..."
 oc set env deployment/"$AppName" \
   Kafka__BootstrapServers=kafka-svc:9092 \
-  Kafka__GroupId=audit-service \
+  Kafka__GroupId=audit-compliance-service \
   Kafka__Topic=banking.transactions \
   Kafka__EnableManualCommit=true \
   Kafka__EnableDuplicateDetection=true \
   Kafka__EnableDLQ=true \
-  Kafka__DLQTopic=banking.transactions.dlq \
+  Kafka__DLQTopic=banking.transactions.audit-dlq \
   ASPNETCORE_URLS=http://0.0.0.0:8080 \
   ASPNETCORE_ENVIRONMENT=Development || {
     write_fail "Failed to set environment variables"
@@ -241,11 +241,11 @@ fi
 write_step "Checking Kafka consumer group..."
 ConsumerGroupInfo=$(oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092 \
-  --describe --group audit-service 2>/dev/null || echo "")
+  --describe --group audit-compliance-service 2>/dev/null || echo "")
 
-if echo "$ConsumerGroupInfo" | grep -q "audit-service"; then
+if echo "$ConsumerGroupInfo" | grep -q "audit-compliance-service"; then
     write_pass "Consumer group exists in Kafka"
-    PartitionCount=$(echo "$ConsumerGroupInfo" | grep -c "audit-service" || echo "0")
+    PartitionCount=$(echo "$ConsumerGroupInfo" | grep -c "audit-compliance-service" || echo "0")
     write_info "Consumer has $PartitionCount partition assignments"
     
     # Check for committed offsets (manual commits should leave committed offsets)

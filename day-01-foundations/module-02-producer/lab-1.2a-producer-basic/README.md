@@ -108,7 +108,8 @@ sequenceDiagram
 
 ### Cluster Kafka en fonctionnement
 
-**Docker** :
+<details>
+<summary>🐳 Docker</summary>
 
 ```bash
 cd ../../module-01-cluster
@@ -116,14 +117,20 @@ cd ../../module-01-cluster
 # Vérifier : docker ps (kafka et kafka-ui doivent être healthy)
 ```
 
-**OKD/K3s** :
+</details>
+
+<details>
+<summary>☸️ OKD / K3s</summary>
 
 ```bash
 kubectl get kafka -n kafka
 # Attendu : bhf-kafka avec status Ready
 ```
 
-**OpenShift Sandbox** :
+</details>
+
+<details>
+<summary>☁️ OpenShift Sandbox</summary>
 
 > ⚠️ Assurez-vous d'avoir configuré l'accès externe (port-forward) comme décrit dans le README du module.
 
@@ -136,9 +143,12 @@ oc get pods -l app=kafka
 # oc port-forward kafka-2 9096:9094
 ```
 
+</details>
+
 ### Créer le topic
 
-**Docker** :
+<details>
+<summary>🐳 Docker</summary>
 
 ```bash
 docker exec kafka /opt/kafka/bin/kafka-topics.sh \
@@ -149,7 +159,10 @@ docker exec kafka /opt/kafka/bin/kafka-topics.sh \
   --replication-factor 1
 ```
 
-**OKD/K3s** :
+</details>
+
+<details>
+<summary>☸️ OKD / K3s</summary>
 
 ```bash
 kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
@@ -158,7 +171,10 @@ kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 
   --create --if-not-exists --topic banking.transactions --partitions 6 --replication-factor 3
 ```
 
-**OpenShift Sandbox** :
+</details>
+
+<details>
+<summary>☁️ OpenShift Sandbox</summary>
 
 ```bash
 oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
@@ -168,6 +184,8 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
   --partitions 6 \
   --replication-factor 3
 ```
+
+</details>
 
 ---
 
@@ -838,6 +856,9 @@ Cliquer sur **GET /api/transactions/health** → **Try it out** → **Execute**
 
 ### Avec CLI Kafka
 
+<details>
+<summary>🐳 Docker</summary>
+
 ```bash
 docker exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
@@ -846,7 +867,10 @@ docker exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
   --max-messages 10
 ```
 
-**OpenShift Sandbox** :
+</details>
+
+<details>
+<summary>☁️ OpenShift Sandbox</summary>
 
 ```bash
 oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
@@ -855,6 +879,8 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
   --from-beginning \
   --max-messages 10
 ```
+
+</details>
 
 **Résultat attendu** :
 
@@ -865,6 +891,9 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
 ---
 
 ## ☁️ Déploiement sur OpenShift Sandbox
+
+<details>
+<summary>☁️ Déployer sur OpenShift Sandbox (cliquer pour déplier)</summary>
 
 > **🎯 Objectif** : Ce déploiement ne se limite pas à mettre l'API en ligne. L'objectif est de **valider les concepts fondamentaux du Producer Kafka** dans un environnement cloud réel :
 > - **Envoi de messages** vers un topic Kafka depuis une API REST
@@ -1204,9 +1233,14 @@ For Sandbox environments, use `Acks = Acks.Leader` and `EnableIdempotence = fals
     - Cela signifie que le cluster Kafka est en train d'élire les leaders pour les transactions internes. Cela peut prendre quelques minutes sur un cluster Sandbox frais.
     - Solution : Attendez 5 minutes et rééssayez. Ou redémarrez les pods Kafka : `oc delete pods -l app=kafka`.
 
+</details>
+
 ---
 
 ## 🖥️ Déploiement Local OpenShift (CRC / OpenShift Local)
+
+<details>
+<summary>🖥️ Déployer sur OpenShift Local / CRC (cliquer pour déplier)</summary>
 
 Si vous disposez d'un cluster **OpenShift Local** (anciennement CRC — CodeReady Containers), vous pouvez déployer l'API directement depuis votre machine.
 
@@ -1286,9 +1320,14 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-run-class.sh kafka.tools.GetOffsetShell 
 sed "s/\${NAMESPACE}/ebanking-labs/g" deployment/openshift-deployment.yaml | oc apply -f -
 ```
 
+</details>
+
 ---
 
 ## ☸️ Déploiement Kubernetes / OKD (K3s, K8s, OKD)
+
+<details>
+<summary>☸️ Déployer sur Kubernetes / OKD (cliquer pour déplier)</summary>
 
 Pour un cluster **Kubernetes standard** (K3s, K8s, Minikube) ou **OKD**, utilisez les manifestes YAML fournis dans le dossier `deployment/`.
 
@@ -1364,6 +1403,8 @@ kubectl exec kafka-0 -- /opt/kafka/bin/kafka-run-class.sh kafka.tools.GetOffsetS
 ```bash
 sed "s/\${NAMESPACE}/$(oc project -q)/g" deployment/openshift-deployment.yaml | oc apply -f -
 ```
+
+</details>
 
 ---
 

@@ -391,7 +391,8 @@ public class KafkaConsumerService : BackgroundService
             GroupId = _configuration["Kafka:GroupId"] ?? "fraud-detection-service",
             ClientId = $"fraud-detector-{Environment.MachineName}-{Guid.NewGuid():N}",
             AutoOffsetReset = AutoOffsetReset.Earliest,
-            EnableAutoCommit = true,
+            EnableAutoCommit = true,       // offsets are committed automatically every AutoCommitIntervalMs
+            EnableAutoOffsetStore = true,  // (default) offset is stored as soon as Consume() returns
             AutoCommitIntervalMs = 5000,
             SessionTimeoutMs = 10000,
             HeartbeatIntervalMs = 3000,
@@ -890,6 +891,22 @@ curl -k -i "https://$URL/api/FraudDetection/health"
 curl -k -s "https://$URL/api/FraudDetection/metrics"
 ```
 
+### 5. ✅ Success Criteria — Deployment
+
+```bash
+# Pod running?
+oc get pod -l deployment=ebanking-fraud-detection-api
+# Expected: STATUS=Running, READY=1/1
+
+# Consumer active?
+curl -k -s "https://$(oc get route ebanking-fraud-api-secure -o jsonpath='{.spec.host}')/api/FraudDetection/health" | jq .
+# Expected: status=Consuming (or Running), messagesConsumed >= 0
+
+# Consumer group registered?
+oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group fraud-detection-service
+# Expected: GROUP listed with assigned partitions
+```
+
 ---
 
 ## 🧪 TESTING
@@ -938,10 +955,16 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh \
 
 ### Automated Testing Script
 
-```powershell
-# Run the full deployment and test script
+```bash
+# Run the full deployment and test script (Bash)
 cd day-01-foundations/scripts
-./deploy-and-test-1.3a.ps1
+./bash/deploy-and-test-1.3a.sh
+```
+
+```powershell
+# Run the full deployment and test script (PowerShell)
+cd day-01-foundations/scripts
+.\powershell\deploy-and-test-1.3a.ps1
 ```
 
 ---
