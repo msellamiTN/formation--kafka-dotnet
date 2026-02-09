@@ -1099,31 +1099,56 @@ echo "https://$URL/swagger"
 curl -k -i "https://$URL/api/Balance/health"
 ```
 
-### 5. 🧪 Validation des concepts (CRC)
+### 5. 🧪 Validation des concepts (Sandbox / CRC)
 
 ```bash
 URL=$(oc get route ebanking-balance-api-secure -o jsonpath='{.spec.host}')
+PRODUCER_URL=$(oc get route ebanking-producer-api-secure -o jsonpath='{.spec.host}')
 
-# Produire une transaction via Kafka CLI
-oc exec kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
-  --broker-list localhost:9092 \
-  --topic banking.transactions <<< \
-  '{"transactionId":"CRC-BAL-001","fromAccount":"BANK","toAccount":"FR7630001000123456789","amount":3000.00,"currency":"EUR","type":3,"description":"Depot CRC","customerId":"CUST-001","timestamp":"2026-02-08T22:00:00Z","riskScore":0,"status":1}'
+# 1. Health check - consumer should be Consuming with partitions assigned
+curl -k -s "https://$URL/api/Balance/health" | jq .
+# Expected: assignedPartitions: [0,1,2], consumerStatus: "Consuming"
 
-# Vérifier le solde
-sleep 3
+# 2. Send test transactions via Producer API
+curl -k -s -X POST "https://$PRODUCER_URL/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000111111","toAccount":"FR7630001000222222","amount":250.00,"currency":"EUR","type":1,"description":"Transfer out","customerId":"CUST-001"}' | jq .
+
+curl -k -s -X POST "https://$PRODUCER_URL/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000333333","toAccount":"FR7630001000111111","amount":100.00,"currency":"EUR","type":1,"description":"Transfer in","customerId":"CUST-001"}' | jq .
+
+curl -k -s -X POST "https://$PRODUCER_URL/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000444444","toAccount":"FR7630001000555555","amount":15000.00,"currency":"EUR","type":1,"description":"Large transfer","customerId":"CUST-002"}' | jq .
+
+# 3. Wait for consumer to process
+sleep 5
+
+# 4. Check customer balances
+curl -k -s "https://$URL/api/Balance/balances" | jq .
+# Expected: CUST-001 balance=350, CUST-002 balance=15000
+
+# 5. Lookup individual customer balance
 curl -k -s "https://$URL/api/Balance/balances/CUST-001" | jq .
 
-# Scaler et observer le rebalancing
-oc scale deployment/ebanking-balance-api --replicas=2
-sleep 10
+# 6. Check consumer group metrics (partitions, offsets)
+curl -k -s "https://$URL/api/Balance/metrics" | jq .
+
+# 7. Check rebalancing history
 curl -k -s "https://$URL/api/Balance/rebalancing-history" | jq .
 
-# Vérifier le consumer group via Kafka CLI
+# 8. Verify consumer group in Kafka
 oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092 --describe --group balance-service
+```
 
-oc scale deployment/ebanking-balance-api --replicas=1
+### 5.1 Automated Testing Script
+
+```powershell
+# Run the full deployment and test script
+cd day-01-foundations/scripts
+./deploy-and-test-1.3b.ps1
 ```
 
 ### 6. Alternative : Déploiement par manifeste YAML

@@ -1100,44 +1100,62 @@ curl -k -s "https://$URL/api/Audit/log"
 curl -k -s "https://$URL/api/Audit/dlq"
 ```
 
-### 6. 🧪 Scénarios de Test et Validation des Concepts (Sandbox)
-
-#### Scénario 1 : Produire une transaction et vérifier l'audit
+### 6. 🧪 Validation complète (Sandbox / CRC)
 
 ```bash
 URL=$(oc get route ebanking-audit-api-secure -o jsonpath='{.spec.host}')
+PRODUCER_URL=$(oc get route ebanking-producer-api-secure -o jsonpath='{.spec.host}')
 
-# Produire une transaction via Kafka CLI
-oc exec kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
-  --broker-list localhost:9092 \
-  --topic banking.transactions <<< \
-  '{"transactionId":"AUDIT-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":2500.00,"currency":"EUR","type":1,"description":"Virement audit test","customerId":"CUST-001","timestamp":"2026-02-08T22:00:00Z","riskScore":0,"status":1}'
+# 1. Health check
+curl -k -s "https://$URL/api/Audit/health" | jq .
 
-# Vérifier dans le journal d'audit (attendre 2-3s)
-sleep 3
+# 2. Send test transactions via Producer API
+curl -k -s -X POST "https://$PRODUCER_URL/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000111111","toAccount":"FR7630001000222222","amount":250.00,"currency":"EUR","type":1,"description":"Audit test transfer 1","customerId":"CUST-AUDIT-001"}' | jq .
+
+curl -k -s -X POST "https://$PRODUCER_URL/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000333333","toAccount":"FR7630001000444444","amount":1500.00,"currency":"EUR","type":1,"description":"Audit test transfer 2","customerId":"CUST-AUDIT-002"}' | jq .
+
+# 3. Wait for consumer to process and manual commit
+sleep 8
+
+# 4. Check audit log (each transaction recorded with full traceability)
 curl -k -s "https://$URL/api/Audit/log" | jq .
-curl -k -s "https://$URL/api/Audit/log/AUDIT-001" | jq .
+# Expected: records with auditId, transactionId, status="Recorded", processingAttempts=1
+
+# 5. Lookup individual audit record by transactionId
+TX_ID=$(curl -k -s "https://$URL/api/Audit/log" | jq -r '.records[0].transactionId')
+curl -k -s "https://$URL/api/Audit/log/$TX_ID" | jq .
+
+# 6. Check metrics (manual commits, duplicates, DLQ)
+curl -k -s "https://$URL/api/Audit/metrics" | jq .
+# Expected: manualCommits > 0, EnableAutoCommit=false confirmed
+
+# 7. Check DLQ messages
+curl -k -s "https://$URL/api/Audit/dlq" | jq .
+
+# 8. Verify committed offsets via Kafka CLI
+oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --describe --group audit-compliance-service
 ```
 
-**📖 Concept** : Le consumer traite le message, crée un enregistrement d'audit, puis **commite manuellement** l'offset. Le commit n'a lieu qu'après traitement réussi (at-least-once).
+**📖 Key Concepts**:
+- Manual commit: offset committed only AFTER successful persistence (at-least-once)
+- Duplicate detection: same transactionId → `duplicatesSkipped` increments
+- DLQ: failed processing → message sent to `banking.transactions.audit-dlq`
 
-#### Scénario 2 : Tester la déduplication
+### 6.1 Automated Testing Script
 
-```bash
-# Envoyer le MÊME message une seconde fois (même transactionId)
-oc exec kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
-  --broker-list localhost:9092 \
-  --topic banking.transactions <<< \
-  '{"transactionId":"AUDIT-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":2500.00,"currency":"EUR","type":1,"description":"Virement audit test","customerId":"CUST-001","timestamp":"2026-02-08T22:00:00Z","riskScore":0,"status":1}'
-
-sleep 3
-# Vérifier les métriques — duplicatesSkipped devrait augmenter
-curl -k -s "https://$URL/api/Audit/metrics" | jq '{duplicatesSkipped, messagesConsumed, auditRecordsCreated}'
+```powershell
+# Run the full deployment and test script
+cd day-01-foundations/scripts
+./deploy-and-test-1.3c.ps1
 ```
 
-**📖 Concept** : Le consumer détecte que `AUDIT-001` existe déjà → le message est ignoré et `duplicatesSkipped` incrémente.
-
-#### Scénario 3 : Vérifier les offsets commités et la DLQ
+#### Scénario avancé : Vérifier les offsets commités et la DLQ
 
 ```bash
 # Vérifier les offsets commités pour le groupe audit-compliance-service

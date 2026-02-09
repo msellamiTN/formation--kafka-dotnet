@@ -1012,21 +1012,54 @@ echo "https://$URL/swagger"
 curl -k -i "https://$URL/api/FraudDetection/health"
 ```
 
-### 5. 🧪 Validation des concepts (CRC)
+### 5. 🧪 Validation des concepts (Sandbox / CRC)
 
 ```bash
 URL=$(oc get route ebanking-fraud-api-secure -o jsonpath='{.spec.host}')
+PRODUCER_URL=$(oc get route ebanking-producer-api-secure -o jsonpath='{.spec.host}')
 
-# Produire un message test via Kafka CLI
-oc exec kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
-  --broker-list localhost:9092 \
-  --topic banking.transactions <<< \
-  '{"transactionId":"CRC-TEST-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":25000.00,"currency":"EUR","type":1,"description":"Test CRC fraude","customerId":"CUST-001","timestamp":"2026-02-08T22:00:00Z","riskScore":0,"status":1}'
+# 1. Health check - consumer should be Consuming
+curl -k -s "https://$URL/api/FraudDetection/health" | jq .
 
-# Vérifier les alertes (attendre 2-3s)
-sleep 3
+# 2. Send test transactions via Producer API
+curl -k -s -X POST "https://$PRODUCER_URL/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000111111","toAccount":"FR7630001000222222","amount":250.00,"currency":"EUR","type":1,"description":"Normal transfer","customerId":"CUST-001"}' | jq .
+
+curl -k -s -X POST "https://$PRODUCER_URL/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000333333","toAccount":"FR7630001000444444","amount":15000.00,"currency":"EUR","type":1,"description":"Large suspicious transfer","customerId":"CUST-002"}' | jq .
+
+curl -k -s -X POST "https://$PRODUCER_URL/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000555555","toAccount":"FR7630001000666666","amount":9500.00,"currency":"USD","type":1,"description":"International wire","customerId":"CUST-003"}' | jq .
+
+# 3. Wait for consumer to process (auto-commit every 5s)
+sleep 5
+
+# 4. Check fraud alerts (amount > 10000 triggers alert)
+curl -k -s "https://$URL/api/FraudDetection/alerts" | jq .
+# Expected: 15000 EUR flagged as Medium/High risk
+
+# 5. Check high-risk alerts
 curl -k -s "https://$URL/api/FraudDetection/alerts/high-risk" | jq .
+
+# 6. Check consumer metrics
 curl -k -s "https://$URL/api/FraudDetection/metrics" | jq .
+# Expected: messagesConsumed > 0, partitionOffsets populated
+
+# 7. Verify consumer group in Kafka
+oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --describe --group fraud-detection-service
+```
+
+### 5.1 Automated Testing Script
+
+```powershell
+# Run the full deployment and test script
+cd day-01-foundations/scripts
+./deploy-and-test-1.3a.ps1
 ```
 
 ### 6. Alternative : Déploiement par manifeste YAML
