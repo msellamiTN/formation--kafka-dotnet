@@ -995,15 +995,390 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
 </details>
 
 **Résultat attendu** : Messages JSON avec headers `producer-id` et garantie exactly-once.
-    subgraph TX["🔒 Transaction"]
-        direction TB
-        BEGIN["BeginTransaction()"]
-        W1["Write msg to topic A"]
-        W2["Write msg to topic B"]
-        OFFSET["SendOffsetsToTransaction()"]
-        COMMIT["CommitTransaction()"]
-        BEGIN --> W1 --> W2 --> OFFSET --> COMMIT
-    end
+
+---
+
+## ☁️ Déploiement sur OpenShift Sandbox
+
+<details>
+<summary>☁️ Déployer sur OpenShift Sandbox (cliquer pour déplier)</summary>
+
+> **🎯 Objectif** : Ce déploiement valide les concepts de **producer idempotent** dans un environnement cloud :
+> - **`EnableIdempotence = true`** : garantie exactly-once sans duplicatas
+> - **`Acks = All`** : écriture sur tous les ISR avant ACK
+> - **PID tracking** : monitoring du Producer ID et sequence numbers
+> - **Retry automatique** : retries infinis sans duplication
+
+### Déploiement Manuel (Étape par Étape)
+
+### 1. Préparer le Build et le Déploiement
+
+```bash
+cd day-02-development/module-04-advanced-patterns/lab-2.2-producer-advanced/dotnet
+
+# Créer une build binaire pour .NET 8
+oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-idempotent-api
+
+# Lancer la build en envoyant le dossier courant
+oc start-build ebanking-idempotent-api --from-dir=. --follow
+
+# Créer l'application
+oc new-app ebanking-idempotent-api
+```
+
+### 2. Configurer les variables d'environnement
+
+```bash
+oc set env deployment/ebanking-idempotent-api \
+  Kafka__BootstrapServers=kafka-svc:9092 \
+  Kafka__Topic=banking.transactions \
+  Kafka__ClientId=ebanking-idempotent-api \
+  ASPNETCORE_URLS=http://0.0.0.0:8080 \
+  ASPNETCORE_ENVIRONMENT=Development
+```
+
+### 3. Exposer publiquement (Secure Edge Route)
+
+```bash
+oc create route edge ebanking-idempotent-api-secure --service=ebanking-idempotent-api --port=8080-tcp
+```
+
+### 4. Obtenir l'URL publique
+
+```bash
+HOST=$(oc get route ebanking-idempotent-api-secure -o jsonpath='{.spec.host}')
+echo "Swagger UI : https://$HOST/swagger"
+```
+
+### 5. ✅ Vérification du Déploiement
+
+#### Étape 1 : Vérifier le build
+```bash
+oc start-build ebanking-idempotent-api --from-dir=. --follow
+```
+**Résultat attendu** : `Build successful! Now deploying the application:`
+
+#### Étape 2 : Vérifier le déploiement
+```bash
+oc get pod -l app=ebanking-idempotent-api
+```
+**Résultat attendu** : Pod avec status `Running` et `1/1`
+
+#### Étape 3 : Vérifier le health endpoint
+```bash
+curl -k -s "https://$HOST/api/Transactions/health"
+```
+**Résultat attendue** :
+```json
+{
+  "status": "Healthy",
+  "service": "EBanking Idempotent Producer API",
+  "timestamp": "2026-02-08T23:45:12.3456789Z"
+}
+```
+
+#### Étape 4 : Vérifier les métriques du producer
+```bash
+curl -k -s "https://$HOST/api/Transactions/metrics"
+```
+**Résultat attendu** :
+```json
+{
+  "producerId": "PID-A1B2C3D4",
+  "topic": "banking.transactions",
+  "enableIdempotence": true,
+  "acks": "All",
+  "maxInFlight": 5,
+  "messageSendMaxRetries": 2147483647
+}
+```
+
+#### Étape 5 : Envoyer une transaction idempotente
+```bash
+curl -k -s -X POST "https://$HOST/api/Transactions/idempotent" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fromAccount": "FR7630001000123456789",
+    "toAccount": "FR7630001000987654321",
+    "amount": 1500.00,
+    "currency": "EUR",
+    "type": 1,
+    "description": "Test idempotent",
+    "customerId": "CUST-001"
+  }'
+```
+**Résultat attendu** :
+```json
+{
+  "transactionId": "d5704e82-095e-4e65-94f3-708fdbeda9db",
+  "status": "Processing",
+  "kafkaPartition": 1,
+  "kafkaOffset": 1,
+  "timestamp": "2026-02-08T23:46:30.123Z",
+  "producerId": "PID-A1B2C3D4"
+}
+```
+
+#### Étape 6 : Envoyer un lot idempotent
+```bash
+curl -k -s -X POST "https://$HOST/api/Transactions/batch" \
+  -H "Content-Type: application/json" \
+  -d '[
+    {
+      "fromAccount": "FR7630001000111111111",
+      "toAccount": "FR7630001000222222222",
+      "amount": 100.00,
+      "currency": "EUR",
+      "type": 1,
+      "description": "Batch 1",
+      "customerId": "CUST-001"
+    },
+    {
+      "fromAccount": "FR7630001000333333333",
+      "toAccount": "FR7630001000444444444",
+      "amount": 250.00,
+      "currency": "EUR",
+      "type": 2,
+      "description": "Batch 2",
+      "customerId": "CUST-002"
+    }
+  ]'
+```
+**Résultat attendu** :
+```json
+{
+  "processedCount": 2,
+  "transactions": [
+    {
+      "transactionId": "e6715f93-196f-4f76-95g4-819gfebeda9ec",
+      "status": "Processing",
+      "kafkaPartition": 2,
+      "kafkaOffset": 2,
+      "timestamp": "2026-02-08T23:47:15.456Z",
+      "producerId": "PID-A1B2C3D4"
+    },
+    {
+      "transactionId": "f7826g04-207g-4g87-06h5-920hgfbeda9fd",
+      "status": "Processing",
+      "kafkaPartition": 3,
+      "kafkaOffset": 3,
+      "timestamp": "2026-02-08T23:47:16.789Z",
+      "producerId": "PID-A1B2C3D4"
+    }
+  ]
+}
+```
+
+#### Étape 7 : Vérifier dans Kafka
+```bash
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic banking.transactions \
+  --from-beginning \
+  --max-messages 3
+```
+**Résultat attendu** : Messages JSON avec headers `producer-id` et garantie exactly-once
+
+### 📊 Résumé du Déploiement Réussi
+
+✅ **Build completed** - .NET 8 application built successfully  
+✅ **Deployment created** - Pod is running on OpenShift  
+✅ **Environment configured** - Kafka connection set to `kafka-svc:9092`  
+✅ **Route created** - API accessible at: `https://ebanking-idempotent-api-secure-xxx.apps.xxx.com`  
+✅ **Health check passed** - API responding correctly  
+✅ **Idempotent metrics verified** - PID tracking and configuration confirmed  
+✅ **Single transaction sent** - Successfully sent with idempotent guarantee  
+✅ **Batch transactions sent** - Multiple transactions processed with same PID  
+
+### 🧪 Scénarios de Test et Validation des Concepts
+
+#### Scénario 1 : Vérifier la configuration idempotente
+
+```bash
+curl -k -s "https://$HOST/api/Transactions/metrics" | jq '.enableIdempotence'
+```
+**Résultat attendu** : `true`
+
+#### Scénario 2 : PID tracking
+
+```bash
+curl -k -s "https://$HOST/api/Transactions/metrics" | jq '.producerId'
+```
+**📖 Concepts observés** : Le Producer ID est unique et persiste pendant la vie du producer
+
+#### Récapitulatif des Endpoints
+
+| Méthode | Endpoint | Objectif pédagogique |
+| ------- | -------- | -------------------- |
+| `POST` | `/api/Transactions/idempotent` | Produire un message exactly-once |
+| `POST` | `/api/Transactions/batch` | Produire plusieurs messages idempotents |
+| `GET` | `/api/Transactions/metrics` | Vérifier la configuration idempotente |
+| `GET` | `/api/Transactions/{id}` | Statut d'une transaction |
+| `GET` | `/api/Transactions/health` | Vérifier la disponibilité du service |
+
+</details>
+
+---
+
+## 🖥️ Déploiement Local OpenShift (CRC / OpenShift Local)
+
+<details>
+<summary>🖥️ Déployer sur OpenShift Local / CRC (cliquer pour déplier)</summary>
+
+```bash
+# Vérifier que le cluster est démarré
+crc status
+
+# Se connecter au cluster
+oc login -u developer https://api.crc.testing:6443
+oc project ebanking-labs
+
+# Build et déploiement
+cd day-02-development/module-04-advanced-patterns/lab-2.2-producer-advanced/dotnet
+oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-idempotent-api
+oc start-build ebanking-idempotent-api --from-dir=. --follow
+oc new-app ebanking-idempotent-api
+
+# Configuration
+oc set env deployment/ebanking-idempotent-api \
+  Kafka__BootstrapServers=kafka-svc:9092 \
+  Kafka__Topic=banking.transactions \
+  Kafka__ClientId=ebanking-idempotent-api \
+  ASPNETCORE_URLS=http://0.0.0.0:8080
+
+# Route
+oc create route edge ebanking-idempotent-api-secure --service=ebanking-idempotent-api --port=8080-tcp
+
+# Test
+URL=$(oc get route ebanking-idempotent-api-secure -o jsonpath='{.spec.host}')
+curl -k -i "https://$URL/api/Transactions/health"
+```
+
+</details>
+
+---
+
+## ☸️ Déploiement Kubernetes / OKD (K3s, K8s, OKD)
+
+<details>
+<summary>☸️ Déployer sur Kubernetes / OKD (cliquer pour déplier)</summary>
+
+```bash
+# Construire l'image Docker
+cd day-02-development/module-04-advanced-patterns/lab-2.2-producer-advanced/dotnet
+docker build -t ebanking-idempotent-api:latest .
+
+# Déployer les manifestes
+kubectl apply -f deployment/k8s-deployment.yaml
+
+# Vérifier
+kubectl get pods -l app=ebanking-idempotent-api
+kubectl get svc ebanking-idempotent-api
+
+# Accès local
+kubectl port-forward svc/ebanking-idempotent-api 8080:8080
+curl http://localhost:8080/api/Transactions/health
+```
+
+</details>
+
+---
+
+## 🚀 Déploiement Automatisé (Scripts)
+
+> **Recommandé pour OpenShift Sandbox** : Utilisez les scripts de déploiement automatisés pour un déploiement rapide et testé.
+
+### Bash (Linux/macOS/WSL)
+
+```bash
+# Déploiement complet avec validation
+cd day-02-development/scripts
+./bash/deploy-and-test-2.2a.sh --token=<TOKEN> --server=<SERVER>
+
+# Déploiement sans tests (plus rapide)
+./bash/deploy-and-test-2.2a.sh --token=<TOKEN> --server=<SERVER> --skip-tests
+```
+
+### PowerShell (Windows)
+
+```powershell
+# Déploiement complet avec validation
+cd day-02-development\scripts
+.\powershell\deploy-and-test-2.2a.ps1 -Token <TOKEN> -Server <SERVER>
+
+# Déploiement sans tests (plus rapide)
+.\powershell\deploy-and-test-2.2a.ps1 -Token <TOKEN> -Server <SERVER> -SkipTests
+```
+
+### Ce que fait le script
+
+1. ✅ **Login OpenShift** avec votre token et serveur
+2. ✅ **Build S2I** : `oc new-build` + `oc start-build`
+3. ✅ **Déploiement** : `oc new-app` avec variables d'environnement
+4. ✅ **Route sécurisée** : `oc create route edge`
+5. ✅ **Validation** : Tests automatiques des objectifs du lab (idempotence, PID, métriques)
+6. ✅ **Rapport** : URLs d'accès et commandes de vérification
+
+> **Note** : Les scripts utilisent les mêmes commandes manuelles que dans les sections ci-dessous, mais de manière automatisée avec validation.
+
+---
+
+## 🐳 Déploiement Docker Compose
+
+```bash
+# Depuis la racine du module M04
+cd day-02-development/module-04-advanced-patterns
+
+# Démarrer uniquement le lab 2.2a
+docker compose -f docker-compose.module.yml up -d --build idempotent-api
+
+# Vérifier
+docker logs m04-idempotent-api --tail 10
+```
+
+**Accès** : `http://localhost:5171/swagger`
+
+---
+
+## 🔧 Troubleshooting
+
+| Symptôme | Cause probable | Solution |
+| -------- | -------------- | -------- |
+| `EnableIdempotence requires Acks=All` | Configuration incompatible | Vérifier que `Acks = Acks.All` est configuré |
+| `MaxInFlight must be ≤ 5` | Trop de messages en vol | Réduire `MaxInFlight` à 5 ou moins |
+| `Producer ID not found` | Producer non initialisé | Envoyer au moins un message pour générer le PID |
+| `Broker transport failure` | Kafka non démarré | `cd ../../module-01-cluster && ./scripts/up.sh` |
+| `UnknownTopicOrPartition` | Topic non créé | Créer `banking.transactions` (voir Prérequis) |
+| Swagger ne s'affiche pas | Mauvais URL | Vérifier le port dans la console de démarrage |
+| 400 Bad Request | Validation échouée | Vérifier les champs requis dans le body JSON |
+| Timeout 30s | Mauvais bootstrap servers | Vérifier `appsettings.json` |
+| `Exactly-once not guaranteed` | Configuration incorrecte | Vérifier `EnableIdempotence = true` et `Acks = All` |
+
+---
+
+## ✅ Validation du Lab
+
+- [ ] L'API démarre sans erreur et Swagger UI est accessible
+- [ ] `POST /api/transactions/idempotent` retourne 201 avec `producerId`
+- [ ] `GET /api/transactions/metrics` montre `enableIdempotence: true`
+- [ ] `POST /api/transactions/batch` traite un lot de 2+ transactions
+- [ ] `GET /api/transactions/health` retourne "Healthy"
+- [ ] Les messages sont visibles dans Kafka UI / CLI avec headers `producer-id`
+- [ ] Vous comprenez le rôle de `EnableIdempotence`, `Acks=All`, et `PID tracking`
+- [ ] Vous observez la garantie exactly-once dans les logs et métriques
+
+---
+
+## 🚀 Prochaine Étape
+
+👉 **[LAB 2.3A : Consumer DLT & Retry - Transactions Résilientes](../lab-2.3a-consumer-dlt-retry/README.md)**
+
+Dans le prochain lab :
+
+- **Dead Letter Topics (DLT)** pour les messages en erreur
+- **Retry avec exponential backoff + jitter**
+- **Consumer rebalancing** et gestion des partitions
+- **Manual commit** pour contrôle fin de la consommation
 
     subgraph Consumer["📥 Consumer"]
         C["IsolationLevel = ReadCommitted"]

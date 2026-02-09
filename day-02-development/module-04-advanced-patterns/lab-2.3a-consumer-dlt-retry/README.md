@@ -1,53 +1,378 @@
-# Lab 2.3a — Consumer DLT & Retry
+# LAB 2.3A : Consumer DLT & Retry - E-Banking Transactions
 
-| Durée | Théorie | Lab | Prérequis |
-| ----- | ------- | --- | --------- |
-| 1h30 | 20 min | 1h10 | Day 01 lab 1.3c complété |
+## ⏱️ Durée estimée : 45 minutes
+
+## 🏦 Contexte E-Banking
+
+Dans une banque moderne, les transactions peuvent échouer pour diverses raisons : pannes réseau, maintenance des systèmes, données invalides, etc. Un consumer robuste doit gérer ces échecs de manière intelligente :
+
+- ❌ **Perte de messages** : les transactions en erreur sont simplement ignorées
+- ❌ **Retry infini** : les erreurs permanentes bloquent le traitement
+- ❌ **Pas de monitoring** : impossible de savoir combien de messages ont échoué
+- ❌ **Rebalancing non géré** : les partitions peuvent être perdues pendant le traitement
+
+Dans ce lab, vous allez implémenter un **consumer résilient** avec Dead Letter Topics, retry intelligent, et gestion du rebalancing.
+
+### Architecture Globale
+
+```mermaid
+flowchart LR
+    subgraph Kafka["🔥 Kafka"]
+        T["📋 banking.transactions"]
+        DLT["📋 banking.transactions.dlq"]
+        RETRY["📋 banking.transactions.retry"]
+    end
+
+    subgraph API["🚀 ASP.NET Core Web API"]
+        CC["ConsumerController"]
+        DCS["DLTConsumerService"]
+        RET["RetryEngine"]
+        RB["RebalancingHandler"]
+        STATS["StatisticsService"]
+    end
+
+    subgraph Processing["🔄 Pipeline de Traitement"]
+        CONS["📥 Consumer"]
+        VAL["✅ Validation"]
+        PROC["⚙️ Processing"]
+        CLASS["🔍 Error Classification"]
+        DLTP["📤 DLT Producer"]
+    end
+
+    subgraph Monitoring["📊 Monitoring"]
+        MET["📈 Metrics"]
+        HEALTH["💚 Health"]
+        STATS2["📊 Statistics"]
+    end
+
+    T --> CONS
+    CONS --> VAL
+    VAL --> PROC
+    PROC --> CLASS
+    CLASS -->|"Transient Error"| RET
+    CLASS -->|"Permanent Error"| DLTP
+    RET -->|"Retry"| RETRY
+    RETRY -->|"Max Retries"| DLTP
+    DLTP --> DLT
+
+    CC --> DCS
+    DCS --> RB
+    DCS --> STATS
+    STATS --> MET
+    STATS --> HEALTH
+    STATS --> STATS2
+
+    style Kafka fill:#fff3e0,stroke:#f57c00
+    style API fill:#e8f5e8,stroke:#388e3c
+    style Processing fill:#f3e5f5,stroke:#9c27b0
+    style Monitoring fill:#e3f2fd,stroke:#1976d2
+```
+
+### Cycle de Vie d'une Transaction avec DLT & Retry
+
+```mermaid
+sequenceDiagram
+    actor Client as 🧑‍💼 Client Bancaire
+    participant API as 🚀 E-Banking API
+    participant Cons as 📥 Consumer Service
+    participant Valid as ✅ Validation
+    participant Proc as ⚙️ Processing
+    participant Class as 🔍 Error Classification
+    participant Retry as 🔄 Retry Engine
+    participant DLT as 📤 DLT Producer
+    participant Kafka as 🔥 Kafka
+
+    Note over Kafka,Cons: Transaction depuis Kafka
+    Kafka->>Cons: Message transaction
+    Cons->>Valid: Valider transaction
+    Valid-->>Cons: ✅ Transaction valide
+    Cons->>Proc: Traiter transaction
+    Proc--xCons: ❌ Erreur de traitement
+    
+    Note over Cons,Class: Classification de l'erreur
+    Cons->>Class: ClassifyError(exception)
+    Class-->>Cons: TransientError (retryable)
+    
+    Note over Cons,Retry: Tentative de retry
+    Cons->>Retry: ScheduleRetry(message, attempt=1)
+    Retry-->>Cons: Wait 2^1 * 100ms + jitter
+    Cons->>Proc: Retraiter transaction
+    Proc--xCons: ❌ Erreur persistante
+    
+    Note over Cons,Class: Nouvelle classification
+    Cons->>Class: ClassifyError(exception)
+    Class-->>Cons: PermanentError (non-retryable)
+    
+    Note over Cons,DLT: Envoi vers DLT
+    Cons->>DLT: SendToDLT(message, error)
+    DLT->>Kafka: banking.transactions.dlq
+    DLT-->>Cons: ✅ Message en DLT
+    
+    Note over Cons,API: Monitoring
+    Cons->>API: UpdateStats(retryCount=1, dltCount=1)
+    API-->>Client: "Transaction en erreur, consultez DLT"
+```
+
+### Scénarios E-Banking Couverts
+
+| Scénario | Type d'Erreur | Retry | DLT | Description |
+| -------- | ------------- | ----- | --- | ----------- |
+| **Timeout réseau** | Transient | ✅ | ❌ | Retry avec exponential backoff |
+| **Validation échouée** | Permanent | ❌ | ✅ | Direct vers DLT |
+| **Service indisponible** | Transient | ✅ | ❌ | Retry avec jitter |
+| **Données corrompues** | Permanent | ❌ | ✅ | Direct vers DLT |
+| **Rebalancing** | System | N/A | N/A | Gestion des partitions |
 
 ---
 
-## Théorie
+## 🎯 Objectifs
 
-> Voir **[Day 02 README § Bloc 2.3](../../README.md#-bloc-23--consumer-patterns-avancés-1h30)** pour le cours théorique complet (mermaid pipeline, patterns DLT/Retry, error classification).
+À la fin de ce lab, vous serez capable de :
 
----
-
-## Ce qui est nouveau (vs Day 01 lab 1.3c)
-
-Day 01 lab 1.3c avait déjà : `EnableAutoCommit=false`, `Commit()` explicite, DLQ basique.
-
-Ce lab ajoute :
-
-| Concept | Day 01 (lab 1.3c) | Day 02 (ce lab) |
-| ------- | ------------------ | --------------- |
-| **Offset control** | `Commit()` après traitement | `EnableAutoOffsetStore=false` + `StoreOffset()` + `Commit()` |
-| **Retry** | Simple try/catch | Exponential backoff + jitter (`2^attempt * base + random`) |
-| **Error handling** | Tout va au DLQ | Classification transient vs permanent → retry ou DLT |
-| **Rebalancing** | Non géré | `SetPartitionsAssignedHandler`, `SetPartitionsRevokedHandler`, `SetPartitionsLostHandler` |
-| **DLT headers** | `error-message` basique | 7 headers : `original-topic`, `original-partition`, `original-offset`, `error-reason`, `retry-count`, `consumer-group`, `failed-at` |
-| **Assignment** | Default | `CooperativeSticky` (minimise les interruptions) |
+1. Implémenter un **consumer résilient** avec gestion d'erreurs avancée
+2. Configurer **Dead Letter Topics (DLT)** pour les messages en erreur
+3. Implémenter **retry avec exponential backoff + jitter**
+4. **Classifier les erreurs** (transient vs permanent)
+5. Gérer le **rebalancing** des partitions de manière élégante
+6. Monitorer les **statistiques** de traitement et d'erreurs
+7. Comprendre les **stratégies de commit** manuel et offset store
 
 ---
 
-## Endpoints
+## 📋 Prérequis
 
-| Méthode | Endpoint | Description |
-| ------- | -------- | ----------- |
-| `GET` | `/health` | Health check |
-| `GET` | `/api/v1/stats` | Messages processed, retried, sent to DLT, rebalance count |
-| `GET` | `/api/v1/partitions` | Currently assigned partitions |
-| `GET` | `/api/v1/dlt/count` | Number of messages sent to DLT |
-| `GET` | `/api/v1/dlt/messages` | Details of failed messages (key, partition, offset, error) |
-
----
-
-## Quick Start
+### Cluster Kafka en fonctionnement
 
 <details>
-<summary>Docker</summary>
+<summary>🐳 Docker</summary>
 
 ```bash
-cd day-02-development/module-04-advanced-patterns/lab-2.3a-consumer-dlt-retry/dotnet
+cd ../../module-01-cluster
+./scripts/up.sh
+# Vérifier : docker ps (kafka et kafka-ui doivent être healthy)
+```
+
+</details>
+
+<details>
+<summary>☸️ OKD / K3s</summary>
+
+```bash
+kubectl get kafka -n kafka
+# Attendu : bhf-kafka avec status Ready
+```
+
+</details>
+
+<details>
+<summary>☁️ OpenShift Sandbox</summary>
+
+> ⚠️ Assurez-vous d'avoir configuré l'accès externe (port-forward) comme décrit dans le README du module.
+
+```bash
+# Vérifiez les pods
+oc get pods -l app=kafka
+# Configurez les tunnels (dans 3 terminaux) :
+# oc port-forward kafka-0 9094:9094
+# oc port-forward kafka-1 9095:9094
+# oc port-forward kafka-2 9096:9094
+```
+
+</details>
+
+### Créer les topics
+
+<details>
+<summary>🐳 Docker</summary>
+
+```bash
+# Topic principal
+docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists \
+  --topic banking.transactions \
+  --partitions 6 \
+  --replication-factor 1
+
+# Topic DLT
+docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists \
+  --topic banking.transactions.dlq \
+  --partitions 6 \
+  --replication-factor 1
+```
+
+</details>
+
+<details>
+<summary>☸️ OKD / K3s</summary>
+
+```bash
+kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
+  --restart=Never -n kafka -- \
+  bin/kafka-topics.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
+  --create --if-not-exists --topic banking.transactions --partitions 6 --replication-factor 3
+
+kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
+  --restart=Never -n kafka -- \
+  bin/kafka-topics.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
+  --create --if-not-exists --topic banking.transactions.dlq --partitions 6 --replication-factor 3
+```
+
+</details>
+
+<details>
+<summary>☁️ OpenShift Sandbox</summary>
+
+```bash
+# Topic principal
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists \
+  --topic banking.transactions \
+  --partitions 6 \
+  --replication-factor 3
+
+# Topic DLT
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists \
+  --topic banking.transactions.dlq \
+  --partitions 6 \
+  --replication-factor 3
+```
+
+</details>
+
+---
+
+## 🚀 Instructions Pas à Pas
+
+## 🎯 Concepts Clés Expliqués
+
+### Architecture du Consumer Résilient
+
+```mermaid
+flowchart TB
+    subgraph Consumer["📥 Consumer Résilient"]
+        subgraph Config["Configuration"]
+            BS["bootstrap.servers"]
+            AC["enable.auto.commit = false"]
+            AOS["enable.auto.offset.store = false"]
+            AS["auto.offset.reset = earliest"]
+        end
+
+        subgraph Pipeline["Pipeline de Traitement"]
+            CONS["📥 Consume Message"]
+            VAL["✅ Validation"]
+            PROC["⚙️ Processing"]
+            CLASS["🔍 Error Classification"]
+            RET["🔄 Retry Logic"]
+            DLT["📤 DLT Producer"]
+        end
+
+        CONS --> VAL --> PROC --> CLASS --> RET --> DLT
+    end
+
+    subgraph Rebalancing["🔄 Rebalancing Handlers"]
+        ASS["Partitions Assigned"]
+        REV["Partitions Revoked"]
+        LOST["Partitions Lost"]
+    end
+
+    subgraph Monitoring["📊 Monitoring"]
+        STATS["📈 Statistics"]
+        HEALTH["💚 Health Check"]
+        METRICS["📊 Metrics"]
+    end
+
+    Consumer --> Rebalancing
+    Consumer --> Monitoring
+
+    style Config fill:#e3f2fd
+    style Pipeline fill:#f3e5f5
+    style Rebalancing fill:#e8f5e8
+    style Monitoring fill:#fff3e0
+```
+
+### Stratégies de Retry
+
+| Stratégie | Backoff | Jitter | Cas d'usage E-Banking |
+| --------- | ------- | ------ | --------------------- |
+| **Exponential** | `2^attempt * base` | Random ±25% | **Timeouts réseau** |
+| **Linear** | `attempt * base` | Fixed | **Rate limiting** |
+| **Fixed** | `base` | Random | **Services intermittents** |
+| **No Retry** | N/A | N/A | **Erreurs permanentes** |
+
+### Séquence Détaillée : Consumer → Classification → Retry/DLT
+
+```mermaid
+sequenceDiagram
+    participant C as 📥 Consumer Service
+    participant V as ✅ Validation
+    participant P as ⚙️ Processing
+    participant CL as 🔍 Error Classifier
+    participant R as 🔄 Retry Engine
+    participant D as 📤 DLT Producer
+    participant K as 🔥 Kafka
+
+    C->>C: ConsumeMessage()
+    C->>V: ValidateTransaction(message)
+    V-->>C: ✅ Valid
+    C->>P: ProcessTransaction(message)
+    P--xC: ❌ ProcessingException
+
+    Note over C,CL: Classification de l'erreur
+    C->>CL: ClassifyError(exception)
+    CL-->>C: ErrorType.Transient
+
+    Note over C,R: Retry avec exponential backoff
+    C->>R: ScheduleRetry(message, attempt=1)
+    R-->>C: Wait 200ms + jitter
+    C->>P: RetryProcessTransaction(message)
+    P--xC: ❌ Still failing
+
+    Note over C,CL: Re-classification
+    C->>CL: ClassifyError(exception)
+    CL-->>C: ErrorType.Permanent
+
+    Note over C,D: Envoi vers DLT
+    C->>D: SendToDLT(message, error)
+    D->>K: banking.transactions.dlq
+    D-->>C: ✅ DLT sent
+
+    Note over C: Commit offset
+    C->>K: Commit(offset)
+    K-->>C: ✅ Committed
+```
+
+### Séquence Rebalancing : Gestion des Partitions
+
+```mermaid
+sequenceDiagram
+    participant CG as 📥 Consumer Group
+    participant C as 📥 Consumer Instance
+    participant K as 🔥 Kafka Broker
+    participant RB as 🔄 Rebalancing Handler
+
+    Note over CG,K: Rebalancing déclenché
+    K->>CG: Rebalance required (new consumer)
+    CG->>C: Revoke partitions [0,1,2]
+    C->>RB: OnPartitionsRevoked([0,1,2])
+    RB->>C: Finish processing current messages
+    C->>C: Commit offsets
+    C->>CG: Acknowledge revocation
+
+    Note over CG,K: Nouvelle assignment
+    CG->>C: Assign partitions [3,4,5]
+    C->>RB: OnPartitionsAssigned([3,4,5])
+    RB->>C: Seek to committed offsets
+    C->>K: Resume consumption
+
+    Note over C: Processing continue
+    C->>C: Consume from new partitions
+```
 dotnet run
 ```
 
