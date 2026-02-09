@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ebanking-serialization-api
+  namespace: ${NAMESPACE}
+  labels:
+    app: ebanking-serialization-api
+    module: m04-serialization
+    day: day-02
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ebanking-serialization-api
+  template:
+    metadata:
+      labels:
+        app: ebanking-serialization-api
+    spec:
+      containers:
+        - name: ebanking-serialization-api
+          image: image-registry.openshift-image-registry.svc:5000/${NAMESPACE}/ebanking-serialization-api:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ASPNETCORE_URLS
+              value: "http://0.0.0.0:8080"
+            - name: ASPNETCORE_ENVIRONMENT
+              value: "Development"
+            - name: Kafka__BootstrapServers
+              value: "kafka-svc:9092"
+            - name: Kafka__Topic
+              value: "banking.transactions"
+            - name: Kafka__GroupId
+              value: "serialization-lab-consumer"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ebanking-serialization-api
+  namespace: ${NAMESPACE}
+  labels:
+    app: ebanking-serialization-api
+spec:
+  selector:
+    app: ebanking-serialization-api
+  ports:
+    - name: 8080-tcp
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ebanking-serialization-api-secure
+  namespace: ${NAMESPACE}
+spec:
+  to:
+    kind: Service
+    name: ebanking-serialization-api
+  port:
+    targetPort: 8080-tcp
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

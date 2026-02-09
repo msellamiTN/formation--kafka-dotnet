@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ebanking-serialization-api
+  namespace: ${NAMESPACE}
+  labels:
+    app: ebanking-serialization-api
+    module: m04-serialization
+    day: day-02
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ebanking-serialization-api
+  template:
+    metadata:
+      labels:
+        app: ebanking-serialization-api
+    spec:
+      containers:
+        - name: ebanking-serialization-api
+          image: ebanking-serialization-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ASPNETCORE_URLS
+              value: "http://0.0.0.0:8080"
+            - name: ASPNETCORE_ENVIRONMENT
+              value: "Development"
+            - name: Kafka__BootstrapServers
+              value: "kafka-svc:9092"
+            - name: Kafka__Topic
+              value: "banking.transactions"
+            - name: Kafka__GroupId
+              value: "serialization-lab-consumer"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ebanking-serialization-api
+  namespace: ${NAMESPACE}
+  labels:
+    app: ebanking-serialization-api
+spec:
+  selector:
+    app: ebanking-serialization-api
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ebanking-serialization-api
+  namespace: ${NAMESPACE}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+    - host: ebanking-serialization-api.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ebanking-serialization-api
+                port:
+                  number: 8080

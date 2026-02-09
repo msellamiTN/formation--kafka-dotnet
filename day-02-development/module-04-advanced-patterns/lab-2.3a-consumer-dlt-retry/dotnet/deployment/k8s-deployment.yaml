@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ebanking-dlt-consumer
+  namespace: ${NAMESPACE}
+  labels:
+    app: ebanking-dlt-consumer
+    module: m04-consumer-dlt
+    day: day-02
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ebanking-dlt-consumer
+  template:
+    metadata:
+      labels:
+        app: ebanking-dlt-consumer
+    spec:
+      containers:
+        - name: ebanking-dlt-consumer
+          image: ebanking-dlt-consumer:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ASPNETCORE_URLS
+              value: "http://0.0.0.0:8080"
+            - name: ASPNETCORE_ENVIRONMENT
+              value: "Development"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka-svc:9092"
+            - name: KAFKA_TOPIC
+              value: "banking.transactions"
+            - name: KAFKA_GROUP_ID
+              value: "dlt-retry-consumer-group"
+            - name: KAFKA_DLT_TOPIC
+              value: "banking.transactions.dlq"
+            - name: MAX_RETRIES
+              value: "3"
+            - name: RETRY_BACKOFF_MS
+              value: "1000"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ebanking-dlt-consumer
+  namespace: ${NAMESPACE}
+  labels:
+    app: ebanking-dlt-consumer
+spec:
+  selector:
+    app: ebanking-dlt-consumer
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ebanking-dlt-consumer
+  namespace: ${NAMESPACE}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+    - host: ebanking-dlt-consumer.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ebanking-dlt-consumer
+                port:
+                  number: 8080

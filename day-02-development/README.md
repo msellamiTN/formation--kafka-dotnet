@@ -392,6 +392,67 @@ dotnet run
 
 ---
 
+## 🚢 Déploiement — 3 Environnements
+
+Chaque lab Day 02 peut être déployé dans **3 environnements**, comme les labs Day 01 :
+
+| Environnement | Outil | Kafka Bootstrap | Accès API |
+| ------------- | ----- | --------------- | --------- |
+| **🐳 Docker / Local** | `dotnet run` | `localhost:9092` | `http://localhost:{port}/swagger` |
+| **☁️ OpenShift Sandbox** | `oc new-build` + Binary Build | `kafka-svc:9092` | `https://{route}/swagger` |
+| **🖥️ OpenShift Local (CRC)** | `oc new-build` + Binary Build | `kafka-svc:9092` | `https://{route}/swagger` |
+| **☸️ K8s / OKD** | `docker build` + `kubectl apply` | `kafka-svc:9092` | `http://localhost:8080/swagger` (port-forward) |
+
+### Ports locaux Day 02
+
+| Lab | API Name | Local Port | Swagger URL |
+| --- | -------- | ---------- | ----------- |
+| 2.1a | Serialization API | `:5170` | `http://localhost:5170/swagger` |
+| 2.2a | Idempotent Producer API | `:5171` | `http://localhost:5171/swagger` |
+| 2.3a | DLT Consumer API | `:18083` | `http://localhost:18083/swagger` |
+
+### Déploiement sur OpenShift (Sandbox ou CRC)
+
+```bash
+# Pattern commun : Binary Build S2I pour chaque lab
+cd day-02-development/module-04-advanced-patterns/<lab-folder>/dotnet
+
+oc new-build dotnet:8.0-ubi8 --binary=true --name=<app-name>
+oc start-build <app-name> --from-dir=. --follow
+oc new-app <app-name>
+oc set env deployment/<app-name> Kafka__BootstrapServers=kafka-svc:9092 ASPNETCORE_URLS=http://0.0.0.0:8080
+oc create route edge <app-name>-secure --service=<app-name> --port=8080-tcp
+```
+
+### Déploiement Kubernetes / OKD
+
+Chaque lab fournit des manifestes YAML dans `dotnet/deployment/` :
+
+```bash
+cd day-02-development/module-04-advanced-patterns/<lab-folder>/dotnet
+
+# Build Docker
+docker build -t <app-name>:latest .
+
+# Deploy
+kubectl apply -f deployment/k8s-deployment.yaml
+kubectl port-forward svc/<app-name> 8080:8080
+```
+
+### Récapitulatif des noms d'applications
+
+| Lab | App Name (oc/kubectl) | Image Docker | DLL |
+| --- | --------------------- | ------------ | --- |
+| 2.1a | `ebanking-serialization-api` | `ebanking-serialization-api:latest` | `SerializationLab.dll` |
+| 2.2a | `ebanking-idempotent-api` | `ebanking-idempotent-api:latest` | `EBankingIdempotentProducerAPI.dll` |
+| 2.3a | `ebanking-dlt-consumer` | `ebanking-dlt-consumer:latest` | `EBankingDltConsumer.dll` |
+
+> **Note** : Lab 2.3a utilise `KAFKA_*` (env vars directes) au lieu de `Kafka__*` (ASP.NET config). Voir le README du lab pour les variables exactes.
+
+Pour les instructions détaillées par lab, consultez chaque README individuel.
+
+---
+
 ## ⚠️ Troubleshooting
 
 | Erreur | Cause | Solution |

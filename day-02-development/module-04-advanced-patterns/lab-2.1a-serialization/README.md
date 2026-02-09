@@ -272,6 +272,252 @@ using var producer = new ProducerBuilder<string, Transaction>(producerConfig)
 
 ---
 
+## ☁️ Déploiement sur OpenShift Sandbox
+
+> **🎯 Objectif** : Ce déploiement valide les concepts de **sérialisation avancée** dans un environnement cloud :
+> - **`ISerializer<T>`** : le serializer typé valide et sérialise les transactions avant envoi
+> - **`IDeserializer<T>`** : le deserializer reconstruit un objet `Transaction` depuis les bytes Kafka
+> - **Schema evolution** : un consumer v1 lit des messages v2 (BACKWARD compatible)
+> - **Validation pré-envoi** : les transactions invalides sont rejetées AVANT Kafka
+
+### 1. Préparer le Build et le Déploiement
+
+```bash
+cd day-02-development/module-04-advanced-patterns/lab-2.1a-serialization/dotnet
+
+# Créer une build binaire pour .NET 8
+oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-serialization-api
+
+# Lancer la build en envoyant le dossier courant
+oc start-build ebanking-serialization-api --from-dir=. --follow
+
+# Créer l'application
+oc new-app ebanking-serialization-api
+```
+
+### 2. Configurer les variables d'environnement
+
+```bash
+oc set env deployment/ebanking-serialization-api \
+  Kafka__BootstrapServers=kafka-svc:9092 \
+  Kafka__Topic=banking.transactions \
+  Kafka__GroupId=serialization-lab-consumer \
+  ASPNETCORE_URLS=http://0.0.0.0:8080 \
+  ASPNETCORE_ENVIRONMENT=Development
+```
+
+### 3. Exposer publiquement (Secure Edge Route)
+
+> [!IMPORTANT]
+> Standard routes may hang on the Sandbox. Use an **edge route** for reliable public access.
+
+```bash
+oc create route edge ebanking-serialization-api-secure --service=ebanking-serialization-api --port=8080-tcp
+```
+
+### 4. Tester l'API déployée
+
+```bash
+# Obtenir l'URL publique
+URL=$(oc get route ebanking-serialization-api-secure -o jsonpath='{.spec.host}')
+echo "https://$URL/swagger"
+
+# Health check
+curl -k -i "https://$URL/health"
+
+# Send a v1 transaction (typed serializer + validation)
+curl -k -s -X POST "https://$URL/api/transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"CUST-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":1500.00,"currency":"EUR","type":1}' | jq .
+
+# Send a v2 transaction (schema evolution)
+curl -k -s -X POST "https://$URL/api/transactions/v2" \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"CUST-002","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":2500.00,"currency":"EUR","type":1,"riskScore":0.85,"sourceChannel":"mobile-app"}' | jq .
+
+# Verify consumer v1 reads v2 messages (BACKWARD compatible)
+curl -k -s "https://$URL/api/transactions/consumed" | jq .
+
+# Check schema info
+curl -k -s "https://$URL/api/transactions/schema-info" | jq .
+
+# Metrics
+curl -k -s "https://$URL/api/transactions/metrics" | jq .
+```
+
+### 5. ✅ Success Criteria — Deployment
+
+```bash
+# Pod running?
+oc get pod -l deployment=ebanking-serialization-api
+# Expected: STATUS=Running, READY=1/1
+
+# API reachable?
+curl -k -s "https://$(oc get route ebanking-serialization-api-secure -o jsonpath='{.spec.host}')/health" | jq .
+# Expected: Healthy
+
+# Serializer validates? (invalid amount → 400)
+curl -k -s -X POST "https://$(oc get route ebanking-serialization-api-secure -o jsonpath='{.spec.host}')/api/transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"CUST-X","fromAccount":"FR76","toAccount":"FR76","amount":-50,"currency":"EUR","type":1}'
+# Expected: 400 Bad Request, status=RejectedByValidation
+```
+
+---
+
+## 🖥️ Déploiement Local OpenShift (CRC / OpenShift Local)
+
+Si vous disposez d'un cluster **OpenShift Local** (anciennement CRC — CodeReady Containers), vous pouvez déployer l'API directement depuis votre machine.
+
+### 1. Prérequis
+
+```bash
+# Vérifier que le cluster est démarré
+crc status
+
+# Se connecter au cluster
+oc login -u developer https://api.crc.testing:6443
+oc project ebanking-labs
+```
+
+### 2. Build et Déploiement (Binary Build)
+
+```bash
+cd day-02-development/module-04-advanced-patterns/lab-2.1a-serialization/dotnet
+
+oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-serialization-api
+oc start-build ebanking-serialization-api --from-dir=. --follow
+oc new-app ebanking-serialization-api
+```
+
+### 3. Configurer les variables d'environnement
+
+```bash
+oc set env deployment/ebanking-serialization-api \
+  Kafka__BootstrapServers=kafka-svc:9092 \
+  Kafka__Topic=banking.transactions \
+  Kafka__GroupId=serialization-lab-consumer \
+  ASPNETCORE_URLS=http://0.0.0.0:8080 \
+  ASPNETCORE_ENVIRONMENT=Development
+```
+
+### 4. Exposer et tester
+
+```bash
+# Créer une route edge
+oc create route edge ebanking-serialization-api-secure --service=ebanking-serialization-api --port=8080-tcp
+
+# Obtenir l'URL
+URL=$(oc get route ebanking-serialization-api-secure -o jsonpath='{.spec.host}')
+echo "https://$URL/swagger"
+
+# Tester
+curl -k -i "https://$URL/health"
+```
+
+### 5. Alternative : Déploiement par manifeste YAML
+
+```bash
+sed "s/\${NAMESPACE}/ebanking-labs/g" deployment/openshift-deployment.yaml | oc apply -f -
+```
+
+---
+
+## ☸️ Déploiement Kubernetes / OKD (K3s, K8s, OKD)
+
+Pour un cluster **Kubernetes standard** (K3s, K8s, Minikube) ou **OKD**, utilisez les manifestes YAML fournis dans le dossier `deployment/`.
+
+### 1. Construire l'image Docker
+
+```bash
+cd day-02-development/module-04-advanced-patterns/lab-2.1a-serialization/dotnet
+
+# Build de l'image
+docker build -t ebanking-serialization-api:latest .
+
+# Pour un registry distant (adapter l'URL du registry)
+docker tag ebanking-serialization-api:latest <registry>/ebanking-serialization-api:latest
+docker push <registry>/ebanking-serialization-api:latest
+```
+
+> **K3s / Minikube** : Si vous utilisez un cluster local, l'image locale suffit avec `imagePullPolicy: IfNotPresent`.
+
+### 2. Déployer les manifestes
+
+```bash
+# Appliquer le Deployment + Service + Ingress
+kubectl apply -f deployment/k8s-deployment.yaml
+
+# Vérifier le déploiement
+kubectl get pods -l app=ebanking-serialization-api
+kubectl get svc ebanking-serialization-api
+```
+
+### 3. Configurer le Kafka Bootstrap (si différent)
+
+```bash
+kubectl set env deployment/ebanking-serialization-api \
+  Kafka__BootstrapServers=<kafka-bootstrap>:9092
+```
+
+### 4. Accéder à l'API
+
+```bash
+# Port-forward pour accès local
+kubectl port-forward svc/ebanking-serialization-api 8080:8080
+
+# Tester
+curl http://localhost:8080/health
+curl http://localhost:8080/swagger/index.html
+```
+
+> **Ingress** : Si vous avez un Ingress Controller (nginx, traefik), ajoutez `ebanking-serialization-api.local` à votre fichier `/etc/hosts` pointant vers l'IP du cluster.
+
+### 5. 🧪 Validation des concepts (K8s)
+
+```bash
+# Send v1 transaction (port-forward actif sur 8080)
+curl -s -X POST "http://localhost:8080/api/transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"CUST-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":1500.00,"currency":"EUR","type":1}' | jq .
+
+# Send v2 transaction (schema evolution)
+curl -s -X POST "http://localhost:8080/api/transactions/v2" \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"CUST-002","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":2500.00,"currency":"EUR","type":1,"riskScore":0.85,"sourceChannel":"mobile-app"}' | jq .
+
+# Verify BACKWARD compatibility — consumer v1 reads v2
+curl -s "http://localhost:8080/api/transactions/consumed" | jq .
+
+# Schema info
+curl -s "http://localhost:8080/api/transactions/schema-info" | jq .
+
+# Metrics
+curl -s "http://localhost:8080/api/transactions/metrics" | jq .
+```
+
+> **Docker Compose** : Si Kafka tourne via Docker Compose, utilisez `docker exec kafka ...` au lieu de `kubectl exec kafka-0 ...`.
+
+### 6. OKD : Utiliser les manifestes OpenShift
+
+```bash
+sed "s/\${NAMESPACE}/$(oc project -q)/g" deployment/openshift-deployment.yaml | oc apply -f -
+```
+
+---
+
+## 🔧 Troubleshooting
+
+| Symptom | Probable Cause | Solution |
+| ------- | -------------- | -------- |
+| Pod CrashLoopBackOff | Missing env vars or Kafka DNS error | Check: `oc set env deployment/ebanking-serialization-api --list` |
+| `400 Bad Request` on valid tx | Serializer validation too strict | Check `TransactionJsonSerializer.cs` validation rules |
+| Consumer shows 0 messages | Consumer not started or wrong offset | Verify `AutoOffsetReset = Earliest` in consumer config |
+| Swagger not accessible | Wrong `ASPNETCORE_URLS` | Set: `ASPNETCORE_URLS=http://0.0.0.0:8080` |
+| Route returns 503/504 | Pod not ready or wrong port | Check: `oc get pods`, verify route targets port `8080-tcp` |
+
+---
+
 ## ✅ Checkpoint de validation
 
 - [ ] Le serializer typé valide les transactions avant envoi

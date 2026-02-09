@@ -163,6 +163,348 @@ Key difference: Day 01 uses `Commit()` only. Day 02 adds `EnableAutoOffsetStore=
 
 ---
 
+## ☁️ Déploiement sur OpenShift Sandbox
+
+> **🎯 Objectif** : Ce déploiement valide les patterns avancés du **Consumer DLT & Retry** dans un environnement cloud :
+> - **Manual commit** : `EnableAutoOffsetStore = false` + `StoreOffset()` + `Commit()` — at-least-once garanti
+> - **Exponential backoff + jitter** : retry progressif pour erreurs transitoires
+> - **Dead Letter Topic (DLT)** : messages non-traitables redirigés avec 7 headers de traçabilité
+> - **CooperativeSticky rebalancing** : rebalancing incrémental observable lors du scaling
+
+### 1. Créer le topic DLT
+
+```bash
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists \
+  --topic banking.transactions.dlq \
+  --partitions 6 --replication-factor 3
+```
+
+### 2. Préparer le Build et le Déploiement
+
+```bash
+cd day-02-development/module-04-advanced-patterns/lab-2.3a-consumer-dlt-retry/dotnet
+
+# Créer une build binaire pour .NET 8
+oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-dlt-consumer
+
+# Lancer la build en envoyant le dossier courant
+oc start-build ebanking-dlt-consumer --from-dir=. --follow
+
+# Créer l'application
+oc new-app ebanking-dlt-consumer
+```
+
+### 3. Configurer les variables d'environnement
+
+```bash
+oc set env deployment/ebanking-dlt-consumer \
+  KAFKA_BOOTSTRAP_SERVERS=kafka-svc:9092 \
+  KAFKA_TOPIC=banking.transactions \
+  KAFKA_GROUP_ID=dlt-retry-consumer-group \
+  KAFKA_DLT_TOPIC=banking.transactions.dlq \
+  MAX_RETRIES=3 \
+  RETRY_BACKOFF_MS=1000 \
+  ASPNETCORE_URLS=http://0.0.0.0:8080 \
+  ASPNETCORE_ENVIRONMENT=Development
+```
+
+### 4. Exposer publiquement (Secure Edge Route)
+
+> [!IMPORTANT]
+> Standard routes may hang on the Sandbox. Use an **edge route** for reliable public access.
+
+```bash
+oc create route edge ebanking-dlt-consumer-secure --service=ebanking-dlt-consumer --port=8080-tcp
+```
+
+### 5. Tester l'API déployée
+
+```bash
+# Obtenir l'URL publique
+URL=$(oc get route ebanking-dlt-consumer-secure -o jsonpath='{.spec.host}')
+echo "https://$URL/swagger"
+
+# Health check
+curl -k -i "https://$URL/health"
+
+# Check stats (processed, retried, DLT counts)
+curl -k -s "https://$URL/api/v1/stats" | jq .
+
+# Check DLT messages
+curl -k -s "https://$URL/api/v1/dlt/messages" | jq .
+
+# Send test transactions via Producer API (Lab 2.2 or Day 01 producer)
+PRODUCER_URL=$(oc get route ebanking-producer-api-secure -o jsonpath='{.spec.host}')
+curl -k -s -X POST "https://$PRODUCER_URL/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000111111","toAccount":"FR7630001000222222","amount":250.00,"currency":"EUR","type":1,"description":"DLT test normal","customerId":"CUST-001"}' | jq .
+
+# Wait for consumer to process
+sleep 5
+
+# Check stats again — messagesProcessed should increment
+curl -k -s "https://$URL/api/v1/stats" | jq .
+```
+
+### 6. ✅ Success Criteria — Deployment
+
+```bash
+# Pod running?
+oc get pod -l deployment=ebanking-dlt-consumer
+# Expected: STATUS=Running, READY=1/1
+
+# Consumer active?
+curl -k -s "https://$(oc get route ebanking-dlt-consumer-secure -o jsonpath='{.spec.host}')/health" | jq .
+# Expected: Healthy
+
+# Consumer group registered?
+oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --describe --group dlt-retry-consumer-group
+# Expected: GROUP listed with assigned partitions
+
+# DLT topic exists?
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --describe --topic banking.transactions.dlq
+# Expected: PartitionCount: 6
+```
+
+### 7. 🧪 Valider le DLT et le Rebalancing (Sandbox)
+
+```bash
+URL=$(oc get route ebanking-dlt-consumer-secure -o jsonpath='{.spec.host}')
+
+# Check rebalancing — scale to 2 replicas
+oc scale deployment/ebanking-dlt-consumer --replicas=2
+sleep 10
+
+# Check partition assignment on each pod
+POD1=$(oc get pods -l deployment=ebanking-dlt-consumer -o jsonpath='{.items[0].metadata.name}')
+POD2=$(oc get pods -l deployment=ebanking-dlt-consumer -o jsonpath='{.items[1].metadata.name}')
+oc logs $POD1 | grep "REBALANCE"
+oc logs $POD2 | grep "REBALANCE"
+
+# Scale back
+oc scale deployment/ebanking-dlt-consumer --replicas=1
+
+# Inspect DLT messages with headers
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic banking.transactions.dlq \
+  --from-beginning --property print.headers=true --max-messages 5
+```
+
+#### 📖 Concepts validés
+
+| Concept | Comment le vérifier |
+| ------- | ------------------- |
+| Manual commit | `GET /stats` montre `commitsPerformed > 0` |
+| DLT with headers | `kafka-console-consumer --print.headers=true` shows 7 traceability headers |
+| Exponential backoff | Pod logs show increasing retry delays: ~1s, ~2s, ~4s |
+| CooperativeSticky | Scale to 2 replicas → logs show incremental partition reassignment |
+| Rebalancing handlers | Logs show `[REBALANCE] Partitions assigned/revoked` |
+
+---
+
+## 🖥️ Déploiement Local OpenShift (CRC / OpenShift Local)
+
+Si vous disposez d'un cluster **OpenShift Local** (anciennement CRC — CodeReady Containers), vous pouvez déployer l'API directement depuis votre machine.
+
+### 1. Prérequis
+
+```bash
+# Vérifier que le cluster est démarré
+crc status
+
+# Se connecter au cluster
+oc login -u developer https://api.crc.testing:6443
+oc project ebanking-labs
+```
+
+### 2. Créer le topic DLT
+
+```bash
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists \
+  --topic banking.transactions.dlq \
+  --partitions 6 --replication-factor 3
+```
+
+### 3. Build et Déploiement (Binary Build)
+
+```bash
+cd day-02-development/module-04-advanced-patterns/lab-2.3a-consumer-dlt-retry/dotnet
+
+oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-dlt-consumer
+oc start-build ebanking-dlt-consumer --from-dir=. --follow
+oc new-app ebanking-dlt-consumer
+```
+
+### 4. Configurer les variables d'environnement
+
+```bash
+oc set env deployment/ebanking-dlt-consumer \
+  KAFKA_BOOTSTRAP_SERVERS=kafka-svc:9092 \
+  KAFKA_TOPIC=banking.transactions \
+  KAFKA_GROUP_ID=dlt-retry-consumer-group \
+  KAFKA_DLT_TOPIC=banking.transactions.dlq \
+  MAX_RETRIES=3 \
+  RETRY_BACKOFF_MS=1000 \
+  ASPNETCORE_URLS=http://0.0.0.0:8080 \
+  ASPNETCORE_ENVIRONMENT=Development
+```
+
+### 5. Exposer et tester
+
+```bash
+# Créer une route edge
+oc create route edge ebanking-dlt-consumer-secure --service=ebanking-dlt-consumer --port=8080-tcp
+
+# Obtenir l'URL
+URL=$(oc get route ebanking-dlt-consumer-secure -o jsonpath='{.spec.host}')
+echo "https://$URL/swagger"
+
+# Tester
+curl -k -i "https://$URL/health"
+curl -k -s "https://$URL/api/v1/stats" | jq .
+```
+
+### 6. Alternative : Déploiement par manifeste YAML
+
+```bash
+sed "s/\${NAMESPACE}/ebanking-labs/g" deployment/openshift-deployment.yaml | oc apply -f -
+```
+
+---
+
+## ☸️ Déploiement Kubernetes / OKD (K3s, K8s, OKD)
+
+Pour un cluster **Kubernetes standard** (K3s, K8s, Minikube) ou **OKD**, utilisez les manifestes YAML fournis dans le dossier `deployment/`.
+
+### 1. Construire l'image Docker
+
+```bash
+cd day-02-development/module-04-advanced-patterns/lab-2.3a-consumer-dlt-retry/dotnet
+
+# Build de l'image
+docker build -t ebanking-dlt-consumer:latest .
+
+# Pour un registry distant (adapter l'URL du registry)
+docker tag ebanking-dlt-consumer:latest <registry>/ebanking-dlt-consumer:latest
+docker push <registry>/ebanking-dlt-consumer:latest
+```
+
+> **K3s / Minikube** : Si vous utilisez un cluster local, l'image locale suffit avec `imagePullPolicy: IfNotPresent`.
+
+### 2. Créer le topic DLT
+
+```bash
+# Si Kafka est déployé via Strimzi
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists \
+  --topic banking.transactions.dlq \
+  --partitions 6 --replication-factor 1
+```
+
+### 3. Déployer les manifestes
+
+```bash
+# Appliquer le Deployment + Service + Ingress
+kubectl apply -f deployment/k8s-deployment.yaml
+
+# Vérifier le déploiement
+kubectl get pods -l app=ebanking-dlt-consumer
+kubectl get svc ebanking-dlt-consumer
+```
+
+### 4. Configurer le Kafka Bootstrap (si différent)
+
+```bash
+kubectl set env deployment/ebanking-dlt-consumer \
+  KAFKA_BOOTSTRAP_SERVERS=<kafka-bootstrap>:9092
+```
+
+### 5. Accéder à l'API
+
+```bash
+# Port-forward pour accès local
+kubectl port-forward svc/ebanking-dlt-consumer 8080:8080
+
+# Tester
+curl http://localhost:8080/health
+curl http://localhost:8080/api/v1/stats
+```
+
+> **Ingress** : Si vous avez un Ingress Controller (nginx, traefik), ajoutez `ebanking-dlt-consumer.local` à votre fichier `/etc/hosts` pointant vers l'IP du cluster.
+
+### 6. 🧪 Validation des concepts (K8s)
+
+```bash
+# Check stats (port-forward actif sur 8080)
+curl -s "http://localhost:8080/api/v1/stats" | jq .
+
+# Produce a test message via Kafka CLI
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
+  --broker-list localhost:9092 \
+  --topic banking.transactions <<< \
+  '{"transactionId":"K8S-DLT-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":500.00,"currency":"EUR","type":1,"description":"K8s DLT test","customerId":"CUST-001","timestamp":"2026-02-10T10:00:00Z","riskScore":0,"status":1}'
+
+sleep 5
+curl -s "http://localhost:8080/api/v1/stats" | jq .
+
+# Scale and observe rebalancing
+kubectl scale deployment/ebanking-dlt-consumer --replicas=2
+sleep 10
+kubectl logs -l app=ebanking-dlt-consumer | grep "REBALANCE"
+kubectl scale deployment/ebanking-dlt-consumer --replicas=1
+
+# Check consumer group
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --describe --group dlt-retry-consumer-group
+
+# Check DLT messages
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic banking.transactions.dlq \
+  --from-beginning --property print.headers=true --max-messages 5
+```
+
+> **Docker Compose** : Si Kafka tourne via Docker Compose, utilisez `docker exec kafka ...` au lieu de `kubectl exec kafka-0 ...`.
+
+### 7. OKD : Utiliser les manifestes OpenShift
+
+```bash
+sed "s/\${NAMESPACE}/$(oc project -q)/g" deployment/openshift-deployment.yaml | oc apply -f -
+```
+
+---
+
+## 🔧 Troubleshooting
+
+| Symptom | Probable Cause | Solution |
+| ------- | -------------- | -------- |
+| Consumer status `Starting` indefinitely | Kafka not reachable | Verify `kafka-svc:9092` accessible: `oc exec kafka-0 -- /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092` |
+| `messagesProcessed` stays at 0 | No messages in topic or wrong offset | Send transactions via Producer API. Check `KAFKA_AUTO_OFFSET_RESET=earliest` |
+| No DLT messages | No processing errors triggered | Send invalid JSON or negative amount to trigger DLT path |
+| Pod CrashLoopBackOff | Missing env vars or Kafka DNS error | Check: `oc set env deployment/ebanking-dlt-consumer --list` |
+| Swagger not accessible | Wrong `ASPNETCORE_URLS` | Set: `ASPNETCORE_URLS=http://0.0.0.0:8080` |
+| Route returns 503/504 | Pod not ready or wrong port | Check: `oc get pods`, verify route targets port `8080-tcp` |
+
+### Tips for Sandbox
+
+- **Resource quota**: Scale down unused deployments: `oc scale deployment/<name> --replicas=0`
+- **Edge routes**: Always use `oc create route edge` on Sandbox
+- **Pod restart**: If consumer stops consuming after Kafka restart, delete the pod: `oc delete pod -l deployment=ebanking-dlt-consumer`
+- **Consumer group reset**: To re-read all messages: `oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group dlt-retry-consumer-group --reset-offsets --to-earliest --topic banking.transactions --execute`
+
+---
+
 ## Checkpoint de validation
 
 - [ ] Consumer subscribes and processes messages from `banking.transactions`

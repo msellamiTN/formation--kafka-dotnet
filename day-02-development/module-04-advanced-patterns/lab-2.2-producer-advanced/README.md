@@ -249,20 +249,253 @@ curl -X POST http://localhost:5171/api/transactions/batch \
 
 ## ☁️ Déploiement sur OpenShift Sandbox
 
+> **🎯 Objectif** : Ce déploiement valide les concepts du **Producer Idempotent** dans un environnement cloud :
+> - **`EnableIdempotence = true`** : le broker attribue un PID et détecte les duplicatas via sequence numbers
+> - **`Acks = All`** : forcé automatiquement — le message est répliqué avant ACK
+> - **PID (Producer ID)** : ID éphémère visible dans les métriques — change à chaque restart
+> - **Transactions Kafka** : écriture atomique multi-partition (exactly-once semantics)
+
+### Stability Warning
+
+> [!WARNING]
+> Sur le Sandbox, `EnableIdempotence = true` avec `Acks = All` peut causer des timeouts (`Coordinator load in progress`). Si cela arrive, attendez 2-3 min ou redémarrez le pod.
+
+### 1. Préparer le Build et le Déploiement
+
+```bash
+cd day-02-development/module-04-advanced-patterns/lab-2.2-producer-advanced/dotnet
+
+# Créer une build binaire pour .NET 8
+oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-idempotent-api
+
+# Lancer la build en envoyant le dossier courant
+oc start-build ebanking-idempotent-api --from-dir=. --follow
+
+# Créer l'application
+oc new-app ebanking-idempotent-api
+```
+
+### 2. Configurer les variables d'environnement
+
+```bash
+oc set env deployment/ebanking-idempotent-api \
+  Kafka__BootstrapServers=kafka-svc:9092 \
+  Kafka__Topic=banking.transactions \
+  ASPNETCORE_URLS=http://0.0.0.0:8080 \
+  ASPNETCORE_ENVIRONMENT=Development
+```
+
+### 3. Exposer publiquement (Secure Edge Route)
+
+> [!IMPORTANT]
+> Standard routes may hang on the Sandbox. Use an **edge route** for reliable public access.
+
+```bash
+oc create route edge ebanking-idempotent-api-secure --service=ebanking-idempotent-api --port=8080-tcp
+```
+
+### 4. Tester l'API déployée
+
+```bash
+# Obtenir l'URL publique
+URL=$(oc get route ebanking-idempotent-api-secure -o jsonpath='{.spec.host}')
+echo "https://$URL/swagger"
+
+# Health check
+curl -k -i "https://$URL/health"
+
+# Send idempotent transaction
+curl -k -s -X POST "https://$URL/api/transactions/idempotent" \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"CUST-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":1500.00,"currency":"EUR","type":1,"description":"Idempotent test"}' | jq .
+
+# Check metrics — should show PID assigned by broker
+curl -k -s "https://$URL/api/transactions/metrics" | jq .
+```
+
+### 5. ✅ Success Criteria — Deployment
+
+```bash
+# Pod running?
+oc get pod -l deployment=ebanking-idempotent-api
+# Expected: STATUS=Running, READY=1/1
+
+# API reachable?
+curl -k -s "https://$(oc get route ebanking-idempotent-api-secure -o jsonpath='{.spec.host}')/health" | jq .
+# Expected: Healthy
+
+# PID visible in metrics?
+curl -k -s "https://$(oc get route ebanking-idempotent-api-secure -o jsonpath='{.spec.host}')/api/transactions/metrics" | jq .
+# Expected: producerId (PID) > 0, enableIdempotence=true
+
+# Verify message in Kafka
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic banking.transactions \
+  --from-beginning --max-messages 5
+```
+
+#### 📖 Concepts validés
+
+| Concept | Comment le vérifier |
+| ------- | ------------------- |
+| Idempotence | `GET /metrics` montre `enableIdempotence: true` et un PID |
+| PID éphémère | Redémarrer le pod → PID change dans les métriques |
+| Acks=All forcé | `GET /metrics` montre `acks: "All"` |
+| Exactly-once | Envoyer 2x la même tx → vérifier dans Kafka UI qu'il n'y a pas de doublon |
+
+---
+
+## 🖥️ Déploiement Local OpenShift (CRC / OpenShift Local)
+
+Si vous disposez d'un cluster **OpenShift Local** (anciennement CRC — CodeReady Containers), vous pouvez déployer l'API directement depuis votre machine.
+
+### 1. Prérequis
+
+```bash
+# Vérifier que le cluster est démarré
+crc status
+
+# Se connecter au cluster
+oc login -u developer https://api.crc.testing:6443
+oc project ebanking-labs
+```
+
+### 2. Build et Déploiement (Binary Build)
+
 ```bash
 cd day-02-development/module-04-advanced-patterns/lab-2.2-producer-advanced/dotnet
 
 oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-idempotent-api
 oc start-build ebanking-idempotent-api --from-dir=. --follow
 oc new-app ebanking-idempotent-api
-
-oc set env deployment/ebanking-idempotent-api \
-  Kafka__BootstrapServers="kafka-svc:9092" \
-  Kafka__Topic="banking.transactions"
-
-oc create route edge ebanking-idempotent-api-secure \
-  --service=ebanking-idempotent-api --port=8080-tcp
 ```
+
+### 3. Configurer les variables d'environnement
+
+```bash
+oc set env deployment/ebanking-idempotent-api \
+  Kafka__BootstrapServers=kafka-svc:9092 \
+  Kafka__Topic=banking.transactions \
+  ASPNETCORE_URLS=http://0.0.0.0:8080 \
+  ASPNETCORE_ENVIRONMENT=Development
+```
+
+### 4. Exposer et tester
+
+```bash
+# Créer une route edge
+oc create route edge ebanking-idempotent-api-secure --service=ebanking-idempotent-api --port=8080-tcp
+
+# Obtenir l'URL
+URL=$(oc get route ebanking-idempotent-api-secure -o jsonpath='{.spec.host}')
+echo "https://$URL/swagger"
+
+# Tester
+curl -k -i "https://$URL/health"
+curl -k -s "https://$URL/api/transactions/metrics" | jq .
+```
+
+### 5. Alternative : Déploiement par manifeste YAML
+
+```bash
+sed "s/\${NAMESPACE}/ebanking-labs/g" deployment/openshift-deployment.yaml | oc apply -f -
+```
+
+---
+
+## ☸️ Déploiement Kubernetes / OKD (K3s, K8s, OKD)
+
+Pour un cluster **Kubernetes standard** (K3s, K8s, Minikube) ou **OKD**, utilisez les manifestes YAML fournis dans le dossier `deployment/`.
+
+### 1. Construire l'image Docker
+
+```bash
+cd day-02-development/module-04-advanced-patterns/lab-2.2-producer-advanced/dotnet
+
+# Build de l'image
+docker build -t ebanking-idempotent-api:latest .
+
+# Pour un registry distant (adapter l'URL du registry)
+docker tag ebanking-idempotent-api:latest <registry>/ebanking-idempotent-api:latest
+docker push <registry>/ebanking-idempotent-api:latest
+```
+
+> **K3s / Minikube** : Si vous utilisez un cluster local, l'image locale suffit avec `imagePullPolicy: IfNotPresent`.
+
+### 2. Déployer les manifestes
+
+```bash
+# Appliquer le Deployment + Service + Ingress
+kubectl apply -f deployment/k8s-deployment.yaml
+
+# Vérifier le déploiement
+kubectl get pods -l app=ebanking-idempotent-api
+kubectl get svc ebanking-idempotent-api
+```
+
+### 3. Configurer le Kafka Bootstrap (si différent)
+
+```bash
+kubectl set env deployment/ebanking-idempotent-api \
+  Kafka__BootstrapServers=<kafka-bootstrap>:9092
+```
+
+### 4. Accéder à l'API
+
+```bash
+# Port-forward pour accès local
+kubectl port-forward svc/ebanking-idempotent-api 8080:8080
+
+# Tester
+curl http://localhost:8080/health
+curl http://localhost:8080/swagger/index.html
+```
+
+> **Ingress** : Si vous avez un Ingress Controller (nginx, traefik), ajoutez `ebanking-idempotent-api.local` à votre fichier `/etc/hosts` pointant vers l'IP du cluster.
+
+### 5. 🧪 Validation des concepts (K8s)
+
+```bash
+# Send idempotent transaction (port-forward actif sur 8080)
+curl -s -X POST "http://localhost:8080/api/transactions/idempotent" \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"CUST-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":1500.00,"currency":"EUR","type":1,"description":"K8s idempotent test"}' | jq .
+
+# Check PID and idempotence metrics
+curl -s "http://localhost:8080/api/transactions/metrics" | jq .
+
+# Batch comparison — idempotent vs standard
+curl -s -X POST "http://localhost:8080/api/transactions/batch" \
+  -H "Content-Type: application/json" \
+  -d '{"count": 5, "customerId": "CUST-BATCH-001"}' | jq .
+
+# Verify messages in Kafka
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic banking.transactions \
+  --from-beginning --max-messages 10
+```
+
+> **Docker Compose** : Si Kafka tourne via Docker Compose, utilisez `docker exec kafka ...` au lieu de `kubectl exec kafka-0 ...`.
+
+### 6. OKD : Utiliser les manifestes OpenShift
+
+```bash
+sed "s/\${NAMESPACE}/$(oc project -q)/g" deployment/openshift-deployment.yaml | oc apply -f -
+```
+
+---
+
+## 🔧 Troubleshooting
+
+| Symptom | Probable Cause | Solution |
+| ------- | -------------- | -------- |
+| `Coordinator load in progress` | Kafka Sandbox cold start with idempotence | Wait 2-3 min or `oc delete pods -l app=kafka` |
+| PID = 0 in metrics | Idempotence not enabled or producer not started | Check `EnableIdempotence = true` in producer config |
+| Pod CrashLoopBackOff | Missing env vars or Kafka DNS error | Check: `oc set env deployment/ebanking-idempotent-api --list` |
+| Swagger not accessible | Wrong `ASPNETCORE_URLS` | Set: `ASPNETCORE_URLS=http://0.0.0.0:8080` |
+| Route returns 503/504 | Pod not ready or wrong port | Check: `oc get pods`, verify route targets port `8080-tcp` |
 
 ---
 
