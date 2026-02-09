@@ -6,21 +6,6 @@
 
 Dans une banque, chaque transaction publiée par l'API Producer (Module 02) doit être **analysée en temps réel** par un service de détection de fraude. Ce service consomme les messages du topic `banking.transactions`, évalue un **score de risque** pour chaque transaction, et déclenche des alertes si le risque est élevé.
 
-## 🎯 Objectifs
-
-À la fin de ce lab, vous serez capable de :
-
-1. Créer un **Consumer Kafka** dans une API Web ASP.NET Core
-2. Implémenter un **BackgroundService** pour le polling loop continu
-3. Comprendre l'**auto-commit** des offsets (comportement et risques)
-4. Gérer les **handlers de partitions** (assigned, revoked, lost)
-5. Désérialiser les **transactions JSON** produites par le Module 02
-6. Exposer des **métriques** via des endpoints API (Swagger)
-
----
-
-## 📊 SEQUENCE DIAGRAMS
-
 ### Architecture : Producer → Kafka → Consumer Fraude
 
 ```mermaid
@@ -49,159 +34,153 @@ flowchart LR
     style Consumer fill:#e3f2fd,stroke:#1976d2
 ```
 
-### Séquence : Partition Assignment et Rebalancing
+### Séquence : Détection de Fraude en Temps Réel
 
 ```mermaid
 sequenceDiagram
-    participant Main as 🚀 Program.cs
-    participant DI as � DI Container
-    participant Worker as ⚙️ KafkaConsumerService
-    participant Builder as � ConsumerBuilder
-    participant Consumer as � IConsumer
-    participant Broker as 🔥 Kafka Broker
-    participant Coord as 👑 Group Coordinator
+    participant Kafka as 🔥 Kafka
+    participant Worker as ⚙️ ConsumerWorker (BackgroundService)
+    participant Score as 📊 Risk Scoring
+    participant DB as 💾 In-Memory Store
+    participant API as 🌐 Swagger API
 
-    Main->>DI: AddSingleton<KafkaConsumerService>()
-    Main->>DI: AddHostedService(provider => ...)
-    DI->>Worker: ExecuteAsync(stoppingToken)
+    loop Poll Loop continu
+        Worker->>Kafka: Consume(cancellationToken)
+        Kafka-->>Worker: ConsumeResult {Key: CUST-001, Value: transaction JSON}
 
-    Worker->>Builder: new ConsumerBuilder(config)
-    Builder->>Builder: SetErrorHandler, SetPartitionsAssignedHandler...
-    Builder->>Consumer: .Build()
+        Worker->>Worker: Désérialiser JSON → Transaction
+        Worker->>Score: CalculateRiskScore(transaction)
 
-    Consumer->>Broker: Subscribe("banking.transactions")
-    Consumer->>Coord: JoinGroup(groupId: "fraud-detection-service")
-    Coord-->>Consumer: Assignment: [P0, P1, P2, P3, P4, P5]
-    Note over Worker: Handler: "✅ Partitions assigned"
+        alt Montant > 10000€ ou pays à risque
+            Score-->>Worker: Score: 85/100 🔴 HIGH RISK
+            Worker->>Worker: Logger alerte fraude
+        else Transaction normale
+            Score-->>Worker: Score: 12/100 🟢 LOW RISK
+        end
 
-    loop while !stoppingToken.IsCancellationRequested
-        Consumer->>Broker: Consume(stoppingToken) → FetchRequest
-        Broker-->>Consumer: ConsumeResult {Key, Value, Partition, Offset}
-        Worker->>Worker: Deserialize JSON → Transaction
-        Worker->>Worker: CalculateRiskScore(tx)
-        Worker->>Worker: if score >= 40 → créer FraudAlert
-        Worker->>Worker: Stocker métriques (thread-safe)
+        Worker->>DB: Stocker résultat (TransactionId, Score, Status)
+        Note over Worker: Auto-commit toutes les 5 secondes
     end
 
-    Note over Consumer: ⏰ Toutes les 5s: Auto-commit offsets
-    Consumer->>Coord: CommitOffsets
+    API->>DB: GET /api/fraud/alerts
+    DB-->>API: Liste des transactions à haut risque
 ```
+
+### Scénarios de Scoring Fraude
+
+| Scénario | Montant | Critères | Score | Action |
+| -------- | ------- | -------- | ----- | ------ |
+| **Virement normal** | 250€ | Même pays, client connu | 5/100 | ✅ Approuvé |
+| **Paiement carte** | 80€ | Commerce local | 8/100 | ✅ Approuvé |
+| **Gros virement** | 15 000€ | Montant élevé | 45/100 | ⚠️ Revue manuelle |
+| **Virement international** | 9 000€ | Pays à risque, nouveau bénéficiaire | 78/100 | 🔴 Alerte |
+| **Transactions rapides** | 3 × 500€ | 3 transactions en 1 minute | 85/100 | 🔴 Blocage |
+| **Retrait DAB étranger** | 400€ | Pays différent du dernier paiement | 65/100 | ⚠️ SMS de vérification |
 
 ---
 
-## 🏗️ CLASS DIAGRAMS
+## 🎯 Objectifs
+
+À la fin de ce lab, vous serez capable de :
+
+1. Créer un **Consumer Kafka** dans une API Web ASP.NET Core
+2. Implémenter un **BackgroundService** pour le polling loop continu
+3. Comprendre l'**auto-commit** des offsets (comportement et risques)
+4. Gérer les **handlers de partitions** (assigned, revoked, lost)
+5. Désérialiser les **transactions JSON** produites par le Module 02
+6. Exposer des **métriques** via des endpoints API (Swagger)
+
+---
+
+## 📦 Ce que vous allez construire
+
+| Composant | Rôle |
+| --------- | ---- |
+| `Transaction.cs` | Modèle partagé (identique au Module 02) |
+| `FraudAlert.cs` | Modèle de résultat de scoring |
+| `KafkaConsumerService.cs` | BackgroundService avec poll loop |
+| `FraudDetectionController.cs` | Endpoints API : alertes, stats, health |
+| `Program.cs` | Configuration ASP.NET Core + Kafka Consumer |
+| `appsettings.json` | Configuration Kafka et scoring |
 
 ### Architecture des Composants (Code)
 
 ```mermaid
 flowchart TB
-    subgraph API["🌐 ASP.NET Core API"]
-        Controller["📮 FraudDetectionController"]
-        Program["⚙️ Program.cs"]
+    subgraph API["🌐 ASP.NET Core Web API"]
+        Ctrl["FraudDetectionController"]
+        Swagger["🧪 Swagger/OpenAPI"]
     end
 
-    subgraph Consumer["📥 Consumer Layer"]
-        Service["🔧 KafkaConsumerService<br/>BackgroundService"]
-        Config["⚙️ ConsumerConfig"]
+    subgraph Background["⚙️ BackgroundService"]
+        Worker["KafkaConsumerService"]
+        Consumer["Confluent.Kafka Consumer"]
     end
 
-    subgraph Models["📋 Models"]
-        Transaction["� Transaction"]
-        Alert["🚨 FraudAlert"]
-        Health["💚 HealthResponse"]
-        Metrics["📊 MetricsResponse"]
+    subgraph Business["📊 Logique Métier"]
+        Scoring["Risk Scoring Engine"]
+        Store["In-Memory Alert Store"]
     end
 
-    subgraph Storage["💾 In-Memory"]
-        Alerts["📋 ConcurrentBag<FraudAlert>"]
-        MetricsStore["📊 ConcurrentDictionary<string, object>"]
-    end
-
-    subgraph Kafka["🔥 Kafka"]
-        Topic["📋 banking.transactions"]
-        Group["👥 fraud-detection-service"]
-    end
-
-    Controller --> Service
-    Controller --> Health
-    Controller --> Metrics
-    Program --> Service
-    
-    Service --> Config
-    Service --> Transaction
-    Service --> Alert
-    Service --> Alerts
-    Service --> MetricsStore
-    
-    Service -.-> Topic
-    Service -.-> Group
+    Swagger --> Ctrl
+    Ctrl --> Store
+    Worker --> Consumer
+    Consumer --> Worker
+    Worker --> Scoring
+    Scoring --> Store
 
     style API fill:#e3f2fd,stroke:#1976d2
-    style Consumer fill:#fff3e0,stroke:#f57c00
-    style Models fill:#e8f5e8,stroke:#388e3c
-    style Storage fill:#fce4ec,stroke:#c2185b
-    style Kafka fill:#f3e5f5,stroke:#7b1fa2
+    style Background fill:#e8f5e8,stroke:#388e3c
+    style Business fill:#fff3e0,stroke:#f57c00
 ```
 
-### Class Diagram: KafkaConsumerService
+---
+
+## 🔧 Ce que vous allez apprendre
+
+### Le Poll Loop
 
 ```mermaid
-classDiagram
-    class KafkaConsumerService {
-        <<BackgroundService>>
-        -IConsumer~string, string~ _consumer
-        -ConcurrentBag~FraudAlert~ _alerts
-        -ConcurrentDictionary~string, object~ _metrics
-        -ILogger _logger
-        +ExecuteAsync(CancellationToken stoppingToken)
-        -CalculateRiskScore(Transaction transaction) int
-        -OnPartitionsAssigned(IConsumer~string, string~ consumer, List~TopicPartition~ partitions)
-        -OnPartitionsRevoked(IConsumer~string, string~ consumer, List~TopicPartitionOffset~ offsets)
-        -OnPartitionsLost(IConsumer~string, string~ consumer, List~TopicPartitionOffset~ offsets)
-        -HandleError(IConsumer~string, string~ consumer, Error error)
-    }
+sequenceDiagram
+    participant App as 🚀 Application
+    participant Consumer as 📥 Kafka Consumer
+    participant Broker as 🔥 Kafka Broker
+    participant Offsets as 💾 __consumer_offsets
 
-    class FraudDetectionController {
-        <<ApiController>>
-        -KafkaConsumerService _consumerService
-        +GetAlerts() ActionResult~IEnumerable~FraudAlert~~
-        +GetHighRiskAlerts() ActionResult~IEnumerable~FraudAlert~~
-        +GetMetrics() ActionResult~object~
-        +GetHealth() ActionResult~object~
-    }
+    App->>Consumer: Subscribe("banking.transactions")
+    Consumer->>Broker: JoinGroup(group: "fraud-detection-service")
+    Broker-->>Consumer: Partitions assignées: [0, 1, 2, 3, 4, 5]
 
-    class Transaction {
-        +string TransactionId
-        +string FromAccount
-        +string ToAccount
-        +decimal Amount
-        +string Currency
-        +string Type
-        +string CustomerId
-        +string Description
-        +DateTime Timestamp
-        +int RiskScore
-    }
+    loop Polling continu
+        App->>Consumer: Consume(timeout: 100ms)
+        Consumer->>Broker: FetchRequest(partition, offset)
+        Broker-->>Consumer: Messages batch
+        Consumer-->>App: ConsumeResult
 
-    class FraudAlert {
-        +string TransactionId
-        +string CustomerId
-        +decimal Amount
-        +string Currency
-        +string Type
-        +int RiskScore
-        +string RiskLevel
-        +string Reason
-        +DateTime DetectedAt
-        +int KafkaPartition
-        +long KafkaOffset
-    }
+        App->>App: ProcessMessage(result)
+    end
 
-    KafkaConsumerService --> Transaction : consumes
-    KafkaConsumerService --> FraudAlert : creates
-    KafkaConsumerService --> FraudDetectionController : injected
-    FraudDetectionController --> FraudAlert : returns
+    Note over Consumer,Offsets: Auto-commit toutes les 5 secondes
+    Consumer->>Offsets: CommitOffsets({P0: 42, P1: 18, P2: 31...})
 ```
+
+### Auto-Commit : Comportement et Risques
+
+```mermaid
+sequenceDiagram
+    participant Consumer as 📥 Consumer
+    participant Broker as 🔥 Kafka
+    participant App as ⚙️ Traitement
+
+    Consumer->>Broker: Poll → 100 messages
+    Consumer->>App: Message 1..60 traités
+
+    Note over Consumer: ⏰ T=5s : Auto-commit déclenché
+    Consumer->>Broker: Commit offset = 100 (tous les 100 messages)
+
+    Consumer->>App: Message 61..80 en cours de traitement
+
+    Note over App: 💥 CRASH à T=7s (messages 81-100 pas encore traités)
 
     Consumer->>Broker: Redémarrage → Reprend depuis offset 100
     Note over Consumer: ⚠️ Messages 81-100 PERDUS (déjà commités mais pas traités)
@@ -345,6 +324,8 @@ public class ConsumerMetrics
 }
 ```
 
+---
+
 ### Étape 3 : Créer le service Consumer (BackgroundService)
 
 #### `Services/KafkaConsumerService.cs`
@@ -361,9 +342,10 @@ public class KafkaConsumerService : BackgroundService
 {
     private readonly ILogger<KafkaConsumerService> _logger;
     private readonly IConfiguration _configuration;
+
+    // Stockage en mémoire des alertes et métriques
     private readonly ConcurrentBag<FraudAlert> _alerts = new();
     private readonly ConcurrentDictionary<int, long> _partitionOffsets = new();
-    
     private long _messagesConsumed;
     private long _fraudAlerts;
     private long _processingErrors;
@@ -693,9 +675,8 @@ public class FraudDetectionController : ControllerBase
         var health = new
         {
             status = isHealthy ? "Healthy" : "Degraded",
-            service = "E-Banking Fraud Detection API",
             consumerStatus = metrics.ConsumerStatus,
-            messagesProcessed = metrics.MessagesConsumed,
+            messagesConsumed = metrics.MessagesConsumed,
             lastMessageAt = metrics.LastMessageAt,
             uptime = DateTime.UtcNow - metrics.StartedAt
         };
@@ -763,6 +744,7 @@ app.UseSwaggerUI(c =>
 });
 
 app.MapControllers();
+
 app.Run();
 ```
 
@@ -775,9 +757,8 @@ app.Run();
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
-
   <ItemGroup>
-    <PackageReference Include="Confluent.Kafka" Version="2.5.0" />
+    <PackageReference Include="Confluent.Kafka" Version="2.3.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
   </ItemGroup>
 </Project>
@@ -785,9 +766,7 @@ app.Run();
 
 ---
 
-## 🚀 DEPLOYMENT
-
-### Local Development
+### Étape 6 : Exécuter et tester
 
 #### 1. Démarrer Kafka (si pas déjà fait)
 
@@ -811,34 +790,37 @@ dotnet run
 
 ```text
 info: EBankingFraudDetectionAPI.Services.KafkaConsumerService
-  ✅ Partitions assigned: [0], [1], [2], [3], [4], [5]
+      Starting Fraud Detection Consumer. Group: fraud-detection-service, Topic: banking.transactions
 info: EBankingFraudDetectionAPI.Services.KafkaConsumerService
-  📦 Transaction TX-001 | Customer: CUST-001 | 250.00 EUR | Risk: 5/100 (Low) | P0:O42
+      ✅ Partitions assigned: [0], [1], [2], [3], [4], [5]
+info: EBankingFraudDetectionAPI.Services.KafkaConsumerService
+      📦 Transaction TX-001 | Customer: CUST-001 | 250 EUR | Risk: 5/100 (Low) | P2:O0
+info: EBankingFraudDetectionAPI.Services.KafkaConsumerService
+      📦 Transaction TX-002 | Customer: CUST-002 | 15000 EUR | Risk: 60/100 (High) | P5:O0
 warn: EBankingFraudDetectionAPI.Services.KafkaConsumerService
-  🚨 FRAUD ALERT: TX-002 | CUST-002 | 15000.00EUR | Score: 60 | Montant élevé: 15000.00EUR
+      🚨 FRAUD ALERT: TX-002 | CUST-002 | 15000EUR | Score: 60 | Montant élevé: 15000EUR
 ```
 
-#### 5. Vérifier via l'API (Swagger)
+#### 6. Vérifier via l'API (Swagger)
 
 Ouvrez `https://localhost:5001/swagger` (ou `http://localhost:5000/swagger`) :
 - `GET /api/FraudDetection/alerts` : Liste toutes les alertes.
-- `GET /api/FraudDetection/alerts/high-risk` : Alertes à haut risque uniquement.
-- `GET /api/FraudDetection/metrics` : Métriques du consumer.
-- `GET /api/FraudDetection/health` : Health check.
+- `GET /api/FraudDetection/metrics` : Statistiques de consommation et offsets.
 
 ---
 
-### OpenShift Sandbox Deployment
+## ☁️ Alternative : Déploiement sur OpenShift Sandbox
 
 > **🎯 Objectif** : Ce déploiement valide les concepts fondamentaux du **Consumer Kafka** dans un environnement cloud :
 > - **Poll loop** : le consumer consomme les messages en boucle via `Consume()`
 > - **Auto-commit** : les offsets sont commités automatiquement toutes les 5 secondes
-> - **Partition assignment** : le consumer reçoit les 6 partitions du topic
-> - **Health check** : l'API expose l'état du consumer via un endpoint dédié
+> - **Désérialisation JSON** : chaque message Kafka est désérialisé en objet `Transaction`
+> - **Scoring de fraude** : les transactions sont analysées et un score de risque est calculé
+> - **Vérification via Kafka CLI** : produire un message test, observer sa consommation et l'alerte générée
 
 Si vous utilisez l'environnement **OpenShift Sandbox**, suivez ces étapes pour déployer et exposer votre Consumer publiquement.
 
-#### 1. Préparer le Build et le Déploiement
+### 1. Préparer le Build et le Déploiement
 
 ```bash
 # Se placer dans le dossier du projet
@@ -854,7 +836,7 @@ oc start-build ebanking-fraud-detection-api --from-dir=. --follow
 oc new-app ebanking-fraud-detection-api
 ```
 
-#### 2. Configurer les variables d'environnement
+### 2. Configurer les variables d'environnement
 
 Le Consumer doit savoir où se trouve Kafka (interne au cluster) et quel groupe utiliser.
 
@@ -867,7 +849,7 @@ oc set env deployment/ebanking-fraud-detection-api \
   ASPNETCORE_ENVIRONMENT=Development
 ```
 
-#### 3. Exposer publiquement (Secure Edge Route)
+### 3. Exposer publiquement (Secure Edge Route)
 
 > [!IMPORTANT]
 > Standard routes may hang on the Sandbox. Use an **edge route** for reliable public access.
@@ -876,7 +858,11 @@ oc set env deployment/ebanking-fraud-detection-api \
 oc create route edge ebanking-fraud-api-secure --service=ebanking-fraud-detection-api --port=8080-tcp
 ```
 
-#### 4. Tester l'API déployée
+### Stability Warning
+
+For Sandbox environments, use `Acks = Acks.Leader` and `EnableIdempotence = false` in any `ProducerConfig` to avoid `Coordinator load in progress` hangs.
+
+### 4. Tester l'API déployée
 
 ```bash
 # Obtenir l'URL publique
@@ -890,11 +876,143 @@ curl -k -i "https://$URL/api/FraudDetection/health"
 curl -k -s "https://$URL/api/FraudDetection/metrics"
 ```
 
+### 5. 🧪 Scénarios de Test et Validation des Concepts (Sandbox)
+
+#### Scénario 1 : Produire un message via Kafka CLI et observer la consommation
+
+```bash
+# Produire directement un message JSON dans le topic
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
+  --broker-list localhost:9092 \
+  --topic banking.transactions <<< \
+  '{"transactionId":"TEST-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":15000.00,"currency":"EUR","type":1,"description":"Virement suspect","customerId":"CUST-001","timestamp":"2026-02-08T22:00:00Z","riskScore":0,"status":1}'
+
+# Vérifier dans les logs du consumer
+oc logs deployment/ebanking-fraud-detection-api --tail=20
+```
+
+**📖 Concept** : Le consumer détecte automatiquement le message via le poll loop. La transaction de 15 000€ dépasse le seuil → **alerte de fraude** générée.
+
+#### Scénario 2 : Vérifier les alertes via l'API
+
+```bash
+URL=$(oc get route ebanking-fraud-api-secure -o jsonpath='{.spec.host}')
+
+# Voir toutes les alertes
+curl -k -s "https://$URL/api/FraudDetection/alerts" | jq .
+
+# Voir uniquement les alertes à haut risque (score >= 50)
+curl -k -s "https://$URL/api/FraudDetection/alerts/high-risk" | jq .
+```
+
+#### Scénario 3 : Test E2E avec l'API Producer (Lab 1.2a ou 1.2c)
+
+```bash
+# Depuis le Producer (si déployé sur le même cluster)
+PRODUCER_HOST=$(oc get route ebanking-producer-api -o jsonpath='{.spec.host}')
+
+# Envoyer une transaction à haut montant (> 10 000€ → alerte fraude)
+curl -k -s -X POST "https://$PRODUCER_HOST/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000111111111","toAccount":"GB29NWBK60161331926819","amount":50000.00,"currency":"EUR","type":6,"description":"International transfer suspect","customerId":"CUST-999"}' | jq .
+
+# Attendre 2-3 secondes puis vérifier les alertes
+sleep 3
+curl -k -s "https://$URL/api/FraudDetection/alerts/high-risk" | jq '.alerts[-1]'
+```
+
+#### Scénario 4 : Vérifier les métriques de consommation
+
+```bash
+curl -k -s "https://$URL/api/FraudDetection/metrics" | jq .
+```
+
+**Réponse attendue** :
+
+```json
+{
+  "consumerStatus": "Consuming",
+  "messagesConsumed": 5,
+  "fraudAlerts": 2,
+  "lastMessageAt": "2026-02-08T22:05:00Z",
+  "startedAt": "2026-02-08T21:50:00Z"
+}
+```
+
+#### 📖 Concepts validés
+
+| Concept | Comment le vérifier |
+| ------- | ------------------- |
+| Poll loop | `messagesConsumed` augmente après chaque transaction produite |
+| Auto-commit | Redémarrer le pod → pas de relecture des anciens messages (offsets commités) |
+| Fraud scoring | Transaction > 10 000€ → alerte dans `GET /alerts/high-risk` |
+| Consumer status | `GET /health` retourne `Consuming` quand le consumer est actif |
+
+#### Récapitulatif des Endpoints
+
+| Méthode | Endpoint | Objectif pédagogique |
+| ------- | -------- | -------------------- |
+| `GET` | `/api/FraudDetection/alerts` | Voir toutes les alertes de fraude détectées |
+| `GET` | `/api/FraudDetection/alerts/high-risk` | Filtrer les alertes à score >= 50 |
+| `GET` | `/api/FraudDetection/metrics` | Métriques du consumer (lag, throughput, status) |
+| `GET` | `/api/FraudDetection/health` | Health check avec état du consumer |
+
 ---
 
-## 🧪 TESTING
+## 🖥️ Déploiement Local OpenShift (CRC / OpenShift Local)
 
-### Scénarios de Test et Validation des Concepts (Sandbox / CRC)
+Si vous disposez d'un cluster **OpenShift Local** (anciennement CRC — CodeReady Containers), vous pouvez déployer l'API directement depuis votre machine.
+
+### 1. Prérequis
+
+```bash
+# Vérifier que le cluster est démarré
+crc status
+
+# Se connecter au cluster
+oc login -u developer https://api.crc.testing:6443
+oc project ebanking-labs
+```
+
+### 2. Build et Déploiement (Binary Build)
+
+```bash
+cd EBankingFraudDetectionAPI
+
+# Créer la build config et lancer le build
+oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-fraud-detection-api
+oc start-build ebanking-fraud-detection-api --from-dir=. --follow
+
+# Créer l'application
+oc new-app ebanking-fraud-detection-api
+```
+
+### 3. Configurer les variables d'environnement
+
+```bash
+oc set env deployment/ebanking-fraud-detection-api \
+  Kafka__BootstrapServers=kafka-svc:9092 \
+  Kafka__GroupId=fraud-detection-service \
+  Kafka__Topic=banking.transactions \
+  ASPNETCORE_URLS=http://0.0.0.0:8080 \
+  ASPNETCORE_ENVIRONMENT=Development
+```
+
+### 4. Exposer et tester
+
+```bash
+# Créer une route edge
+oc create route edge ebanking-fraud-api-secure --service=ebanking-fraud-detection-api --port=8080-tcp
+
+# Obtenir l'URL
+URL=$(oc get route ebanking-fraud-api-secure -o jsonpath='{.spec.host}')
+echo "https://$URL/swagger"
+
+# Tester
+curl -k -i "https://$URL/api/FraudDetection/health"
+```
+
+### 5. 🧪 Validation des concepts (Sandbox / CRC)
 
 ```bash
 URL=$(oc get route ebanking-fraud-api-secure -o jsonpath='{.spec.host}')
@@ -936,13 +1054,194 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-consumer-groups.sh \
   --describe --group fraud-detection-service
 ```
 
-### Automated Testing Script
+### 5.1 Automated Testing Script
 
 ```powershell
 # Run the full deployment and test script
 cd day-01-foundations/scripts
 ./deploy-and-test-1.3a.ps1
 ```
+
+### 6. Alternative : Déploiement par manifeste YAML
+
+```bash
+sed "s/\${NAMESPACE}/ebanking-labs/g" deployment/openshift-deployment.yaml | oc apply -f -
+```
+
+---
+
+## ☸️ Déploiement Kubernetes / OKD (K3s, K8s, OKD)
+
+Pour un cluster **Kubernetes standard** (K3s, K8s, Minikube) ou **OKD**, utilisez les manifestes YAML fournis dans le dossier `deployment/`.
+
+### 1. Construire l'image Docker
+
+```bash
+cd EBankingFraudDetectionAPI
+
+# Build de l'image
+docker build -t ebanking-fraud-detection-api:latest .
+
+# Pour un registry distant (adapter l'URL du registry)
+docker tag ebanking-fraud-detection-api:latest <registry>/ebanking-fraud-detection-api:latest
+docker push <registry>/ebanking-fraud-detection-api:latest
+```
+
+> **K3s / Minikube** : Si vous utilisez un cluster local, l'image locale suffit avec `imagePullPolicy: IfNotPresent`.
+
+### 2. Déployer les manifestes
+
+```bash
+# Appliquer le Deployment + Service + Ingress
+kubectl apply -f deployment/k8s-deployment.yaml
+
+# Vérifier le déploiement
+kubectl get pods -l app=ebanking-fraud-detection-api
+kubectl get svc ebanking-fraud-detection-api
+```
+
+### 3. Configurer le Kafka Bootstrap (si différent)
+
+```bash
+# Adapter l'adresse Kafka selon votre cluster (Strimzi, Confluent, etc.)
+kubectl set env deployment/ebanking-fraud-detection-api \
+  Kafka__BootstrapServers=<kafka-bootstrap>:9092
+```
+
+### 4. Accéder à l'API
+
+```bash
+# Port-forward pour accès local
+kubectl port-forward svc/ebanking-fraud-detection-api 8080:8080
+
+# Tester
+curl http://localhost:8080/api/FraudDetection/health
+curl http://localhost:8080/swagger/index.html
+```
+
+> **Ingress** : Si vous avez un Ingress Controller (nginx, traefik), ajoutez `ebanking-fraud-detection-api.local` à votre fichier `/etc/hosts` pointant vers l'IP du cluster.
+
+### 5. 🧪 Validation des concepts (K8s)
+
+```bash
+# Produire un message test via Kafka CLI
+kubectl exec kafka-0 -- /opt/kafka/bin/kafka-console-producer.sh \
+  --broker-list localhost:9092 \
+  --topic banking.transactions <<< \
+  '{"transactionId":"K8S-TEST-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":25000.00,"currency":"EUR","type":1,"description":"Test K8s fraude","customerId":"CUST-001","timestamp":"2026-02-08T22:00:00Z","riskScore":0,"status":1}'
+
+# Vérifier les alertes (port-forward actif sur 8080)
+sleep 3
+curl -s "http://localhost:8080/api/FraudDetection/alerts/high-risk" | jq .
+curl -s "http://localhost:8080/api/FraudDetection/metrics" | jq .
+```
+
+> **Docker Compose** : Si Kafka tourne via Docker Compose, utilisez `docker exec kafka ...` au lieu de `kubectl exec kafka-0 ...`.
+
+### 6. OKD : Utiliser les manifestes OpenShift
+
+```bash
+sed "s/\${NAMESPACE}/$(oc project -q)/g" deployment/openshift-deployment.yaml | oc apply -f -
+```
+
+---
+
+## 🏆 Critères de succès
+1. L'application démarre et affiche `✅ Partitions assigned`.
+2. Le `messagesConsumed` augmente quand vous envoyez des transactions.
+3. Les transactions > 10,000€ génèrent une `🚨 FRAUD ALERT` dans les logs et l'API.
+4. Les offsets sont commités automatiquement toutes les 5 secondes (visible dans les logs Kafka ou UI).
+
+---
+
+## 🎯 Concepts Clés Expliqués
+
+### Séquence Détaillée : Consumer Poll Loop (Code Expliqué)
+
+```mermaid
+sequenceDiagram
+    participant Main as 🚀 Program.cs
+    participant DI as 📦 DI Container
+    participant Worker as ⚙️ KafkaConsumerService
+    participant Builder as 🔧 ConsumerBuilder
+    participant Consumer as 📥 IConsumer
+    participant Broker as 🔥 Kafka Broker
+    participant Coord as 👑 Group Coordinator
+
+    Main->>DI: AddSingleton<KafkaConsumerService>()
+    Main->>DI: AddHostedService(provider => ...)
+    DI->>Worker: ExecuteAsync(stoppingToken)
+
+    Worker->>Builder: new ConsumerBuilder(config)
+    Builder->>Builder: SetErrorHandler, SetPartitionsAssignedHandler...
+    Builder->>Consumer: .Build()
+
+    Consumer->>Broker: Subscribe("banking.transactions")
+    Consumer->>Coord: JoinGroup(groupId: "fraud-detection-service")
+    Coord-->>Consumer: Assignment: [P0, P1, P2, P3, P4, P5]
+    Note over Worker: Handler: "✅ Partitions assigned"
+
+    loop while !stoppingToken.IsCancellationRequested
+        Consumer->>Broker: Consume(stoppingToken) → FetchRequest
+        Broker-->>Consumer: ConsumeResult {Key, Value, Partition, Offset}
+        Worker->>Worker: Deserialize JSON → Transaction
+        Worker->>Worker: CalculateRiskScore(tx)
+        Worker->>Worker: if score >= 40 → créer FraudAlert
+        Worker->>Worker: Stocker métriques (thread-safe)
+    end
+
+    Note over Consumer: ⏰ Toutes les 5s: Auto-commit offsets
+    Consumer->>Coord: CommitOffsets
+```
+
+### Séquence : Rebalancing lors de l'Ajout d'un Consumer
+
+```mermaid
+sequenceDiagram
+    participant C1 as 📥 Consumer 1 (existant)
+    participant Coord as 👑 Group Coordinator
+    participant C2 as 📥 Consumer 2 (nouveau)
+
+    Note over C1: Consomme P0-P5 (seul)
+
+    C2->>Coord: JoinGroup("fraud-detection-service")
+    Coord->>C1: Rebalance → PartitionsRevoked [P0-P5]
+    Note over C1: ⚠️ Handler: "Partitions revoked"
+    Note over C1: PAUSE consommation
+
+    Coord->>Coord: Recalculer assignation (CooperativeSticky)
+
+    Coord->>C1: PartitionsAssigned [P0, P1, P2]
+    Coord->>C2: PartitionsAssigned [P3, P4, P5]
+    Note over C1: ✅ Reprend P0-P2
+    Note over C2: ✅ Commence P3-P5
+```
+
+### Consumer Config : Impact sur le Comportement
+
+| Paramètre | Valeur | Impact E-Banking |
+| --------- | ------ | ---------------- |
+| `AutoOffsetReset = Earliest` | Lire depuis le début | Analyse de l'historique des transactions |
+| `EnableAutoCommit = true` | Commit automatique | Risque de rater une transaction lors d'un crash |
+| `AutoCommitIntervalMs = 5000` | Commit toutes les 5s | Fenêtre de perte max : 5 secondes de transactions |
+| `SessionTimeoutMs = 10000` | 10s sans heartbeat = éjection | Détection rapide de consumer mort |
+| `CooperativeSticky` | Rebalancing incrémental | Continuité du scoring pendant les mises à jour |
+
+---
+
+## 🏋️ Exercices Pratiques
+
+### Exercice 1 : Ajouter un compteur par type de transaction
+
+Ajoutez un dictionnaire `ConcurrentDictionary<string, int>` pour compter les transactions par type (Transfer, CardPayment, Withdrawal...) et exposez-le via un nouveau endpoint `GET /api/frauddetection/stats/types`.
+
+### Exercice 2 : Alerte sur transactions rapides
+
+Modifiez `CalculateRiskScore` pour détecter si un même client a plus de 3 transactions en moins de 5 minutes (stockez les timestamps par customer).
+
+### Exercice 3 : Endpoint pour réinitialiser les alertes
+
+Ajoutez un endpoint `DELETE /api/frauddetection/alerts` pour vider la liste des alertes (utile pour les tests).
 
 ---
 
