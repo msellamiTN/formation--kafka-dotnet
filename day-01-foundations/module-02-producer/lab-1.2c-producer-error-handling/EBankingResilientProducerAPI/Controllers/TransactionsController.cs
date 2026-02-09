@@ -116,6 +116,34 @@ public class TransactionsController : ControllerBase
             Timestamp = DateTime.UtcNow
         });
     }
+
+    /// <summary>
+    /// Simulate a Kafka failure to test circuit breaker and DLQ (testing only)
+    /// </summary>
+    [HttpPost("simulate-failure")]
+    [ProducesResponseType(typeof(TransactionResult), StatusCodes.Status202Accepted)]
+    public async Task<ActionResult<TransactionResult>> SimulateFailure(
+        [FromBody] Transaction transaction,
+        [FromQuery] string errorCode = "Local_Transport",
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(transaction.TransactionId))
+            transaction.TransactionId = Guid.NewGuid().ToString();
+
+        var result = await _kafka.SimulateFailureAsync(transaction, errorCode);
+        return Accepted(result);
+    }
+
+    /// <summary>
+    /// Reset circuit breaker state (testing only)
+    /// </summary>
+    [HttpPost("reset-circuit-breaker")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult ResetCircuitBreaker()
+    {
+        _kafka.ResetCircuitBreaker();
+        return Ok(new { Message = "Circuit breaker reset", Timestamp = DateTime.UtcNow });
+    }
 }
 
 public class BatchResilientResponse

@@ -271,6 +271,39 @@ public class ResilientKafkaProducerService : IDisposable
             : 100
     };
 
+    /// <summary>
+    /// Simulate a failure for testing circuit breaker and DLQ
+    /// </summary>
+    public async Task<TransactionResult> SimulateFailureAsync(Transaction transaction, string errorCode)
+    {
+        _logger.LogWarning("🧪 SIMULATED failure for {Id}: {Error}", transaction.TransactionId, errorCode);
+
+        Interlocked.Increment(ref _messagesFailed);
+        _consecutiveFailures++;
+        _lastFailure = DateTime.UtcNow;
+        TrackError(errorCode);
+
+        await SendToDlqAsync(transaction, $"Simulated error: {errorCode}", errorCode);
+
+        return new TransactionResult
+        {
+            TransactionId = transaction.TransactionId,
+            Status = "SentToDLQ",
+            ErrorMessage = $"Simulated error: {errorCode}",
+            Attempts = 1
+        };
+    }
+
+    /// <summary>
+    /// Reset circuit breaker state for testing
+    /// </summary>
+    public void ResetCircuitBreaker()
+    {
+        _consecutiveFailures = 0;
+        _lastFailure = DateTime.MinValue;
+        _logger.LogInformation("🔄 Circuit breaker RESET");
+    }
+
     public void Dispose()
     {
         _producer?.Flush(TimeSpan.FromSeconds(10));

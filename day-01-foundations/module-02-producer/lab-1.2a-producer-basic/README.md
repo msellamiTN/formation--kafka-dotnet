@@ -1022,7 +1022,8 @@ curl -k -s -X POST "https://$HOST/api/Transactions/batch" \
 - Les 3 transactions arrivent sur des **partitions potentiellement différentes** (round-robin sans clé)
 - Chaque message reçoit un **offset séquentiel** au sein de sa partition
 - Le batch n'est **pas atomique** : chaque message est produit indépendamment
-
+![Kafka UI showing keyed producer messages](assets/kafka-ui-producer-basic-.png)
+---
 #### Scénario 4 : Vérifier les messages dans Kafka (CLI)
 
 ```bash

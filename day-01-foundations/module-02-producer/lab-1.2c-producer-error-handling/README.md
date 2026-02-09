@@ -1376,27 +1376,65 @@ echo "https://$URL/swagger"
 curl -k -i "https://$URL/api/Transactions/health"
 ```
 
-### 5. 🧪 Validation des concepts (CRC)
+### 5. 🧪 Validation des concepts (Sandbox / CRC)
 
 ```bash
-URL=$(oc get route ebanking-resilient-producer-api-secure -o jsonpath='{.spec.host}')
+URL=$(oc get route ebanking-resilient-api-secure -o jsonpath='{.spec.host}')
 
-# Envoyer une transaction
-curl -k -s -X POST "https://$URL/api/Transactions" \
-  -H "Content-Type: application/json" \
-  -d '{"fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":250.00,"currency":"EUR","type":1,"description":"Test CRC resilient","customerId":"CUST-001"}' | jq .
-
-# Vérifier les métriques (succès, DLQ, circuit breaker)
-curl -k -s "https://$URL/api/Transactions/metrics" | jq .
-
-# Health check avec état du circuit breaker
+# 1. Health check - circuit breaker should be CLOSED
 curl -k -s "https://$URL/api/Transactions/health" | jq .
 
-# Vérifier les messages dans la DLQ
+# 2. Envoyer une transaction normale (should return 201)
+curl -k -s -X POST "https://$URL/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":250.00,"currency":"EUR","type":1,"description":"Test resilient","customerId":"CUST-001"}' | jq .
+
+# 3. Simulate 5 failures to trigger circuit breaker (threshold = 5)
+for code in Local_Transport MsgSizeTooLarge UnknownTopic RequestTimedOut Local_Transport; do
+  echo "--- Simulating $code ---"
+  curl -k -s -X POST "https://$URL/api/Transactions/simulate-failure?errorCode=$code" \
+    -H "Content-Type: application/json" \
+    -d '{"fromAccount":"FR7630001000111111111","toAccount":"FR7630001000222222222","amount":100.00,"currency":"EUR","type":1,"description":"Simulated failure","customerId":"CUST-FAIL-001"}' | jq .
+done
+
+# 4. Verify circuit breaker is now OPEN
+curl -k -s "https://$URL/api/Transactions/health" | jq .
+# Expected: {"status":"Degraded","circuitBreaker":"OPEN","consecutiveFailures":5}
+
+# 5. Send a normal transaction - should be blocked by circuit breaker
+curl -k -s -X POST "https://$URL/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000333333333","toAccount":"FR7630001000444444444","amount":50.00,"currency":"EUR","type":1,"description":"Blocked by CB","customerId":"CUST-002"}' | jq .
+# Expected: {"status":"SentToDLQ","errorMessage":"Circuit breaker is open..."}
+
+# 6. Check metrics
+curl -k -s "https://$URL/api/Transactions/metrics" | jq .
+# Expected: messagesFailed:5, messagesSentToDlq:6, circuitBreakerOpen:true
+
+# 7. Verify DLQ messages in Kafka
 oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic banking.transactions.dlq \
   --from-beginning --property print.headers=true --max-messages 5
+
+# 8. Reset circuit breaker and verify recovery
+curl -k -s -X POST "https://$URL/api/Transactions/reset-circuit-breaker" | jq .
+curl -k -s "https://$URL/api/Transactions/health" | jq .
+# Expected: {"status":"Healthy","circuitBreaker":"CLOSED","consecutiveFailures":0}
+
+# 9. Send a normal transaction - should succeed after reset
+curl -k -s -X POST "https://$URL/api/Transactions" \
+  -H "Content-Type: application/json" \
+  -d '{"fromAccount":"FR7630001000555555555","toAccount":"FR7630001000666666666","amount":75.00,"currency":"EUR","type":1,"description":"Recovery test","customerId":"CUST-003"}' | jq .
+# Expected: {"status":"Processing","kafkaPartition":...,"kafkaOffset":...}
+```
+
+### 5.1 Automated Testing Script
+
+```bash
+# Run the full deployment and test script (PowerShell)
+cd day-01-foundations/scripts
+./deploy-and-test-1.2c.ps1
 ```
 
 ### 6. Alternative : Déploiement par manifeste YAML
