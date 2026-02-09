@@ -3,6 +3,12 @@ using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Register HTTP Client for Schema Registry
+builder.Services.AddHttpClient();
+
+// Register Schema Registry service (Apicurio-based, uses HttpClient)
+builder.Services.AddSingleton<SchemaRegistryService>();
+
 // Register Kafka Serialization Producer as a Singleton
 builder.Services.AddSingleton<SerializationProducerService>();
 

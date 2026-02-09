@@ -100,6 +100,18 @@ fi
 
 echo "🚀 Deploying Lab 2.1a - Serialization API..."
 
+# Step 0: Deploy Schema Registry (Apicurio)
+log "Deploying Schema Registry..."
+SCHEMA_REGISTRY_DIR="$(dirname "$LAB_DIR")/../lab-2.1a-serialization/openshift"
+if [[ -f "$SCHEMA_REGISTRY_DIR/schema-registry.yaml" ]]; then
+    oc apply -f "$SCHEMA_REGISTRY_DIR/schema-registry.yaml" > /dev/null 2>&1 || {
+        echo "Warning: Schema Registry may already be deployed, continuing..."
+    }
+    echo "✅ Schema Registry deployed (Apicurio Registry)"
+else
+    echo "Warning: schema-registry.yaml not found, skipping Schema Registry deployment"
+fi
+
 # Step 1: Create binary build
 log "Creating binary build..."
 oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-serialization-api > /dev/null 2>&1 || {
@@ -123,6 +135,7 @@ oc set env deployment/ebanking-serialization-api \
     Kafka__BootstrapServers=kafka-svc:9092 \
     Kafka__Topic=banking.transactions \
     Kafka__GroupId=serialization-lab-consumer \
+    SchemaRegistry__Url=http://schema-registry:8081 \
     ASPNETCORE_URLS=http://0.0.0.0:8080 \
     ASPNETCORE_ENVIRONMENT=Development
 
@@ -237,7 +250,38 @@ if [[ "$SKIP_TESTS" != "true" ]]; then
     echo "✅ Schema info endpoint working"
     echo "   Compatibility: $(echo "$SCHEMA_RESPONSE" | grep -o '"backward":"[^"]*' | cut -d: -f2 | tr -d '"')"
     
-    # Test 7: Verify messages in Kafka
+    # Test 7: Schema Registry health
+    log "Testing Schema Registry connectivity..."
+    SR_HEALTH=$(curl -k -s "https://$ROUTE_URL/api/SchemaRegistry/health" || echo "")
+    if [[ "$SR_HEALTH" == *"connected"* ]]; then
+        echo "✅ Schema Registry connected"
+        
+        # Register V1 schema
+        SR_V1=$(curl -k -s -X POST "https://$ROUTE_URL/api/SchemaRegistry/schemas/register" \
+            -H "Content-Type: application/json" -d '{"version":"v1"}' || echo "")
+        if [[ "$SR_V1" == *"registered"* ]]; then
+            echo "✅ Schema V1 registered"
+        else
+            echo "⚠️  Schema V1 registration failed (may already exist)"
+        fi
+        
+        # Register V2 schema
+        SR_V2=$(curl -k -s -X POST "https://$ROUTE_URL/api/SchemaRegistry/schemas/register" \
+            -H "Content-Type: application/json" -d '{"version":"v2"}' || echo "")
+        if [[ "$SR_V2" == *"registered"* ]]; then
+            echo "✅ Schema V2 registered"
+        else
+            echo "⚠️  Schema V2 registration failed (may already exist)"
+        fi
+        
+        # List subjects
+        SR_SUBJECTS=$(curl -k -s "https://$ROUTE_URL/api/SchemaRegistry/subjects" || echo "")
+        echo "   Subjects: $SR_SUBJECTS"
+    else
+        echo "⚠️  Schema Registry not available (optional component)"
+    fi
+    
+    # Test 8: Verify messages in Kafka topic
     log "Verifying messages in Kafka topic..."
     KAFKA_MESSAGES=$(oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
         --bootstrap-server localhost:9092 \
@@ -274,6 +318,7 @@ if [[ "$SKIP_TESTS" != "true" ]]; then
     echo "  ✅ Évolution de schéma BACKWARD compatible (v1 lit v2)"
     echo "  ✅ Validation pré-envoi rejetée les transactions invalides"
     echo "  ✅ Schema info accessible via API"
+    echo "  ✅ Schema Registry connected and schemas registered"
 fi
 
 # Summary

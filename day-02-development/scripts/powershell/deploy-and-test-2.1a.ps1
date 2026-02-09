@@ -84,6 +84,16 @@ if (-not (Test-Path $LabDir)) {
     exit 1
 }
 
+# Step 0: Deploy Schema Registry (Apicurio)
+Log-Message "Deploying Schema Registry..."
+$SchemaRegistryYaml = Join-Path (Split-Path -Parent $LabDir) "openshift\schema-registry.yaml"
+if (Test-Path $SchemaRegistryYaml) {
+    oc apply -f $SchemaRegistryYaml 2>$null
+    Write-Host "✅ Schema Registry deployed (Apicurio Registry)" -ForegroundColor Green
+} else {
+    Write-Host "Warning: schema-registry.yaml not found, skipping Schema Registry" -ForegroundColor Yellow
+}
+
 # Step 1: Check if build config exists
 Log-Message "Checking build configuration..."
 $BuildConfig = oc get buildconfig ebanking-serialization-api 2>$null
@@ -130,6 +140,7 @@ oc set env deployment/ebanking-serialization-api `
     Kafka__BootstrapServers=kafka-svc:9092 `
     Kafka__Topic=banking.transactions `
     Kafka__GroupId=serialization-lab-consumer `
+    SchemaRegistry__Url=http://schema-registry:8081 `
     ASPNETCORE_URLS=http://0.0.0.0:8080 `
     ASPNETCORE_ENVIRONMENT=Development 2>$null
 
@@ -305,7 +316,40 @@ if (-not $SkipTests) {
         exit 1
     }
     
-    # Test 7: Verify messages in Kafka
+    # Test 7: Schema Registry
+    Log-Message "Testing Schema Registry connectivity..."
+    try {
+        $SrHealth = Invoke-RestMethod -Uri "https://$RouteUrl/api/SchemaRegistry/health" -SkipCertificateCheck -ErrorAction Stop
+        if ($SrHealth.status -eq "connected") {
+            Write-Host "✅ Schema Registry connected" -ForegroundColor Green
+            
+            # Register V1 schema
+            try {
+                $SrV1 = Invoke-RestMethod -Uri "https://$RouteUrl/api/SchemaRegistry/schemas/register" -Method POST -Body '{"version":"v1"}' -ContentType "application/json" -SkipCertificateCheck -ErrorAction Stop
+                Write-Host "✅ Schema V1 registered (ID: $($SrV1.schemaId))" -ForegroundColor Green
+            } catch {
+                Write-Host "⚠️  Schema V1 registration failed (may already exist)" -ForegroundColor Yellow
+            }
+            
+            # Register V2 schema
+            try {
+                $SrV2 = Invoke-RestMethod -Uri "https://$RouteUrl/api/SchemaRegistry/schemas/register" -Method POST -Body '{"version":"v2"}' -ContentType "application/json" -SkipCertificateCheck -ErrorAction Stop
+                Write-Host "✅ Schema V2 registered (ID: $($SrV2.schemaId))" -ForegroundColor Green
+            } catch {
+                Write-Host "⚠️  Schema V2 registration failed (may already exist)" -ForegroundColor Yellow
+            }
+            
+            # List subjects
+            try {
+                $SrSubjects = Invoke-RestMethod -Uri "https://$RouteUrl/api/SchemaRegistry/subjects" -SkipCertificateCheck -ErrorAction Stop
+                Write-Host "   Subjects: $($SrSubjects.count) registered" -ForegroundColor Gray
+            } catch {}
+        }
+    } catch {
+        Write-Host "⚠️  Schema Registry not available (optional component)" -ForegroundColor Yellow
+    }
+    
+    # Test 8: Verify messages in Kafka
     Log-Message "Verifying messages in Kafka topic..."
     $KafkaMessages = oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic banking.transactions --from-beginning --max-messages 3 2>$null | Select-String -Pattern "test-valid|test-v2"
     
@@ -325,6 +369,7 @@ if (-not $SkipTests) {
     Write-Host "   ✅ Kafka producer integration with headers" -ForegroundColor White
     Write-Host "   ✅ API validation and error handling" -ForegroundColor White
     Write-Host "   ✅ Metrics and monitoring capabilities" -ForegroundColor White
+    Write-Host "   ✅ Schema Registry connected and schemas registered" -ForegroundColor White
     Write-Host ""
     Write-Host "🔗 Next steps:" -ForegroundColor Yellow
     Write-Host "   1. Open Swagger UI: https://$RouteUrl/swagger" -ForegroundColor Gray

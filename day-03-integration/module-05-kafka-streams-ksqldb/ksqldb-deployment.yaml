@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ksqldb
+  namespace: msellamitn-dev
+  labels:
+    app: ksqldb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ksqldb
+  template:
+    metadata:
+      labels:
+        app: ksqldb
+    spec:
+      containers:
+      - name: ksqldb-server
+        image: confluentinc/ksqldb-server:0.29.0
+        ports:
+        - containerPort: 8088
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+        env:
+        - name: KSQL_BOOTSTRAP_SERVERS
+          value: "kafka-0.kafka-svc:9092"
+        - name: KSQL_LISTENERS
+          value: "http://0.0.0.0:8088"
+        - name: KSQL_KSQL_LOGGING_PROCESSING_STREAM_AUTO_CREATE
+          value: "true"
+        - name: KSQL_KSQL_LOGGING_PROCESSING_TOPIC_AUTO_CREATE
+          value: "true"
+        - name: KSQL_AUTO_OFFSET_RESET
+          value: "latest"
+        - name: KSQL_CONFIG_DIR
+          value: "/tmp/ksql"
+        - name: KSQL_LOGGING_PROCESSING_TOPIC_REPLICATION_FACTOR
+          value: "3"
+        - name: KSQL_KSQL_SCHEMA_REGISTRY_URL
+          value: ""
+        - name: KSQL_CONNECT_BOOTSTRAP_SERVERS
+          value: ""
+        - name: KSQL_CONNECT_GROUP_ID
+          value: ""
+        - name: KSQL_CONNECT_CONFIG_STORAGE_TOPIC
+          value: ""
+        - name: KSQL_CONNECT_OFFSET_STORAGE_TOPIC
+          value: ""
+        - name: KSQL_CONNECT_STATUS_STORAGE_TOPIC
+          value: ""
+        volumeMounts:
+        - name: ksql-config
+          mountPath: /tmp/ksql
+        - name: logs
+          mountPath: /usr/logs
+        - name: ksqldb-etc
+          mountPath: /etc/ksqldb
+        - name: ksqldb-templates
+          mountPath: /etc/ksqldb/templates
+        livenessProbe:
+          httpGet:
+            path: /info
+            port: 8088
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /info
+            port: 8088
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          limits:
+            cpu: "1"
+            memory: 2Gi
+          requests:
+            cpu: 500m
+            memory: 1Gi
+      volumes:
+      - name: ksql-config
+        emptyDir: {}
+      - name: logs
+        emptyDir: {}
+      - name: ksqldb-etc
+        emptyDir: {}
+      - name: ksqldb-templates
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ksqldb
+  namespace: msellamitn-dev
+spec:
+  selector:
+    app: ksqldb
+  ports:
+  - name: http
+    port: 8088
+    targetPort: 8088
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ksqldb
+  namespace: msellamitn-dev
+spec:
+  to:
+    kind: Service
+    name: ksqldb
+  port:
+    targetPort: 8088

@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: schema-registry
+  labels:
+    app: schema-registry
+spec:
+  ports:
+  - port: 8081
+    name: http
+    targetPort: 8080
+  selector:
+    app: schema-registry
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: schema-registry
+  labels:
+    app: schema-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: schema-registry
+  template:
+    metadata:
+      labels:
+        app: schema-registry
+    spec:
+      containers:
+      - name: schema-registry
+        image: quay.io/apicurio/apicurio-registry-mem:2.5.11.Final
+        ports:
+        - containerPort: 8080
+        env:
+        - name: REGISTRY_AUTH_ANONYMOUS_READ_ACCESS_ENABLED
+          value: "true"
+        - name: QUARKUS_HTTP_PORT
+          value: "8080"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 5
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: schema-registry
+spec:
+  port:
+    targetPort: 8080
+  to:
+    kind: Service
+    name: schema-registry

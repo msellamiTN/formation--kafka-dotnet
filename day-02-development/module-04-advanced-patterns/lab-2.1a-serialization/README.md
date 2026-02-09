@@ -1629,6 +1629,109 @@ docker logs m04-serialization-api --tail 10
 
 ---
 
+## 🏛️ Schema Registry (Apicurio Registry)
+
+Le lab inclut un **Schema Registry** déployé sur OpenShift via [Apicurio Registry](https://www.apicur.io/registry/) (compatible Confluent API). Il permet de gérer centralement les schémas Avro des transactions.
+
+### Architecture avec Schema Registry
+
+```mermaid
+sequenceDiagram
+    participant P as 📤 Producer
+    participant API as 🚀 E-Banking API
+    participant SR as 🏛️ Schema Registry
+    participant K as 📦 Kafka
+    participant C as 📥 Consumer
+
+    P->>API: POST /api/SchemaRegistry/schemas/register {version: v1}
+    API->>SR: POST /apis/ccompat/v7/subjects/.../versions (Avro schema)
+    SR-->>API: {id: 1}
+    API-->>P: {schemaId: 1, status: registered}
+
+    P->>API: POST /api/SchemaRegistry/schemas/register {version: v2}
+    API->>SR: POST /apis/ccompat/v7/subjects/.../versions (Avro schema v2)
+    SR-->>API: {id: 2}
+    API-->>P: {schemaId: 2, status: registered}
+
+    C->>API: GET /api/SchemaRegistry/schemas/1
+    API->>SR: GET /apis/ccompat/v7/schemas/ids/1
+    SR-->>API: {schema: "..."}
+    API-->>C: Schema Avro v1
+```
+
+### Déployer le Schema Registry
+
+```bash
+# Déployer Apicurio Registry (in-memory)
+oc apply -f openshift/schema-registry.yaml
+
+# Vérifier que le pod est Running
+oc get pods -l app=schema-registry
+
+# Configurer l'API pour utiliser le Schema Registry
+oc set env deployment/ebanking-serialization-api SchemaRegistry__Url=http://schema-registry:8081
+```
+
+### Endpoints Schema Registry
+
+| Methode | Endpoint | Description |
+| ------- | -------- | ----------- |
+| `GET` | `/api/SchemaRegistry/health` | Test de connectivité au Schema Registry |
+| `GET` | `/api/SchemaRegistry/config` | Configuration et statut du registre |
+| `GET` | `/api/SchemaRegistry/subjects` | Lister tous les sujets enregistrés |
+| `POST` | `/api/SchemaRegistry/schemas/register` | Enregistrer un schéma v1 ou v2 |
+| `POST` | `/api/SchemaRegistry/schemas/register-custom` | Enregistrer un schéma Avro personnalisé |
+| `GET` | `/api/SchemaRegistry/schemas/transactions/latest` | Dernier schéma des transactions |
+| `GET` | `/api/SchemaRegistry/schemas/{id}` | Récupérer un schéma par ID |
+| `GET` | `/api/SchemaRegistry/schemas/{subject}/versions` | Versions d'un sujet |
+
+### Tests Schema Registry
+
+```bash
+HOST=$(oc get route ebanking-serialization-api-secure -o jsonpath='{.spec.host}')
+
+# 1. Vérifier la connectivité
+curl -k -s "https://$HOST/api/SchemaRegistry/health"
+# -> {"status":"connected","service":"schema-registry"}
+
+# 2. Enregistrer le schéma v1
+curl -k -s -X POST "https://$HOST/api/SchemaRegistry/schemas/register" \
+  -H "Content-Type: application/json" -d '{"version":"v1"}'
+# -> {"schemaId":1,"version":"v1","subject":"ebanking.transactions-value","status":"registered"}
+
+# 3. Enregistrer le schéma v2 (avec riskScore, sourceChannel)
+curl -k -s -X POST "https://$HOST/api/SchemaRegistry/schemas/register" \
+  -H "Content-Type: application/json" -d '{"version":"v2"}'
+# -> {"schemaId":2,"version":"v2","subject":"ebanking.transactions-value","status":"registered"}
+
+# 4. Lister les sujets
+curl -k -s "https://$HOST/api/SchemaRegistry/subjects"
+# -> {"count":1,"subjects":["ebanking.transactions-value"]}
+
+# 5. Récupérer les versions
+curl -k -s "https://$HOST/api/SchemaRegistry/schemas/transactions/versions"
+# -> {"subject":"transactions","count":2,"versions":[1,2]}
+
+# 6. Récupérer le schéma v1 par ID
+curl -k -s "https://$HOST/api/SchemaRegistry/schemas/1"
+# -> {"schemaId":1,"schema":"{...Avro schema v1...}"}
+```
+
+### Fichiers Schema Registry
+
+```text
+openshift/
+└── schema-registry.yaml          # Deployment + Service + Route (Apicurio Registry)
+dotnet/
+├── Services/
+│   └── SchemaRegistryService.cs   # HTTP client for Apicurio Confluent-compatible API
+├── Controllers/
+│   └── SchemaRegistryController.cs # REST endpoints for schema management
+└── appsettings.json               # SchemaRegistry.Url, SubjectPrefix config
+```
+
+---
+
 ## 🚀 Prochaine Étape
 
 👉 **[LAB 2.2A : API Producer Idempotent - Transactions Fiables](../lab-2.2-producer-advanced/README.md)**
@@ -1639,22 +1742,6 @@ Dans le prochain lab :
 - **PID tracking** pour éviter les duplicatas
 - **Transactions** avec `Acks = All` pour garantie exactly-once
 - **Métriques** pour monitoring du producer
-| **Compatibility check** | Vérifie BACKWARD/FORWARD/FULL avant d'accepter un nouveau schéma |
-
-```mermaid
-sequenceDiagram
-    participant P as 📤 Producer
-    participant SR as 🏛️ Schema Registry
-    participant K as 📦 Kafka
-    participant C as 📥 Consumer
-
-    P->>SR: POST /subjects/banking.transactions-value/versions (schema v1)
-    SR-->>P: {id: 1}
-    P->>K: Send(schemaId=1 + avro bytes)
-    C->>SR: GET /schemas/ids/1
-    SR-->>C: {schema: "..."}
-    C->>K: Consume → deserialize with schema v1
-```
 
 ---
 
