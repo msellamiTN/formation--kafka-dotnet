@@ -232,7 +232,7 @@ gantt
 <summary>🐳 <b>Mode Docker</b></summary>
 
 ```bash
-cd formation-v2/
+cd formation-kafka-dotnet/
 ./scripts/up.sh
 ```
 

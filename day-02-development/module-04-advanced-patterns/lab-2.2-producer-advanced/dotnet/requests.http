@@ -1,0 +1,61 @@
+### ═══════════════════════════════════════════════════════════
+### E-Banking Idempotent Producer API — Lab 2.2 Test Requests
+### ═══════════════════════════════════════════════════════════
+
+@baseUrl = http://localhost:5171
+
+### ─── Health Check ─────────────────────────────────────────
+GET {{baseUrl}}/health
+
+### ─── DEMO 1: Idempotent Producer ──────────────────────────
+### EnableIdempotence=true → PID + sequence numbers
+### The broker deduplicates retried messages automatically
+POST {{baseUrl}}/api/transactions/idempotent
+Content-Type: application/json
+
+{
+    "customerId": "CUST-001",
+    "fromAccount": "FR7630001000123456789",
+    "toAccount": "FR7630001000987654321",
+    "amount": 1500.00,
+    "currency": "EUR",
+    "type": 1,
+    "description": "Virement avec idempotence"
+}
+
+### ─── DEMO 2: Non-Idempotent Producer (comparison) ────────
+### EnableIdempotence=false → risk of duplicates on retry
+POST {{baseUrl}}/api/transactions/non-idempotent
+Content-Type: application/json
+
+{
+    "customerId": "CUST-001",
+    "fromAccount": "FR7630001000123456789",
+    "toAccount": "FR7630001000987654321",
+    "amount": 1500.00,
+    "currency": "EUR",
+    "type": 1,
+    "description": "Virement SANS idempotence"
+}
+
+### ─── DEMO 3: Batch Comparison ─────────────────────────────
+### Sends N transactions through BOTH producers
+### Compare: same partition/offset distribution, but different guarantees
+POST {{baseUrl}}/api/transactions/batch
+Content-Type: application/json
+
+{
+    "count": 10,
+    "customerId": "CUST-BATCH-001"
+}
+
+### ─── Metrics ─────────────────────────────────────────────
+### Shows PID, sequence numbers, config for both producers
+GET {{baseUrl}}/api/transactions/metrics
+
+### ─── Config Comparison ───────────────────────────────────
+### Side-by-side comparison of idempotent vs non-idempotent
+GET {{baseUrl}}/api/transactions/compare
+
+### ─── Swagger UI ──────────────────────────────────────────
+### Open in browser: http://localhost:5171/swagger

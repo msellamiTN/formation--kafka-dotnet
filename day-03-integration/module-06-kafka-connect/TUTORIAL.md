@@ -316,12 +316,12 @@ DELETE {{connectUrl}}/connectors/file-source-connector
 
 ---
 
-## � Étape 5 : Docker Compose - Build et Déploiement
+## 🐳 Étape 5 : Docker Compose - Build et Déploiement
 
 ### 5.1 Démarrer l'infrastructure Kafka (depuis infra/)
 
 ```powershell
-# Depuis la racine formation-v2/
+# Depuis la racine formation-kafka-dotnet/
 cd infra
 
 # Démarrer Kafka single-node + Kafka UI

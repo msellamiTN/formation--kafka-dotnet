@@ -1,0 +1,22 @@
+### ═══════════════════════════════════════════════════════════
+### Lab 2.3a — DLT & Retry Consumer Test Requests
+### ═══════════════════════════════════════════════════════════
+
+@baseUrl = http://localhost:18083
+
+### ─── Health Check ─────────────────────────────────────────
+GET {{baseUrl}}/health
+
+### ─── Consumer Statistics ──────────────────────────────────
+### Messages processed, retried, sent to DLT, rebalance count
+GET {{baseUrl}}/api/v1/stats
+
+### ─── Assigned Partitions ──────────────────────────────────
+GET {{baseUrl}}/api/v1/partitions
+
+### ─── DLT Message Count ───────────────────────────────────
+GET {{baseUrl}}/api/v1/dlt/count
+
+### ─── DLT Messages (details) ──────────────────────────────
+### Shows: key, originalPartition, originalOffset, errorReason, attempts, failedAt
+GET {{baseUrl}}/api/v1/dlt/messages

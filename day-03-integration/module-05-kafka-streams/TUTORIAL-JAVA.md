@@ -998,12 +998,12 @@ GET {{baseUrl}}/stores/sales-by-product-store/LAPTOP-001
 
 ---
 
-## � Étape 12 : Docker Compose - Build et Déploiement
+## 🐳 Étape 12 : Docker Compose - Build et Déploiement
 
 ### 12.1 Démarrer l'infrastructure Kafka
 
 ```powershell
-# Depuis la racine formation-v2/
+# Depuis la racine formation-kafka-dotnet/
 cd infra
 
 # Démarrer Kafka single-node + Kafka UI
@@ -1042,7 +1042,7 @@ MOUSE-001:{"name":"Logitech MX","category":"Accessories"}
 
 ```powershell
 # Depuis le répertoire du module
-cd ../day-02-development/module-05-kafka-streams
+cd ../day-03-integration/module-05-kafka-streams
 
 # Build et démarrer l'application Streams
 docker-compose -f docker-compose.module.yml up -d --build

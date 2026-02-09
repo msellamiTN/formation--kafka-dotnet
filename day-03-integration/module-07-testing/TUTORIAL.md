@@ -770,12 +770,12 @@ start target/surefire-reports/index.html
 
 ---
 
-## � Note : Docker Compose pour tests E2E
+## 🐳 Note : Docker Compose pour tests E2E
 
 Pour les tests end-to-end nécessitant une infrastructure Kafka complète :
 
 ```powershell
-# Depuis la racine formation-v2/
+# Depuis la racine formation-kafka-dotnet/
 cd infra
 
 # Démarrer Kafka
@@ -794,7 +794,7 @@ docker-compose -f docker-compose.single-node.yml down
 
 ---
 
-## �📊 Concepts de test Kafka
+## 📊 Concepts de test Kafka
 
 ### Pyramide des tests
 

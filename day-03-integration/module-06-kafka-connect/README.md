@@ -25,7 +25,7 @@
 
 ```mermaid
 flowchart LR
-    SRC["🗄️ Sources"] --> SC["🔌 Source"] --> T[("� Kafka")] --> SK["� Sink"] --> SNK["🗄️ Sinks"]
+    SRC["🗄️ Sources"] --> SC["🔌 Source"] --> T[("📦 Kafka")] --> SK["📤 Sink"] --> SNK["🗄️ Sinks"]
     
     style SC fill:#e8f5e9
     style SK fill:#fff3cd
@@ -385,7 +385,7 @@ flowchart TB
 <summary>🐳 <b>Mode Docker</b></summary>
 
 ```bash
-cd formation-v2/
+cd formation-kafka-dotnet/
 ./scripts/up.sh
 ```
 
@@ -697,11 +697,11 @@ Pour éviter les problèmes courants, utilisez les scripts d'automatisation qui 
 
 ```bash
 # Mode Docker
-cd formation-v2/day-03-integration/module-06-kafka-connect/scripts/docker
+cd formation-kafka-dotnet/day-03-integration/module-06-kafka-connect/scripts/docker
 sudo ./01-start-environment.sh
 
 # Mode Kubernetes  
-cd formation-v2/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
+cd formation-kafka-dotnet/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
 sudo ./01-start-environment.sh
 ```
 
@@ -729,7 +729,7 @@ docker ps --format "table {{.Names}}\t{{.Status}}" | grep -E "(kafka-connect|pos
 
 ```bash
 # ⚠️  APPROCHE RECOMMANDÉE : Utiliser le script d'automatisation
-cd formation-v2/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
+cd formation-kafka-dotnet/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
 sudo ./01-start-environment.sh
 
 # Si vous préférez le manuel, suivez ces étapes attentivement :
@@ -882,11 +882,11 @@ echo "  sudo ./03-verify-sqlserver.sh"
 
 ```bash
 # Mode Docker
-cd formation-v2/day-03-integration/module-06-kafka-connect/scripts/docker
+cd formation-kafka-dotnet/day-03-integration/module-06-kafka-connect/scripts/docker
 sudo ./02-verify-postgresql.sh
 
 # Mode Kubernetes  
-cd formation-v2/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
+cd formation-kafka-dotnet/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
 sudo ./02-verify-postgresql.sh
 ```
 
@@ -949,11 +949,11 @@ kubectl exec -it -n kafka postgres-banking-postgresql-0 -- psql -U banking -d co
 
 ```bash
 # Mode Docker
-cd formation-v2/day-03-integration/module-06-kafka-connect/scripts/docker
+cd formation-kafka-dotnet/day-03-integration/module-06-kafka-connect/scripts/docker
 sudo ./03-verify-sqlserver.sh
 
 # Mode Kubernetes  
-cd formation-v2/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
+cd formation-kafka-dotnet/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
 sudo ./03-verify-sqlserver.sh
 ```
 
@@ -1022,11 +1022,11 @@ kubectl exec -it -n kafka deploy/sqlserver-banking -- /opt/mssql-tools18/bin/sql
 
 ```bash
 # Mode Docker
-cd formation-v2/day-03-integration/module-06-kafka-connect/scripts/docker
+cd formation-kafka-dotnet/day-03-integration/module-06-kafka-connect/scripts/docker
 sudo ./04-create-postgres-connector.sh
 
 # Mode Kubernetes  
-cd formation-v2/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
+cd formation-kafka-dotnet/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
 sudo ./04-create-postgres-connector.sh
 ```
 
@@ -1096,11 +1096,11 @@ curl -X POST http://localhost:31083/connectors \
 
 ```bash
 # Mode Docker
-cd formation-v2/day-03-integration/module-06-kafka-connect/scripts/docker
+cd formation-kafka-dotnet/day-03-integration/module-06-kafka-connect/scripts/docker
 sudo ./07-monitor-connectors.sh
 
 # Mode Kubernetes  
-cd formation-v2/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
+cd formation-kafka-dotnet/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
 sudo ./07-monitor-connectors.sh
 ```
 
@@ -1135,11 +1135,11 @@ kubectl run kafka-topics --rm -i --restart=Never \
 
 ```bash
 # Mode Docker
-cd formation-v2/day-03-integration/module-06-kafka-connect/scripts/docker
+cd formation-kafka-dotnet/day-03-integration/module-06-kafka-connect/scripts/docker
 sudo ./06-simulate-banking-operations.sh
 
 # Mode Kubernetes  
-cd formation-v2/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
+cd formation-kafka-dotnet/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
 sudo ./06-simulate-banking-operations.sh
 ```
 
@@ -1209,11 +1209,11 @@ UPDATE accounts SET balance = balance + 100.00 WHERE account_number = 1;
 
 ```bash
 # Mode Docker
-cd formation-v2/day-03-integration/module-06-kafka-connect/scripts/docker
+cd formation-kafka-dotnet/day-03-integration/module-06-kafka-connect/scripts/docker
 sudo ./05-create-sqlserver-connector.sh
 
 # Mode Kubernetes  
-cd formation-v2/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
+cd formation-kafka-dotnet/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
 sudo ./05-create-sqlserver-connector.sh
 ```
 
@@ -1692,7 +1692,7 @@ kubectl exec -n kafka postgres-banking-postgresql-0 -- bash -c "PGPASSWORD='${PO
 kubectl logs kafka-connect-banking-connect-0 -n kafka
 
 # 2. Utiliser le script de réparation automatique
-cd formation-v2/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
+cd formation-kafka-dotnet/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
 sudo ./00-fix-environment.sh
 
 # 3. Si problème d'image Debezium, utiliser Strimzi
@@ -1805,7 +1805,7 @@ Si vous rencontrez des problèmes, utilisez les scripts d'automatisation:
 
 ```bash
 # Pour corriger l'environnement K8s
-cd formation-v2/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
+cd formation-kafka-dotnet/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
 sudo ./00-fix-environment.sh
 
 # Pour vérifier PostgreSQL
@@ -1833,11 +1833,11 @@ Pour un nettoyage complet et automatique, utilisez les scripts fournis:
 
 ```bash
 # Mode Docker
-cd formation-v2/day-03-integration/module-06-kafka-connect/scripts/docker
+cd formation-kafka-dotnet/day-03-integration/module-06-kafka-connect/scripts/docker
 sudo ./08-cleanup.sh
 
 # Mode Kubernetes
-cd formation-v2/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
+cd formation-kafka-dotnet/day-03-integration/module-06-kafka-connect/scripts/k8s_okd
 sudo ./08-cleanup.sh
 ```
 

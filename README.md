@@ -4,7 +4,31 @@
 
 ---
 
-## � Contexte
+## 📅 Informations pratiques
+
+|   |   |
+| --- | --- |
+| **Dates** | 10 – 12 février 2026 |
+| **Horaires** | 9h00 – 12h00 / 13h30 – 16h30 (6h/jour) |
+| **Durée totale** | 18 heures (3 jours) |
+| **Formateur** | M. Mokhtar Sellami |
+| **Lieu** | En présentiel — locaux du client |
+
+### Planning journalier
+
+| Créneau | Durée | Contenu |
+| ------- | ----- | ------- |
+| 09h00 – 10h30 | 1h30 | Théorie + démo live |
+| 10h30 – 10h45 | 15 min | ☕ Pause |
+| 10h45 – 12h00 | 1h15 | Lab pratique guidé |
+| 12h00 – 13h30 | 1h30 | 🍽️ Déjeuner |
+| 13h30 – 15h00 | 1h30 | Lab pratique autonome |
+| 15h00 – 15h15 | 15 min | ☕ Pause |
+| 15h15 – 16h30 | 1h15 | Lab avancé + Q&A |
+
+---
+
+## 🏦 Contexte
 
 Cette formation utilise un scénario **E-Banking** de bout en bout : des transactions bancaires (virements, paiements, retraits) sont produites vers Kafka, puis consommées par des services de **détection de fraude**, **calcul de solde** et **audit réglementaire**.
 
@@ -28,7 +52,7 @@ flowchart LR
 
     subgraph Consumers["📥 Consumers (.NET)"]
         C1["🔍 Fraud Detection"]
-        C2["� Balance Service"]
+        C2["💰 Balance Service"]
         C3["📋 Audit Service"]
     end
 
@@ -57,7 +81,7 @@ flowchart LR
 
 ### Day 01 — Fondamentaux Kafka
 
-> **Durée** : 4-5h | **Niveau** : Debutant → Intermediaire | [README Day 01](./day-01-foundations/module-01-cluster/README.md)
+> **Mardi 10 février** | 6h | **Niveau** : Débutant → Intermédiaire | [README Day 01](./day-01-foundations/module-01-cluster/README.md)
 
 | Module | Titre | Labs | Description |
 | ------ | ----- | ---- | ----------- |
@@ -81,20 +105,24 @@ flowchart LR
 
 ---
 
-### Day 02 — Developpement Avance & Kafka Streams
+### Day 02 — Patterns de Production & Serialisation
 
-> **Durée** : 5-6h | **Niveau** : Intermediaire → Avance | [README Day 02](./day-02-development/README.md)
+> **Mercredi 11 février** | 6h | **Niveau** : Intermédiaire → Avancé | [README Day 02](./day-02-development/README.md)
 
-| Module | Titre | Stack | Description |
-| ------ | ----- | ----- | ----------- |
-| [**M04**](./day-02-development/module-04-advanced-patterns/README.md) | Advanced Consumer Patterns | .NET / Java | Dead Letter Topic, retry avec backoff exponentiel, rebalancing, erreurs transient vs permanent |
-| [**M05**](./day-02-development/module-05-kafka-streams/README.md) | Kafka Streams | Java | KStream, KTable, aggregations windowed, joins, State Stores, Interactive Queries |
+| Bloc | Titre | Stack | Description |
+| ---- | ----- | ----- | ----------- |
+| [**2.1**](./day-02-development/module-04-advanced-patterns/lab-2.1a-serialization/README.md) | Sérialisation Avancée | .NET 8 | Custom `ISerializer<T>`, JSON typé, validation, schema evolution, intro Avro/Schema Registry |
+| [**2.2**](./day-02-development/module-04-advanced-patterns/lab-2.2-producer-advanced/README.md) | Producer Patterns Avancés | .NET 8 | `EnableIdempotence=true`, PID, sequence numbers, transactions Kafka, exactly-once |
+| [**2.3**](./day-02-development/module-04-advanced-patterns/lab-2.3a-consumer-dlt-retry/README.md) | Consumer Patterns Avancés | .NET 8 | Dead Letter Topic, retry backoff exponentiel + jitter, rebalancing CooperativeSticky |
+| **2.4** | Kafka Connect Introduction | Theory | Source/Sink connectors, Workers, Tasks, preview Day 03 |
 
 <details>
 <summary>Details Day 02</summary>
 
-- **M04** inclut des tutoriels [.NET](./day-02-development/module-04-advanced-patterns/TUTORIAL-DOTNET.md), [Java](./day-02-development/module-04-advanced-patterns/TUTORIAL-JAVA.md), et [Visual Studio 2022](./day-02-development/module-04-advanced-patterns/TUTORIAL-VS2022.md)
-- **M05** inclut un tutoriel [Java Kafka Streams](./day-02-development/module-05-kafka-streams/TUTORIAL-JAVA.md) avec topologies completes
+- **Bloc 2.1** : Web API `EBankingSerializationAPI` avec custom serializer/deserializer, background consumer, schema evolution demo
+- **Bloc 2.2** : Web API `EBankingIdempotentProducerAPI` avec side-by-side comparison idempotent vs non-idempotent producer
+- **Bloc 2.3** : Module M04 existant avec DLT, retries, rebalancing handlers, `EnableAutoOffsetStore=false`
+- **Bloc 2.4** : Section théorique dans le README Day 02, preview du Module 06 (Day 03)
 
 </details>
 
@@ -102,10 +130,11 @@ flowchart LR
 
 ### Day 03 — Integration, Tests & Observabilite
 
-> **Durée** : 5-6h | **Niveau** : Avance → Production | [README Day 03](./day-03-integration/README.md)
+> **Jeudi 12 février** | 6h | **Niveau** : Avancé → Production | [README Day 03](./day-03-integration/README.md)
 
 | Module | Titre | Stack | Description |
 | ------ | ----- | ----- | ----------- |
+| [**M05**](./day-03-integration/module-05-kafka-streams/README.md) | Kafka Streams | Java | KStream, KTable, aggregations, windowing, jointures |
 | [**M06**](./day-03-integration/module-06-kafka-connect/README.md) | Kafka Connect | Connect API | Source & Sink connectors, REST API management, SQL Server CDC |
 | [**M07**](./day-03-integration/module-07-testing/README.md) | Testing Kafka | .NET / Java | Unit tests (MockProducer/MockConsumer), integration tests (Testcontainers) |
 | [**M08**](./day-03-integration/module-08-observability/README.md) | Observabilite | Prometheus/Grafana | Metriques JMX, consumer lag, tracing distribue |
@@ -113,6 +142,7 @@ flowchart LR
 <details>
 <summary>Details Day 03</summary>
 
+- **M05** Kafka Streams (Java) — KStream, KTable, windowing. Inclut [tutoriel Java](./day-03-integration/module-05-kafka-streams/TUTORIAL-JAVA.md)
 - **M06** inclut des [exemples SQL Server CDC](./day-03-integration/module-06-kafka-connect/SQLSERVER-CDC-EXAMPLES.md) et un [tutoriel Connect](./day-03-integration/module-06-kafka-connect/TUTORIAL.md)
 - **M07** inclut des tutoriels [.NET](./day-03-integration/module-07-testing/TUTORIAL-DOTNET.md) et [Java](./day-03-integration/module-07-testing/TUTORIAL.md)
 - **M08** inclut un stack Prometheus + Grafana + JMX Exporter preconfigure
@@ -193,9 +223,12 @@ formation-kafka-dotnet/
 │       ├── bash/
 │       └── powershell/
 ├── day-02-development/          # Jour 2 : Avance
-│   ├── module-04-advanced-patterns/
-│   └── module-05-kafka-streams/
+│   └── module-04-advanced-patterns/
+│       ├── lab-2.1a-serialization/
+│       ├── lab-2.2-producer-advanced/
+│       └── lab-2.3a-consumer-dlt-retry/
 ├── day-03-integration/          # Jour 3 : Production
+│   ├── module-05-kafka-streams/
 │   ├── module-06-kafka-connect/
 │   ├── module-07-testing/
 │   └── module-08-observability/
@@ -216,6 +249,9 @@ formation-kafka-dotnet/
 | Fraud Detection API | <https://localhost:5101/swagger> | Lab 1.3a |
 | Balance API | <https://localhost:5111/swagger> | Lab 1.3b |
 | Audit API | <https://localhost:5121/swagger> | Lab 1.3c |
+| Serialization API | <http://localhost:5170/swagger> | Lab 2.1a |
+| Idempotent Producer API | <http://localhost:5171/swagger> | Lab 2.2a |
+| DLT Consumer API | <http://localhost:18083> | Lab 2.3a |
 
 ---
 

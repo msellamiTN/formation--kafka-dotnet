@@ -6,7 +6,7 @@ using System.Text.Json;
 var builder = WebApplication.CreateBuilder(args);
 
 // ═══════════════════════════════════════════════════════════════
-// CONFIGURATION VIA VARIABLES D'ENVIRONNEMENT
+// CONFIGURATION VIA ENVIRONMENT VARIABLES
 // ═══════════════════════════════════════════════════════════════
 var bootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") ?? "localhost:9092";
 var topic = Environment.GetEnvironmentVariable("KAFKA_TOPIC") ?? "orders";
@@ -22,6 +22,7 @@ var consumerConfig = new ConsumerConfig
     GroupId = groupId,
     AutoOffsetReset = Enum.Parse<AutoOffsetReset>(autoOffsetReset, true),
     EnableAutoCommit = false,
+    EnableAutoOffsetStore = false,  // Explicit offset control: call StoreOffset() only after successful processing
     SessionTimeoutMs = 45000,
     HeartbeatIntervalMs = 15000,
     MaxPollIntervalMs = 300000,
@@ -29,7 +30,7 @@ var consumerConfig = new ConsumerConfig
 };
 
 // ═══════════════════════════════════════════════════════════════
-// ÉTAT DU CONSUMER (pour monitoring)
+// CONSUMER STATE (monitoring)
 // ═══════════════════════════════════════════════════════════════
 var messagesProcessed = 0L;
 var messagesRetried = 0L;
@@ -92,7 +93,7 @@ app.MapGet("/api/v1/dlt/messages", () => Results.Ok(new
 app.Run();
 
 // ═══════════════════════════════════════════════════════════════
-// BOUCLE DE CONSOMMATION AVEC DLT ET RETRY
+// CONSUME LOOP WITH DLT AND RETRY
 // ═══════════════════════════════════════════════════════════════
 async Task ConsumeMessages(CancellationToken cancellationToken)
 {
@@ -146,6 +147,9 @@ async Task ConsumeMessages(CancellationToken cancellationToken)
 
             var success = await ProcessWithRetryAsync(consumeResult, cancellationToken);
 
+            // StoreOffset() marks this offset for the next Commit()
+            // Only store AFTER processing (success or DLT) to avoid data loss
+            consumer.StoreOffset(consumeResult);
             consumer.Commit(consumeResult);
             Interlocked.Increment(ref messagesProcessed);
         }
@@ -165,8 +169,8 @@ async Task ConsumeMessages(CancellationToken cancellationToken)
 }
 
 // ═══════════════════════════════════════════════════════════════
-// TRAITEMENT AVEC RETRY ET DLT
-// Exponential backoff + jitter, DLT pour erreurs permanentes
+// PROCESSING WITH RETRY AND DLT
+// Exponential backoff + jitter, DLT for permanent errors
 // ═══════════════════════════════════════════════════════════════
 async Task<bool> ProcessWithRetryAsync(ConsumeResult<string, string> result, CancellationToken ct)
 {
@@ -203,8 +207,8 @@ async Task<bool> ProcessWithRetryAsync(ConsumeResult<string, string> result, Can
 }
 
 // ═══════════════════════════════════════════════════════════════
-// TRAITEMENT MÉTIER
-// Simule un traitement avec validation
+// BUSINESS PROCESSING
+// Simulates processing with validation
 // ═══════════════════════════════════════════════════════════════
 async Task ProcessRecordAsync(ConsumeResult<string, string> result, CancellationToken ct)
 {
@@ -235,7 +239,7 @@ async Task ProcessRecordAsync(ConsumeResult<string, string> result, Cancellation
 }
 
 // ═══════════════════════════════════════════════════════════════
-// ENVOI AU DEAD LETTER TOPIC
+// SEND TO DEAD LETTER TOPIC
 // ═══════════════════════════════════════════════════════════════
 async Task SendToDltAsync(ConsumeResult<string, string> failedMessage, string errorReason, int attempts)
 {
@@ -281,8 +285,8 @@ async Task SendToDltAsync(ConsumeResult<string, string> failedMessage, string er
 }
 
 // ═══════════════════════════════════════════════════════════════
-// CLASSIFICATION DES ERREURS
-// Transient → retry, Non-transient → DLT immédiat
+// ERROR CLASSIFICATION
+// Transient → retry, Non-transient → DLT immediately
 // ═══════════════════════════════════════════════════════════════
 bool IsTransient(Exception ex) => ex is TimeoutException
     or OperationCanceledException

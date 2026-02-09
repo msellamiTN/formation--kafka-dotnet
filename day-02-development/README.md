@@ -1,6 +1,6 @@
-# 📅 Day 02 - Développement Avancé & Kafka Streams
+# 📅 Day 02 — Patterns de Production & Sérialisation
 
-> **Durée estimée** : 5-6 heures | **Niveau** : Intermédiaire → Avancé
+> **Mercredi 11 février 2026** | 6h (9h–12h / 13h30–16h30) | **Niveau** : Intermédiaire → Avancé
 
 ---
 
@@ -8,287 +8,412 @@
 
 À la fin de cette journée, vous serez capable de :
 
-| # | Objectif | Module |
-|---|----------|--------|
-| 1 | Implémenter le pattern **Dead Letter Topic** (DLT) | M04 |
-| 2 | Configurer des **retries avec backoff exponentiel** | M04 |
-| 3 | Gérer le **rebalancing** avec CooperativeSticky | M04 |
-| 4 | Distinguer les erreurs **transient vs permanent** | M04 |
-| 5 | Créer une topologie **Kafka Streams** complète | M05 |
-| 6 | Utiliser **KStream** et **KTable** pour le traitement temps réel | M05 |
-| 7 | Implémenter des **agrégations windowed** et des **joins** | M05 |
-| 8 | Interroger les **State Stores** via Interactive Queries | M05 |
+| # | Objectif | Bloc |
+| --- | -------- | ---- |
+| 1 | Choisir la bonne stratégie de **sérialisation** (JSON, Avro, Protobuf) | 2.1 |
+| 2 | Configurer **Schema Registry** et gérer l'**évolution de schéma** | 2.1 |
+| 3 | Activer l'**idempotence** producer (`EnableIdempotence = true`) | 2.2 |
+| 4 | Comprendre les **transactions Kafka** et l'exactly-once semantics | 2.2 |
+| 5 | Implémenter un **Dead Letter Topic** (DLT) pour messages en erreur | 2.3 |
+| 6 | Configurer des **retries avec backoff exponentiel + jitter** | 2.3 |
+| 7 | Gérer le **rebalancing** avec CooperativeSticky | 2.3 |
+| 8 | Comprendre **Kafka Connect** et ses cas d'usage (preview Day 03) | 2.4 |
+
+> **Ratio théorie/pratique** : 30% / 70% — Chaque bloc commence par 15-20 min de théorie puis enchaîne sur un lab hands-on.
 
 ---
 
-## 🛠️ Phase de Développement .NET avec Kafka
+## 📋 Prérequis
 
-### 🎯 Objectif
-Ce module est conçu pour les développeurs .NET BHF souhaitant maîtriser l'intégration Kafka dans leurs applications. Vous apprendrez à développer un Producer Kafka fiable, puis à le déployer et tester dans des environnements Docker et Kubernetes.
-
-> **Note** : Cette phase est recommandée pour comprendre en profondeur l'intégration Kafka. Si vous voulez simplement déployer et tester, passez directement au Lab 02.0.
-
-### 📚 Parcours d'Apprentissage Intégré
-
-**Étape 1 → Étape 2 → Étape 3 → Étape 4 → Étape 5**
-
-#### 🎓 Tutoriel Complet .NET (Day 01)
-- **Référence** : [TUTORIAL-DOTNET.md](../day-01-foundations/module-02-producer/TUTORIAL-DOTNET.md)
-- **Focus** : Producteur .NET 8 pour K8s/Docker BHF
-- **Contenu** : Architecture complète, déploiement, chaos engineering
-- **Environnement** : Docker/Kubernetes avec Toxiproxy
+- ✅ **Day 01 complété** (M01-M03, Labs 1.2a–1.3c)
+- ✅ Infrastructure Kafka fonctionnelle (Docker ou OpenShift Sandbox)
+- ✅ Topic `banking.transactions` existant (6 partitions)
+- ✅ .NET 8 SDK + Confluent.Kafka 2.3.0+
 
 ---
 
-## 📚 Concepts fondamentaux
+## 🗓️ Planning de la journée
 
-### Dead Letter Topic (DLT)
+| Créneau | Bloc | Durée | Contenu |
+| ------- | ---- | ----- | ------- |
+| 09h00–09h30 | Recap | 30 min | Quiz Day 01 + correction, questions ouvertes |
+| 09h30–10h30 | **2.1** | 1h | Sérialisation : JSON patterns → Avro → Schema Registry |
+| 10h30–10h45 | | 15 min | ☕ Pause |
+| 10h45–12h00 | **2.2** | 1h15 | Producer Avancé : Idempotence, Transactions, Exactly-once |
+| 12h00–13h30 | | 1h30 | 🍽️ Déjeuner |
+| 13h30–15h00 | **2.3** | 1h30 | Consumer Avancé : DLT, Retry, Rebalancing (Lab M04) |
+| 15h00–15h15 | | 15 min | ☕ Pause |
+| 15h15–16h00 | **2.4** | 45 min | Kafka Connect Introduction (preview Day 03) |
+| 16h00–16h30 | Recap | 30 min | Bilan Day 02, Q&A, preview Day 03 |
+
+---
+
+## 📚 Bloc 2.1 — Sérialisation Avancée (1h)
+
+> **Théorie** : 20 min | **Lab** : 40 min
+
+### Concepts clés
 
 ```mermaid
 flowchart LR
-    subgraph Normal["✅ Flux Normal"]
-        P["📤 Producer"] --> T["📦 Topic"]
-        T --> C["📥 Consumer"]
-        C --> DB[("💾 DB")]
+    subgraph Formats["📦 Formats de Sérialisation"]
+        JSON["JSON<br/>✅ Lisible<br/>❌ Verbeux"]
+        AVRO["Avro<br/>✅ Compact<br/>✅ Schema Evolution"]
+        PROTO["Protobuf<br/>✅ Rapide<br/>✅ Multi-langage"]
     end
-    
-    subgraph Error["❌ Flux Erreur"]
-        C -->|"erreur"| R{"🔄 Retry?"}
-        R -->|"max atteint"| DLT["💀 DLT"]
-        R -->|"retry"| T
+
+    subgraph SR["🏛️ Schema Registry"]
+        S1["Schema v1"]
+        S2["Schema v2"]
+        S1 -->|"BACKWARD<br/>compatible"| S2
     end
-    
+
+    JSON --> SR
+    AVRO --> SR
+    PROTO --> SR
+```
+
+| Format | Taille (msg 1KB JSON) | Schema Evolution | Lisibilité | Cas d'usage |
+| ------ | --------------------- | ---------------- | ---------- | ----------- |
+| **JSON** | 1000 bytes | ❌ Manuelle | ✅ Lisible | Prototypage, debug |
+| **Avro** | ~400 bytes | ✅ Registry | ❌ Binaire | Production (recommandé) |
+| **Protobuf** | ~350 bytes | ✅ Registry | ❌ Binaire | gRPC, multi-langage |
+
+### Évolution de schéma
+
+| Stratégie | Règle | Exemple |
+| --------- | ----- | ------- |
+| **BACKWARD** | Nouveau consumer lit ancien format | Ajouter champ optionnel |
+| **FORWARD** | Ancien consumer lit nouveau format | Supprimer champ optionnel |
+| **FULL** | Les deux | Ajouter/supprimer champs optionnels uniquement |
+| **NONE** | Pas de vérification | Développement uniquement |
+
+### Lab 2.1 — Sérialisation JSON structurée & intro Avro
+
+> 📂 **[lab-2.1a — Serialization](./module-04-advanced-patterns/lab-2.1a-serialization/README.md)**
+
+**Objectifs du lab** :
+
+1. Implémenter un serializer/deserializer JSON typé pour `Transaction`
+2. Ajouter la validation de schéma côté producer et consumer
+3. Démontrer le problème d'évolution de schéma avec JSON brut
+4. (Bonus) Configurer Avro avec Schema Registry
+
+**Concepts .NET** :
+
+```csharp
+// Custom JSON serializer with schema validation
+var producerConfig = new ProducerConfig { /* ... */ };
+
+using var producer = new ProducerBuilder<string, Transaction>(producerConfig)
+    .SetValueSerializer(new TransactionJsonSerializer())  // Custom serializer
+    .Build();
+```
+
+---
+
+## 📚 Bloc 2.2 — Producer Patterns Avancés (1h15)
+
+> **Théorie** : 20 min | **Lab** : 55 min
+
+### Concepts clés
+
+#### Idempotence : Éviter les duplicatas
+
+```mermaid
+sequenceDiagram
+    participant P as 📤 Producer
+    participant B as 📦 Broker
+
+    P->>B: Send msg (PID=1, Seq=0)
+    B-->>P: ACK ✅
+    P->>B: Send msg (PID=1, Seq=1)
+    Note over B: Network timeout
+    P->>B: Retry msg (PID=1, Seq=1)
+    B->>B: Seq=1 déjà vu → dédupliqué
+    B-->>P: ACK ✅ (pas de duplicata)
+```
+
+| Config | Sans Idempotence | Avec Idempotence |
+| ------ | ---------------- | ---------------- |
+| `EnableIdempotence` | `false` | `true` |
+| `Acks` | `Leader` ou `All` | **`All`** (forcé) |
+| `MaxInFlight` | 5 (défaut) | **≤ 5** (forcé) |
+| `MessageSendMaxRetries` | 2 (défaut) | **`int.MaxValue`** (forcé) |
+| Risque duplicata | ⚠️ Oui (retry) | ✅ Non |
+| Performance | Rapide | ~identique |
+
+#### Transactions Kafka (Exactly-Once)
+
+```mermaid
+flowchart LR
+    subgraph TX["🔒 Transaction Kafka"]
+        P["Producer"] -->|"InitTransactions()"| B["Broker"]
+        P -->|"BeginTransaction()"| B
+        P -->|"Send(msg1)"| B
+        P -->|"Send(msg2)"| B
+        P -->|"SendOffsetsToTransaction()"| B
+        P -->|"CommitTransaction()"| B
+    end
+
+    subgraph Consumer["📥 Consumer"]
+        C["IsolationLevel =<br/>ReadCommitted"]
+    end
+
+    B --> C
+    style TX fill:#e8f5e9,stroke:#388e3c
+```
+
+| Garantie | Configuration Producer | Configuration Consumer |
+| -------- | --------------------- | --------------------- |
+| **At-most-once** | `Acks = 0` | Auto-commit |
+| **At-least-once** | `Acks = All` + Idempotence | Manual commit après traitement |
+| **Exactly-once** | `Acks = All` + Transactions | `IsolationLevel = ReadCommitted` |
+
+### Lab 2.2 — Producer Idempotent & Transactions
+
+> 📂 **[lab-2.2a — Producer Idempotent](./module-04-advanced-patterns/lab-2.2-producer-advanced/README.md)**
+
+**Objectifs du lab** :
+
+1. Activer `EnableIdempotence = true` et observer le Producer ID (PID)
+2. Simuler des retries réseau et vérifier l'absence de duplicatas
+3. Comparer throughput avec/sans idempotence
+4. (Bonus) Implémenter une transaction Kafka read-process-write
+
+**Code clé** :
+
+```csharp
+var config = new ProducerConfig
+{
+    BootstrapServers = "localhost:9092",
+    EnableIdempotence = true,       // Activates PID + sequence numbers
+    Acks = Acks.All,                // Required for idempotence
+    MaxInFlight = 5,                // Max with idempotence
+    MessageSendMaxRetries = int.MaxValue,
+    LingerMs = 10,
+    CompressionType = CompressionType.Snappy
+};
+```
+
+---
+
+## 📥 Bloc 2.3 — Consumer Patterns Avancés (1h30)
+
+> **Théorie** : 20 min | **Lab** : 1h10
+
+### Concepts clés
+
+```mermaid
+flowchart LR
+    subgraph Pipeline["🏦 E-Banking Pipeline"]
+        T["banking.transactions<br/>(6 partitions)"]
+        C["⚙️ Consumer"]
+        D{OK?}
+        R["🔄 Retry<br/>(backoff + jitter)"]
+        DLT["💀 DLT"]
+        DB[("💾 Audit DB")]
+    end
+
+    T --> C --> D
+    D -->|"✅"| DB
+    D -->|"❌ transient"| R
+    R -->|"max retries"| DLT
+    R -->|"retry"| C
+    D -->|"❌ permanent"| DLT
+
     style DLT fill:#ffcccc
+    style DB fill:#ccffcc
 ```
 
-### Stratégie de Retry
+| Pattern | Quand | Implémentation |
+| ------- | ----- | -------------- |
+| **DLT (Dead Letter Topic)** | Message non traitable après N retries | Producer vers `banking.transactions.dlq` avec headers de traçabilité |
+| **Retry + Backoff** | Erreur transitoire (timeout, DB lock) | `Math.Pow(2, attempt) * baseDelay + jitter` |
+| **Error Classification** | Distinguer transient vs permanent | `IsTransient(ex)` → retry, sinon DLT immédiat |
+| **Rebalancing Handlers** | Scaling up/down des consumers | `SetPartitionsRevokedHandler` → commit avant révocation |
 
-| Type d'erreur | Exemple | Action | Retry? |
-|---------------|---------|--------|--------|
-| **Transient** | Network timeout, DB lock | Retry avec backoff | ✅ Oui |
-| **Permanent** | Invalid JSON, Business rule | Envoyer au DLT | ❌ Non |
-| **Poison Pill** | Message corrompu | Log + Skip | ❌ Non |
+### Lab 2.3 — DLT, Retry & Rebalancing
 
-### Backoff Exponentiel
+> 📂 **[lab-2.3a — Consumer DLT & Retry](./module-04-advanced-patterns/lab-2.3a-consumer-dlt-retry/README.md)**
 
-```mermaid
-gantt
-    title Stratégie de Backoff Exponentiel
-    dateFormat X
-    axisFormat %s
-    
-    section Retries
-    Tentative 1 (100ms)    :0, 1
-    Attente               :1, 2
-    Tentative 2 (200ms)    :2, 3
-    Attente               :3, 5
-    Tentative 3 (400ms)    :5, 6
-    Attente               :6, 10
-    DLT                    :crit, 10, 11
-```
+**Objectifs du lab** :
 
-### Kafka Streams - Topologie
+1. Envoyer des messages valides et invalides, observer le routage vers DLT
+2. Observer les retries avec backoff exponentiel dans les logs
+3. Scaler le consumer à 2 replicas et observer le rebalancing CooperativeSticky
+4. Consulter les métriques via `/api/v1/stats` et `/api/v1/dlt/messages`
+
+**Concepts couverts** :
+
+- `EnableAutoCommit = false` + `Commit()` explicite
+- `EnableAutoOffsetStore = false` + `StoreOffset()` pour contrôle fin
+- `PartitionAssignmentStrategy = CooperativeSticky`
+- Classification transient vs permanent avec pattern matching C#
+- DLT avec headers : `original-topic`, `error-reason`, `retry-count`, `failed-at`
+
+---
+
+## 🔌 Bloc 2.4 — Kafka Connect Introduction (45 min)
+
+> **Théorie** : 30 min | **Démo** : 15 min
+
+### Concepts clés
 
 ```mermaid
 flowchart LR
-    subgraph Source["📥 Source"]
-        IN["sales-events"]
+    subgraph Sources["📥 Sources"]
+        DB[("🗄️ SQL Server")]
+        FILE["📄 CSV/JSON"]
     end
-    
-    subgraph Processing["⚙️ Processing"]
-        F["filter()"]
-        M["map()"]
-        GB["groupBy()"]
-        AGG["aggregate()"]
-        J["join()"]
+
+    subgraph Connect["🔌 Kafka Connect"]
+        SC["Source Connector"]
+        SK["Sink Connector"]
     end
-    
-    subgraph Sink["📤 Sink"]
-        OUT1["large-sales"]
-        OUT2["sales-by-product"]
-        SS[("State Store")]
+
+    subgraph Kafka["📦 Kafka"]
+        T["Topics"]
     end
-    
-    IN --> F --> M --> GB --> AGG --> OUT2
-    AGG --> SS
-    IN --> J --> OUT1
+
+    subgraph Sinks["📤 Destinations"]
+        ES[("🔍 Elasticsearch")]
+        S3["☁️ Blob Storage"]
+    end
+
+    DB --> SC --> T
+    FILE --> SC
+    T --> SK --> ES
+    T --> SK --> S3
 ```
 
-### KStream vs KTable
+| Concept | Description |
+| ------- | ----------- |
+| **Source Connector** | Lit des données externes → Kafka topics |
+| **Sink Connector** | Lit Kafka topics → écrit vers systèmes externes |
+| **Worker** | Process JVM qui exécute les connecteurs |
+| **Task** | Unité de parallélisme au sein d'un connecteur |
+| **Converter** | Transforme les données (JsonConverter, AvroConverter) |
 
-| Aspect | KStream | KTable |
-|--------|---------|--------|
-| **Sémantique** | Flux d'événements | Table de faits |
-| **Données** | Append-only | Upsert (clé unique) |
-| **Exemple** | Transactions | Solde compte |
-| **Opération** | `filter`, `map` | `aggregate`, `reduce` |
+> 🔗 **Lab complet Kafka Connect** : voir **[Day 03 — Module 06](../day-03-integration/module-06-kafka-connect/README.md)**
 
-```mermaid
-flowchart TB
-    subgraph KStream["📊 KStream (Events)"]
-        E1["🛒 Order #1"]
-        E2["🛒 Order #2"]
-        E3["🛒 Order #3"]
-    end
-    
-    subgraph KTable["📋 KTable (State)"]
-        S1["User A: 150€"]
-        S2["User B: 200€"]
-    end
-    
-    E1 --> E2 --> E3
-    KStream -->|"aggregate"| KTable
-```
+**Preview** : Demain (Day 03) vous déploierez un connecteur **SQL Server CDC → Kafka** et un **Kafka → Elasticsearch** pour indexer les transactions bancaires en temps réel.
 
 ---
 
-## 💡 Tips & Best Practices
-
-### Dead Letter Topic
-
-> **💀 Toujours créer un DLT pour chaque topic critique**
-> ```csharp
-> async Task SendToDltAsync(ConsumeResult<string, string> failed, Exception ex)
-> {
->     var dltMessage = new Message<string, string>
->     {
->         Key = failed.Message.Key,
->         Value = failed.Message.Value,
->         Headers = new Headers
->         {
->             { "original-topic", Encoding.UTF8.GetBytes(failed.Topic) },
->             { "error-message", Encoding.UTF8.GetBytes(ex.Message) },
->             { "error-timestamp", Encoding.UTF8.GetBytes(DateTime.UtcNow.ToString("o")) }
->         }
->     };
->     await dlqProducer.ProduceAsync(failed.Topic + ".DLT", dltMessage);
-> }
-> ```
-
-> **📊 Monitorer le DLT en production**
-> - Alerter si messages dans DLT
-> - Dashboard Grafana pour consumer lag du DLT
-> - Processus de retraitement manuel
-
-### Kafka Streams
-
-> **🆔 Choisir un APPLICATION_ID unique par application**
-> ```java
-> // Kafka Streams est une API Java uniquement
-> props.put(StreamsConfig.APPLICATION_ID_CONFIG, "sales-processor-v1");
-> ```
-
-> **💾 Configurer le State Store pour la production**
-> ```java
-> // Kafka Streams est une API Java uniquement
-> props.put(StreamsConfig.STATE_DIR_CONFIG, "/var/kafka-streams");
-> props.put(StreamsConfig.NUM_STANDBY_REPLICAS_CONFIG, 1);
-> ```
-
-> **⏰ Gérer le temps correctement**
-> ```java
-> // Kafka Streams est une API Java uniquement
-> props.put(StreamsConfig.DEFAULT_TIMESTAMP_EXTRACTOR_CLASS_CONFIG,
->           WallclockTimestampExtractor.class);
-> ```
-
-> **ℹ️ Note .NET** : Kafka Streams n'est pas disponible en .NET natif. Alternatives : [Streamiz.Kafka.Net](https://github.com/LGouellec/kafka-streams-dotnet) (port communautaire) ou ksqlDB via REST API.
-
----
-
-## 🏗️ Architecture du Lab
+## 🏗️ Architecture Day 02
 
 ```mermaid
 flowchart TB
     subgraph Docker["🐳 Docker Network: bhf-kafka-network"]
         subgraph Infra["Infrastructure"]
-            K["📦 Kafka<br/>:29092"]
+            K["📦 Kafka<br/>:9092"]
             UI["🖥️ Kafka UI<br/>:8080"]
+            SR["🏛️ Schema Registry<br/>:8081"]
         end
-        
-        subgraph M04["Module 04 - Patterns"]
-            JAVA04["☕ Java API<br/>:18082"]
-            NET04["🔷 .NET Consumer<br/>:18083"]
+
+        subgraph Bloc21["Bloc 2.1 - Serialization"]
+            SER["🔷 .NET Serializer Demo"]
         end
-        
-        subgraph M05["Module 05 - Streams"]
-            STREAMS["🌊 Streams App<br/>:18084"]
-            SS[("💾 State Store")]
+
+        subgraph Bloc22["Bloc 2.2 - Idempotent Producer"]
+            IDEM["🔷 .NET Idempotent Producer"]
+        end
+
+        subgraph Bloc23["Bloc 2.3 - Consumer Advanced"]
+            NET04["🔷 .NET DLT Consumer<br/>:18083"]
         end
     end
-    
-    JAVA04 -->|"orders"| K
-    K -->|"orders"| NET04
-    K <-->|"sales-events"| STREAMS
-    STREAMS --> SS
+
+    SER --> K
+    IDEM --> K
+    K -->|"banking.transactions"| NET04
+    NET04 -->|"banking.transactions.dlq"| K
     UI --> K
+    SER --> SR
 ```
 
 ---
 
-## 📦 Modules
+## 📦 Modules & Labs
 
-| Module | Titre | Durée | Description | Tutoriels |
-|--------|-------|-------|-------------|-----------|
-| [**M04**](./module-04-advanced-patterns/README.md) | Patterns Avancés | 90-120 min | DLT, Retry, Rebalancing | [🔷 .NET](./module-04-advanced-patterns/TUTORIAL-DOTNET.md) / [🔷 VS2022](./module-04-advanced-patterns/TUTORIAL-VS2022.md) |
-| [**M05**](./module-05-kafka-streams/README.md) | Kafka Streams | 90-120 min | KStream, KTable, Aggregations | - |
-
-### 📚 Tutoriels de Référence
-
-#### 🔷 .NET Producer (Day 01)
-- **Tutoriel Complet** : [TUTORIAL-DOTNET.md](../day-01-foundations/module-02-producer/TUTORIAL-DOTNET.md)
-- **Focus** : Producteur .NET 8 pour K8s/Docker BHF
-- **Patterns** : Architecture complète, déploiement, chaos engineering
-- **Environnement** : Docker/Kubernetes avec Toxiproxy
+| Bloc | Module | Lab | Durée | Description |
+| ---- | ------ | --- | ----- | ----------- |
+| 2.1 | [Serialization](./module-04-advanced-patterns/lab-2.1a-serialization/README.md) | Lab 2.1a | 40 min | JSON typé, validation, intro Avro |
+| 2.2 | [Producer Advanced](./module-04-advanced-patterns/lab-2.2-producer-advanced/README.md) | Lab 2.2a | 55 min | Idempotence, PID, transactions |
+| 2.3 | [Consumer Advanced](./module-04-advanced-patterns/lab-2.3a-consumer-dlt-retry/README.md) | Lab 2.3a | 1h10 | DLT, Retry, Rebalancing |
+| 2.4 | Kafka Connect | (Day 03 preview) | 15 min | Démo Source/Sink connectors |
 
 ---
 
 ## 🚀 Quick Start
 
-### Prérequis
+### Démarrer l'infrastructure
 
-- ✅ Day 01 complété
-- ✅ Kafka infrastructure running
+<details>
+<summary>🐳 Docker</summary>
 
-### Démarrer les modules
+```bash
+# Depuis la racine du projet
+cd day-01-foundations/module-01-cluster
+./scripts/up.sh
 
-```powershell
-# Depuis formation-v2/
-cd infra
-docker-compose -f docker-compose.single-node.yml up -d
-
-# Module 04
-cd ../day-02-development/module-04-advanced-patterns
-docker-compose -f docker-compose.module.yml up -d --build
-
-# Module 05
-cd ../module-05-kafka-streams
-docker-compose -f docker-compose.module.yml up -d --build
+# Vérifier que Kafka est healthy
+docker ps | grep kafka
 ```
 
-### Ports
+</details>
 
-| Service | Port | Description |
-|---------|------|-------------|
-| M04 Java API | 18082 | Producer avec DLT |
-| M04 .NET Consumer | 18083 | Consumer avec DLT, retries et rebalancing |
-| M05 Streams App | 18084 | Kafka Streams + REST |
+<details>
+<summary>☁️ OpenShift Sandbox</summary>
+
+```bash
+oc login --token=<TOKEN> --server=<SERVER>
+oc get pods -l app=kafka
+```
+
+</details>
+
+### Lancer les labs
+
+```bash
+# Lab 2.1a — Serialization
+cd day-02-development/module-04-advanced-patterns/lab-2.1a-serialization/dotnet
+dotnet run
+
+# Lab 2.2a — Idempotent Producer
+cd ../../lab-2.2-producer-advanced/dotnet
+dotnet run
+
+# Lab 2.3a — DLT & Retry Consumer
+cd ../../lab-2.3a-consumer-dlt-retry/dotnet
+dotnet run
+```
 
 ---
 
-## ⚠️ Erreurs courantes
+## ⚠️ Troubleshooting
 
 | Erreur | Cause | Solution |
-|--------|-------|----------|
-| `StreamsException: task timeout` | Processing trop lent | Augmenter `max.poll.interval.ms` |
-| `InvalidStateStoreException` | Store non prêt | Attendre `KafkaStreams.State.RUNNING` |
-| `SerializationException` | Serde incorrect | Vérifier JsonSerde configuration |
-| Message dans DLT | Erreur de traitement | Analyser l'exception dans le header |
+| ------ | ----- | -------- |
+| `ClusterAuthorizationException` | Idempotence non autorisée | Vérifier les ACLs broker ou désactiver `EnableIdempotence` |
+| `InvalidPidMappingException` | PID expiré (transaction timeout) | Augmenter `TransactionalId` timeout ou recréer le producer |
+| `SerializationException` | Schema incompatible | Vérifier compatibilité dans Schema Registry |
+| Message dans DLT | Erreur de traitement | Analyser headers `error-reason` dans le message DLT |
+| `Rebalancing in progress` | Consumer group instable | Vérifier `SessionTimeoutMs` et `HeartbeatIntervalMs` |
+
+---
+
+## ✅ Validation Day 02
+
+- [ ] Lab 2.1 : Serializer JSON typé fonctionne, validation détecte les schémas invalides
+- [ ] Lab 2.2 : Producer idempotent activé, PID visible dans les logs, pas de duplicatas après retry
+- [ ] Lab 2.3 : Messages invalides routés vers DLT, retries visibles dans les logs, rebalancing observé
+- [ ] Comprendre la différence entre at-least-once et exactly-once
+- [ ] Savoir quand utiliser `EnableIdempotence` vs Transactions complètes
 
 ---
 
 ## ➡️ Navigation
 
-⬅️ **[Day 01 - Fondamentaux](../day-01-foundations/README.md)**
-
-➡️ **[Day 03 - Intégration](../day-03-integration/README.md)**
+⬅️ **[Day 01 — Fondamentaux](../day-01-foundations/module-01-cluster/README.md)** | ➡️ **[Day 03 — Intégration, Tests & Observabilité](../day-03-integration/README.md)**

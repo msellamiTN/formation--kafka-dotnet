@@ -1,0 +1,109 @@
+### ═══════════════════════════════════════════════════════════
+### E-Banking Serialization API — Lab 2.1 Test Requests
+### ═══════════════════════════════════════════════════════════
+
+@baseUrl = http://localhost:5170
+
+### ─── Health Check ─────────────────────────────────────────
+GET {{baseUrl}}/health
+
+### ─── Schema Info ──────────────────────────────────────────
+### Shows v1 and v2 schema definitions, compatibility rules
+GET {{baseUrl}}/api/transactions/schema-info
+
+### ─── DEMO 1: Send v1 Transaction (Typed Serializer) ──────
+### Uses custom ISerializer<Transaction> with validation
+### Transaction is validated BEFORE sending to Kafka
+POST {{baseUrl}}/api/transactions
+Content-Type: application/json
+
+{
+    "transactionId": "TX-LAB21-001",
+    "customerId": "CUST-001",
+    "fromAccount": "FR7630001000123456789",
+    "toAccount": "FR7630001000987654321",
+    "amount": 1500.00,
+    "currency": "EUR",
+    "type": 1,
+    "description": "Virement salaire"
+}
+
+### ─── DEMO 1b: Send INVALID Transaction ───────────────────
+### Amount <= 0 → rejected by serializer BEFORE reaching Kafka
+### Expected: 400 Bad Request with "RejectedByValidation"
+POST {{baseUrl}}/api/transactions
+Content-Type: application/json
+
+{
+    "transactionId": "TX-INVALID-001",
+    "customerId": "CUST-003",
+    "fromAccount": "FR7630001000111222333",
+    "toAccount": "FR7630001000444555666",
+    "amount": -50.00,
+    "currency": "EUR",
+    "type": 1
+}
+
+### ─── DEMO 1c: Send Transaction with missing fields ───────
+### Missing fromAccount → rejected by serializer
+### Expected: 400 Bad Request
+POST {{baseUrl}}/api/transactions
+Content-Type: application/json
+
+{
+    "transactionId": "TX-INVALID-002",
+    "customerId": "CUST-004",
+    "amount": 100.00,
+    "currency": "EUR",
+    "type": 1
+}
+
+### ─── DEMO 2: Send v2 Transaction (Schema Evolution) ──────
+### Includes new fields: riskScore and sourceChannel
+### The background consumer (v1 deserializer) will read this
+### and ignore the extra fields → BACKWARD compatible
+POST {{baseUrl}}/api/transactions/v2
+Content-Type: application/json
+
+{
+    "transactionId": "TX-V2-001",
+    "customerId": "CUST-002",
+    "fromAccount": "FR7630001000111222333",
+    "toAccount": "FR7630001000444555666",
+    "amount": 5000.00,
+    "currency": "EUR",
+    "type": 1,
+    "description": "High-value transfer",
+    "riskScore": 0.85,
+    "sourceChannel": "mobile-app"
+}
+
+### ─── DEMO 2b: Send v2 with invalid riskScore ─────────────
+### riskScore > 1.0 → rejected by validation
+### Expected: 400 Bad Request
+POST {{baseUrl}}/api/transactions/v2
+Content-Type: application/json
+
+{
+    "transactionId": "TX-V2-INVALID",
+    "customerId": "CUST-005",
+    "fromAccount": "FR7630001000111222333",
+    "toAccount": "FR7630001000444555666",
+    "amount": 200.00,
+    "currency": "EUR",
+    "type": 2,
+    "riskScore": 1.5,
+    "sourceChannel": "web"
+}
+
+### ─── Consumed Messages ───────────────────────────────────
+### Shows messages consumed by the background v1 deserializer
+### v2 messages will show "BACKWARD compatible" flag
+GET {{baseUrl}}/api/transactions/consumed
+
+### ─── Metrics ─────────────────────────────────────────────
+### Producer + Consumer serialization metrics
+GET {{baseUrl}}/api/transactions/metrics
+
+### ─── Swagger UI ──────────────────────────────────────────
+### Open in browser: http://localhost:5170/swagger

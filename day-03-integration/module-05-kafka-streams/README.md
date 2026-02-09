@@ -66,8 +66,8 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    IT["📥 Input"] --> SRC["Source"] --> PROC["⚙️ Process"] --> SINK["Sink"] --> OT["� Output"]
-    PROC -.-> SS[("� State")]
+    IT["📥 Input"] --> SRC["Source"] --> PROC["⚙️ Process"] --> SINK["Sink"] --> OT["📤 Output"]
+    PROC -.-> SS[("💾 State")]
     
     style PROC fill:#e3f2fd
 ```
@@ -223,7 +223,7 @@ stream.groupByKey()
 <summary>🐳 <b>Mode Docker</b></summary>
 
 ```bash
-cd formation-v2/
+cd formation-kafka-dotnet/
 ./scripts/up.sh
 ```
 
@@ -350,7 +350,7 @@ kubectl get kafkatopics -n kafka | grep -E "sales|products"
 <summary>🐳 <b>Mode Docker</b></summary>
 
 ```bash
-docker compose -f day-02-development/module-05-kafka-streams/docker-compose.module.yml up -d --build
+docker compose -f day-03-integration/module-05-kafka-streams/docker-compose.module.yml up -d --build
 ```
 
 **Vérification** :
@@ -366,7 +366,7 @@ docker logs m05-streams-app --tail 20
 
 ```bash
 # Builder et pousser l'image
-cd formation-v2/day-02-development/module-05-kafka-streams
+cd formation-kafka-dotnet/day-03-integration/module-05-kafka-streams
 docker build -t localhost:5000/m05-streams-app:latest -f java/Dockerfile java/
 docker push localhost:5000/m05-streams-app:latest
 
@@ -751,7 +751,7 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
 ### 2. Déployer l'application Kafka Streams (Java)
 
 ```bash
-cd day-02-development/module-05-kafka-streams/java
+cd day-03-integration/module-05-kafka-streams/java
 
 oc new-build java:17 --binary=true --name=m05-streams-app
 oc start-build m05-streams-app --from-dir=. --follow
@@ -836,7 +836,7 @@ docker exec kafka kafka-run-class kafka.tools.GetOffsetShell \
 ## 🧹 Nettoyage
 
 ```bash
-docker compose -f day-02-development/module-05-kafka-streams/docker-compose.module.yml down
+docker compose -f day-03-integration/module-05-kafka-streams/docker-compose.module.yml down
 
 # Supprimer les topics
 docker exec kafka kafka-topics --delete --topic sales-events --bootstrap-server localhost:9092

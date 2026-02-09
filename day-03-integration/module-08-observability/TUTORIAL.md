@@ -589,7 +589,7 @@ Invoke-WebRequest -Uri "https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_pro
 ### 6.2 Démarrer l'infrastructure Kafka (depuis infra/)
 
 ```powershell
-# Depuis la racine formation-v2/
+# Depuis la racine formation-kafka-dotnet/
 cd infra
 
 # Démarrer Kafka single-node + Kafka UI

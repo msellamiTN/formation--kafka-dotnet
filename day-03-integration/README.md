@@ -246,6 +246,7 @@ flowchart TB
 
 | Module | Titre | Durée | Description |
 |--------|-------|-------|-------------|
+| [**M05**](./module-05-kafka-streams/README.md) | Kafka Streams | 90-120 min | KStream, KTable, aggregations, windowing (Java) |
 | [**M06**](./module-06-kafka-connect/README.md) | Kafka Connect | 60-90 min | Source/Sink, REST API |
 | [**M07**](./module-07-testing/README.md) | Testing | 60 min | Mock, Testcontainers |
 | [**M08**](./module-08-observability/README.md) | Observabilité | 60-90 min | JMX, Prometheus, Grafana |
@@ -262,7 +263,7 @@ flowchart TB
 ### Démarrer les modules
 
 ```powershell
-# Depuis formation-v2/
+# Depuis formation-kafka-dotnet/
 cd infra
 docker-compose -f docker-compose.single-node.yml up -d
 
