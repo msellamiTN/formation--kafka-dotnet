@@ -376,19 +376,46 @@ oc get pods -l app=kafka
 
 ### Lancer les labs
 
+<details>
+<summary>🖥️ Local (dotnet run)</summary>
+
 ```bash
-# Lab 2.1a — Serialization
+# Lab 2.1a — Serialization (port 5170)
 cd day-02-development/module-04-advanced-patterns/lab-2.1a-serialization/dotnet
 dotnet run
 
-# Lab 2.2a — Idempotent Producer
+# Lab 2.2a — Idempotent Producer (port 5171)
 cd ../../lab-2.2-producer-advanced/dotnet
 dotnet run
 
-# Lab 2.3a — DLT & Retry Consumer
+# Lab 2.3a — DLT & Retry Consumer (port 18083)
 cd ../../lab-2.3a-consumer-dlt-retry/dotnet
 dotnet run
 ```
+
+</details>
+
+<details>
+<summary>🐳 Docker Compose (tous les labs)</summary>
+
+```bash
+# Démarrer les 3 labs Day 02 via Docker Compose
+cd day-02-development/module-04-advanced-patterns
+docker compose -f docker-compose.module.yml up -d --build
+
+# Vérifier
+docker ps | grep m04
+
+# Swagger UIs :
+#   Lab 2.1a : http://localhost:5170/swagger
+#   Lab 2.2a : http://localhost:5171/swagger
+#   Lab 2.3a : http://localhost:18083/swagger
+
+# Arrêter
+docker compose -f docker-compose.module.yml down
+```
+
+</details>
 
 ---
 

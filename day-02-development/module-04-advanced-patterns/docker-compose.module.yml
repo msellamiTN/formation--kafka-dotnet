@@ -1,0 +1,78 @@
+services:
+  # ============================================
+  # Lab 2.1a - Serialization API
+  # ============================================
+  serialization-api:
+    build:
+      context: ./lab-2.1a-serialization/dotnet
+    container_name: m04-serialization-api
+    environment:
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      ASPNETCORE_ENVIRONMENT: Development
+      Kafka__BootstrapServers: kafka:29092
+      Kafka__Topic: banking.transactions
+      Kafka__GroupId: serialization-lab-consumer
+    ports:
+      - "5170:8080"
+    networks:
+      - bhf-kafka-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ============================================
+  # Lab 2.2a - Idempotent Producer API
+  # ============================================
+  idempotent-api:
+    build:
+      context: ./lab-2.2-producer-advanced/dotnet
+    container_name: m04-idempotent-api
+    environment:
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      ASPNETCORE_ENVIRONMENT: Development
+      Kafka__BootstrapServers: kafka:29092
+      Kafka__Topic: banking.transactions
+    ports:
+      - "5171:8080"
+    networks:
+      - bhf-kafka-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ============================================
+  # Lab 2.3a - DLT & Retry Consumer
+  # ============================================
+  dlt-consumer:
+    build:
+      context: ./lab-2.3a-consumer-dlt-retry/dotnet
+    container_name: m04-dlt-consumer
+    environment:
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      ASPNETCORE_ENVIRONMENT: Development
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC: banking.transactions
+      KAFKA_GROUP_ID: dlt-retry-consumer-group
+      KAFKA_DLT_TOPIC: banking.transactions.dlq
+      MAX_RETRIES: "3"
+      RETRY_BACKOFF_MS: "1000"
+    ports:
+      - "18083:8080"
+    networks:
+      - bhf-kafka-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+networks:
+  bhf-kafka-network:
+    external: true

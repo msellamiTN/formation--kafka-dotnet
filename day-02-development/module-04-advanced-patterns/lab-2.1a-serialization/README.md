@@ -272,6 +272,36 @@ using var producer = new ProducerBuilder<string, Transaction>(producerConfig)
 
 ---
 
+## 🐳 Déploiement Docker Compose
+
+```bash
+# Depuis la racine du module M04
+cd day-02-development/module-04-advanced-patterns
+
+# Démarrer uniquement le lab 2.1a
+docker compose -f docker-compose.module.yml up -d --build serialization-api
+
+# Vérifier
+docker logs m04-serialization-api --tail 10
+```
+
+**Accès** : `http://localhost:5170/swagger`
+
+```bash
+# Tester
+curl -s http://localhost:5170/health
+curl -s -X POST http://localhost:5170/api/transactions \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"CUST-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":1500.00,"currency":"EUR","type":1}' | jq .
+```
+
+```bash
+# Arrêter
+docker compose -f docker-compose.module.yml down serialization-api
+```
+
+---
+
 ## ☁️ Déploiement sur OpenShift Sandbox
 
 > **🎯 Objectif** : Ce déploiement valide les concepts de **sérialisation avancée** dans un environnement cloud :

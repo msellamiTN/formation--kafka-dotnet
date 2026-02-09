@@ -247,6 +247,39 @@ curl -X POST http://localhost:5171/api/transactions/batch \
 
 ---
 
+## 🐳 Déploiement Docker Compose
+
+```bash
+# Depuis la racine du module M04
+cd day-02-development/module-04-advanced-patterns
+
+# Démarrer uniquement le lab 2.2a
+docker compose -f docker-compose.module.yml up -d --build idempotent-api
+
+# Vérifier
+docker logs m04-idempotent-api --tail 10
+```
+
+**Accès** : `http://localhost:5171/swagger`
+
+```bash
+# Tester
+curl -s http://localhost:5171/health
+curl -s -X POST http://localhost:5171/api/transactions/idempotent \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"CUST-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":1500.00,"currency":"EUR","type":1,"description":"Docker idempotent test"}' | jq .
+
+# Check PID in metrics
+curl -s http://localhost:5171/api/transactions/metrics | jq .
+```
+
+```bash
+# Arrêter
+docker compose -f docker-compose.module.yml down idempotent-api
+```
+
+---
+
 ## ☁️ Déploiement sur OpenShift Sandbox
 
 > **🎯 Objectif** : Ce déploiement valide les concepts du **Producer Idempotent** dans un environnement cloud :

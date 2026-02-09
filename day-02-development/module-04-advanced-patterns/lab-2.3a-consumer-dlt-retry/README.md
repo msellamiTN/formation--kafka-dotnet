@@ -163,6 +163,46 @@ Key difference: Day 01 uses `Commit()` only. Day 02 adds `EnableAutoOffsetStore=
 
 ---
 
+## 🐳 Déploiement Docker Compose
+
+```bash
+# Depuis la racine du module M04
+cd day-02-development/module-04-advanced-patterns
+
+# Démarrer uniquement le lab 2.3a
+docker compose -f docker-compose.module.yml up -d --build dlt-consumer
+
+# Vérifier
+docker logs m04-dlt-consumer --tail 10
+```
+
+**Accès** : `http://localhost:18083/swagger`
+
+```bash
+# Tester
+curl -s http://localhost:18083/health
+curl -s http://localhost:18083/api/v1/stats | jq .
+
+# Produire un message via Kafka CLI (Docker)
+docker exec kafka /opt/kafka/bin/kafka-console-producer.sh \
+  --broker-list localhost:9092 \
+  --topic banking.transactions <<< \
+  '{"transactionId":"DOCKER-DLT-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":500.00,"currency":"EUR","type":1,"description":"Docker DLT test","customerId":"CUST-001","timestamp":"2026-02-10T10:00:00Z","riskScore":0,"status":1}'
+
+sleep 3
+curl -s http://localhost:18083/api/v1/stats | jq .
+```
+
+```bash
+# Démarrer les 3 labs Day 02 ensemble
+docker compose -f docker-compose.module.yml up -d --build
+
+# Arrêter tout
+docker compose -f docker-compose.module.yml down
+```
+
+---
+
 ## ☁️ Déploiement sur OpenShift Sandbox
 
 > **🎯 Objectif** : Ce déploiement valide les patterns avancés du **Consumer DLT & Retry** dans un environnement cloud :
