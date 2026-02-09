@@ -2,29 +2,88 @@
 
 This directory contains automated deployment and testing scripts for all Day-01 labs. Each script builds, deploys, and validates the lab objectives on OpenShift Sandbox.
 
+## 📁 Directory Structure
+
+```
+scripts/
+├── README.md                    # This file
+├── powershell/                  # PowerShell scripts (Windows)
+│   ├── deploy-all-labs.ps1      # Deploy all labs
+│   ├── deploy-and-test-1.2a.ps1 # Lab 1.2a - Basic Producer
+│   ├── deploy-and-test-1.2b.ps1 # Lab 1.2b - Keyed Producer
+│   ├── deploy-and-test-1.2c.ps1 # Lab 1.2c - Resilient Producer
+│   ├── deploy-and-test-1.3a.ps1 # Lab 1.3a - Fraud Detection
+│   ├── deploy-and-test-1.3b.ps1 # Lab 1.3b - Balance Service
+│   ├── deploy-and-test-1.3c.ps1 # Lab 1.3c - Audit Service
+│   ├── test-all-apis.ps1        # Test all deployed APIs
+│   └── create-*.ps1             # Test data creation scripts
+├── bash/                        # Bash scripts (Linux/macOS/WSL)
+│   ├── deploy-all-labs.sh       # Deploy all labs
+│   ├── deploy-and-test-1.2a.sh # Lab 1.2a - Basic Producer
+│   ├── deploy-and-test-1.2b.sh # Lab 1.2b - Keyed Producer
+│   ├── deploy-and-test-1.2c.sh # Lab 1.2c - Resilient Producer
+│   ├── deploy-and-test-1.3a.sh # Lab 1.3a - Fraud Detection
+│   ├── deploy-and-test-1.3b.sh # Lab 1.3b - Balance Service
+│   ├── deploy-and-test-1.3c.sh # Lab 1.3c - Audit Service
+│   ├── test-all-apis.sh        # Test all deployed APIs
+│   └── create-*.sh             # Test data creation scripts
+└── data/                        # Test data files
+    ├── test-*.json              # Individual test transactions
+    ├── batch-*.json             # Batch test data
+    ├── large-message.json       # Large message test
+    └── oversized-*.json         # Oversized message tests
+```
+
 ## 📁 Scripts Overview
 
 ### 🚀 Master Deployment Scripts
-| Script | Description | Platform |
-|--------|-------------|----------|
-| `deploy-all-labs.sh` | Deploys all 6 labs sequentially | Bash (Linux/macOS/WSL) |
-| `deploy-all-labs.ps1` | Deploys all 6 labs sequentially | PowerShell (Windows) |
+| Script | Description | Platform | Location |
+|--------|-------------|----------|----------|
+| `deploy-all-labs.sh` | Deploys all 6 labs sequentially | Bash (Linux/macOS/WSL) | `bash/` |
+| `deploy-all-labs.ps1` | Deploys all 6 labs sequentially | PowerShell (Windows) | `powershell/` |
 
 ### 🧪 Individual Lab Scripts
-| Lab | Bash Script | PowerShell Script |
-|-----|------------|-------------------|
-| 1.2a - Basic Producer | `deploy-and-test-1.2a.sh` | `deploy-and-test-1.2a.ps1` |
-| 1.2b - Keyed Producer | `deploy-and-test-1.2b.sh` | `deploy-and-test-1.2b.ps1` |
-| 1.2c - Resilient Producer | `deploy-and-test-1.2c.sh` | `deploy-and-test-1.2c.ps1` |
-| 1.3a - Fraud Detection | `deploy-and-test-1.3a.sh` | `deploy-and-test-1.3a.ps1` |
-| 1.3b - Balance Service | `deploy-and-test-1.3b.sh` | `deploy-and-test-1.3b.ps1` |
-| 1.3c - Audit Service | `deploy-and-test-1.3c.sh` | `deploy-and-test-1.3c.ps1` |
+| Lab | Bash Script | PowerShell Script | Location |
+|-----|------------|-------------------|----------|
+| 1.2a - Basic Producer | `deploy-and-test-1.2a.sh` | `deploy-and-test-1.2a.ps1` | `bash/` / `powershell/` |
+| 1.2b - Keyed Producer | `deploy-and-test-1.2b.sh` | `deploy-and-test-1.2b.ps1` | `bash/` / `powershell/` |
+| 1.2c - Resilient Producer | `deploy-and-test-1.2c.sh` | `deploy-and-test-1.2c.ps1` | `bash/` / `powershell/` |
+| 1.3a - Fraud Detection | `deploy-and-test-1.3a.sh` | `deploy-and-test-1.3a.ps1` | `bash/` / `powershell/` |
+| 1.3b - Balance Service | `deploy-and-test-1.3b.sh` | `deploy-and-test-1.3b.ps1` | `bash/` / `powershell/` |
+| 1.3c - Audit Service | `deploy-and-test-1.3c.sh` | `deploy-and-test-1.3c.ps1` | `bash/` / `powershell/` |
 
 ### 📊 Testing Scripts
-| Script | Description | Platform |
-|--------|-------------|----------|
-| `test-all-apis.sh` | Tests all deployed APIs with scenario validation | Bash |
-| `test-all-apis.ps1` | Tests all deployed APIs with scenario validation | PowerShell |
+| Script | Description | Platform | Location |
+|--------|-------------|----------|----------|
+| `test-all-apis.sh` | Tests all deployed APIs with scenario validation | Bash | `bash/` |
+| `test-all-apis.ps1` | Tests all deployed APIs with scenario validation | PowerShell | `powershell/` |
+
+### 📝 Test Data Files
+| File | Description | Location |
+|------|-------------|----------|
+| `test-simple.json` | Simple transaction test | `data/` |
+| `test-keyed-transaction.json` | Keyed transaction test | `data/` |
+| `test-resilient.json` | Resilient producer test | `data/` |
+| `test-dlq-trigger.json` | DLQ trigger test | `data/` |
+| `batch-fixed.json` | Fixed batch data | `data/` |
+| `batch-oversized.json` | Oversized batch data | `data/` |
+| `large-message.json` | Large message test | `data/` |
+| `oversized-message.json` | Oversized message test | `data/` |
+| `oversized-valid.json` | Valid oversized message | `data/` |
+
+### 🛠️ Data Creation Scripts
+| Script | Description | Platform | Location |
+|--------|-------------|----------|----------|
+| `create-batch-fixed.sh` | Creates 100 fixed-size batch records | Bash | `bash/` |
+| `create-batch-oversized.sh` | Creates 500 oversized batch records | Bash | `bash/` |
+| `create-large-message.sh` | Creates single large message | Bash | `bash/` |
+| `create-oversized-message.sh` | Creates extremely oversized message | Bash | `bash/` |
+| `create-oversized-valid.sh` | Creates large but valid message | Bash | `bash/` |
+| `create-batch-fixed.ps1` | Creates 100 fixed-size batch records | PowerShell | `powershell/` |
+| `create-batch-oversized.ps1` | Creates 500 oversized batch records | PowerShell | `powershell/` |
+| `create-large-message.ps1` | Creates single large message | PowerShell | `powershell/` |
+| `create-oversized-message.ps1` | Creates extremely oversized message | PowerShell | `powershell/` |
+| `create-oversized-valid.ps1` | Creates large but valid message | PowerShell | `powershell/` |
 
 ## 🚀 Quick Start
 
@@ -32,30 +91,34 @@ This directory contains automated deployment and testing scripts for all Day-01 
 
 ```bash
 # Bash/Linux/macOS/WSL
-./deploy-all-labs.sh --token=sha256~XXXX --server=https://api.xxx.openshiftapps.com:6443
+./bash/deploy-all-labs.sh --token=sha256~XXXX --server=https://api.xxx.openshiftapps.com:6443
 
 # PowerShell (Windows)
-.\deploy-all-labs.ps1 -Token "sha256~XXXX" -Server "https://api.xxx.openshiftapps.com:6443"
+.\powershell\deploy-all-labs.ps1 -Token "sha256~XXXX" -Server "https://api.xxx.openshiftapps.com:6443"
 ```
 
 ### Option 2: Deploy Individual Lab
 
 ```bash
 # Deploy Lab 1.2a (Basic Producer)
-./deploy-and-test-1.2a.sh
+./bash/deploy-and-test-1.2a.sh
 
 # Deploy Lab 1.2b (Keyed Producer)
-./deploy-and-test-1.2b.sh
+./bash/deploy-and-test-1.2b.sh
+
+# PowerShell equivalent
+.\powershell\deploy-and-test-1.2a.ps1
+.\powershell\deploy-and-test-1.2b.ps1
 ```
 
-### Option 3: Test Already Deployed APIs
+### Option 3: Test All Deployed APIs
 
 ```bash
-# Test all APIs
-./test-all-apis.sh
+# Test all APIs after deployment
+./bash/test-all-apis.sh
 
-# Test with PowerShell
-.\test-all-apis.ps1
+# PowerShell equivalent
+.\powershell\test-all-apis.ps1
 ```
 
 ## 📋 Prerequisites
