@@ -173,6 +173,110 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
 
 ## 🚀 Instructions Pas à Pas
 
+## 🎯 Concepts Clés Expliqués
+
+### Architecture du Producer Kafka
+
+```mermaid
+flowchart TB
+    subgraph Producer["📤 Kafka Producer"]
+        subgraph Config["Configuration"]
+            BS["bootstrap.servers"]
+            AC["acks = all"]
+            ID["enable.idempotence = true"]
+        end
+
+        subgraph Pipeline["Pipeline d'envoi"]
+            SER["🔄 Serializer"]
+            ACC["📦 RecordAccumulator"]
+            SND["🌐 Sender Thread"]
+        end
+
+        SER --> ACC --> SND
+    end
+
+    SND -->|"ProduceRequest"| K["📦 Kafka Broker"]
+    K -->|"ACK"| SND
+
+    style Config fill:#e3f2fd
+    style Pipeline fill:#f3e5f5
+```
+
+### Niveaux de Confirmation (ACK)
+
+| Acks | Garantie | Latence | Cas d'usage E-Banking |
+| ---- | -------- | ------- | --------------------- |
+| `0` | Aucune | Très faible | Logs d'audit non-critiques |
+| `1` | Leader | Faible | Notifications push |
+| `all` | Tous ISR | Plus élevée | **Transactions financières** |
+
+### Séquence Détaillée : API → Kafka (Code Expliqué)
+
+Ce diagramme montre exactement ce que fait chaque composant du code :
+
+```mermaid
+sequenceDiagram
+    participant C as 🌐 Client (Swagger)
+    participant Ctrl as � TransactionsController
+    participant Svc as ⚙️ KafkaProducerService
+    participant Ser as � JSON Serializer
+    participant Acc as 📦 RecordAccumulator
+    participant Net as 🌐 Sender Thread
+    participant B as 🔥 Kafka Broker
+
+    C->>Ctrl: POST /api/transactions {fromAccount, toAccount, amount...}
+    Ctrl->>Ctrl: ModelState.IsValid? (DataAnnotations)
+    Ctrl->>Svc: SendTransactionAsync(transaction)
+
+    Note over Svc: Étape 1 - Sérialisation
+    Svc->>Ser: JsonSerializer.Serialize(transaction)
+    Ser-->>Svc: JSON string
+
+    Note over Svc: Étape 2 - Construction du Message
+    Svc->>Svc: new Message<string,string> { Key, Value, Headers, Timestamp }
+    Svc->>Svc: Ajout Headers: correlation-id, event-type, source, customer-id
+
+    Note over Svc,B: Étape 3 - Pipeline d'envoi Kafka
+    Svc->>Acc: ProduceAsync() → message dans le buffer
+    Acc->>Acc: Batch par partition (LingerMs=10, BatchSize=16384)
+    Acc->>Net: Batch prêt → envoi réseau
+    Net->>B: ProduceRequest (Snappy compressed)
+    B->>B: Écriture log + réplication ISR
+    B-->>Net: ACK (Acks.All = tous les ISR)
+    Net-->>Svc: DeliveryResult {Partition, Offset, Timestamp}
+
+    Note over Ctrl: Étape 4 - Réponse API
+    Svc-->>Ctrl: DeliveryResult
+    Ctrl->>Ctrl: Construire TransactionResponse
+    Ctrl-->>C: 201 Created {transactionId, kafkaPartition, kafkaOffset}
+```
+
+### Séquence Batch : Traitement de Plusieurs Transactions
+
+```mermaid
+sequenceDiagram
+    participant C as 🌐 Client
+    participant Ctrl as 📋 Controller
+    participant Svc as ⚙️ KafkaProducer
+    participant K as 🔥 Kafka
+
+    C->>Ctrl: POST /api/transactions/batch [tx1, tx2, tx3]
+
+    loop Pour chaque transaction
+        Ctrl->>Svc: SendTransactionAsync(tx)
+        Svc->>K: ProduceAsync()
+        K-->>Svc: DeliveryResult
+        Svc-->>Ctrl: Résultat ajouté à la liste
+    end
+
+    Ctrl-->>C: 201 Created {processedCount: 3, transactions: [...]}
+
+    Note over K: Les 3 messages sont dans le topic
+    Note over K: Chaque message a sa propre partition et offset
+```
+
+---
+
 ### Étape 1 : Créer le projet API Web
 
 #### 💻 Option A : Visual Studio Code
@@ -1259,110 +1363,6 @@ kubectl exec kafka-0 -- /opt/kafka/bin/kafka-run-class.sh kafka.tools.GetOffsetS
 
 ```bash
 sed "s/\${NAMESPACE}/$(oc project -q)/g" deployment/openshift-deployment.yaml | oc apply -f -
-```
-
----
-
-## 🎯 Concepts Clés Expliqués
-
-### Architecture du Producer Kafka
-
-```mermaid
-flowchart TB
-    subgraph Producer["📤 Kafka Producer"]
-        subgraph Config["Configuration"]
-            BS["bootstrap.servers"]
-            AC["acks = all"]
-            ID["enable.idempotence = true"]
-        end
-
-        subgraph Pipeline["Pipeline d'envoi"]
-            SER["🔄 Serializer"]
-            ACC["📦 RecordAccumulator"]
-            SND["🌐 Sender Thread"]
-        end
-
-        SER --> ACC --> SND
-    end
-
-    SND -->|"ProduceRequest"| K["📦 Kafka Broker"]
-    K -->|"ACK"| SND
-
-    style Config fill:#e3f2fd
-    style Pipeline fill:#f3e5f5
-```
-
-### Niveaux de Confirmation (ACK)
-
-| Acks | Garantie | Latence | Cas d'usage E-Banking |
-| ---- | -------- | ------- | --------------------- |
-| `0` | Aucune | Très faible | Logs d'audit non-critiques |
-| `1` | Leader | Faible | Notifications push |
-| `all` | Tous ISR | Plus élevée | **Transactions financières** |
-
-### Séquence Détaillée : API → Kafka (Code Expliqué)
-
-Ce diagramme montre exactement ce que fait chaque composant du code :
-
-```mermaid
-sequenceDiagram
-    participant C as 🌐 Client (Swagger)
-    participant Ctrl as � TransactionsController
-    participant Svc as ⚙️ KafkaProducerService
-    participant Ser as � JSON Serializer
-    participant Acc as 📦 RecordAccumulator
-    participant Net as 🌐 Sender Thread
-    participant B as 🔥 Kafka Broker
-
-    C->>Ctrl: POST /api/transactions {fromAccount, toAccount, amount...}
-    Ctrl->>Ctrl: ModelState.IsValid? (DataAnnotations)
-    Ctrl->>Svc: SendTransactionAsync(transaction)
-
-    Note over Svc: Étape 1 - Sérialisation
-    Svc->>Ser: JsonSerializer.Serialize(transaction)
-    Ser-->>Svc: JSON string
-
-    Note over Svc: Étape 2 - Construction du Message
-    Svc->>Svc: new Message<string,string> { Key, Value, Headers, Timestamp }
-    Svc->>Svc: Ajout Headers: correlation-id, event-type, source, customer-id
-
-    Note over Svc,B: Étape 3 - Pipeline d'envoi Kafka
-    Svc->>Acc: ProduceAsync() → message dans le buffer
-    Acc->>Acc: Batch par partition (LingerMs=10, BatchSize=16384)
-    Acc->>Net: Batch prêt → envoi réseau
-    Net->>B: ProduceRequest (Snappy compressed)
-    B->>B: Écriture log + réplication ISR
-    B-->>Net: ACK (Acks.All = tous les ISR)
-    Net-->>Svc: DeliveryResult {Partition, Offset, Timestamp}
-
-    Note over Ctrl: Étape 4 - Réponse API
-    Svc-->>Ctrl: DeliveryResult
-    Ctrl->>Ctrl: Construire TransactionResponse
-    Ctrl-->>C: 201 Created {transactionId, kafkaPartition, kafkaOffset}
-```
-
-### Séquence Batch : Traitement de Plusieurs Transactions
-
-```mermaid
-sequenceDiagram
-    participant C as 🌐 Client
-    participant Ctrl as 📋 Controller
-    participant Svc as ⚙️ KafkaProducer
-    participant K as 🔥 Kafka
-
-    C->>Ctrl: POST /api/transactions/batch [tx1, tx2, tx3]
-
-    loop Pour chaque transaction
-        Ctrl->>Svc: SendTransactionAsync(tx)
-        Svc->>K: ProduceAsync()
-        K-->>Svc: DeliveryResult
-        Svc-->>Ctrl: Résultat ajouté à la liste
-    end
-
-    Ctrl-->>C: 201 Created {processedCount: 3, transactions: [...]}
-
-    Note over K: Les 3 messages sont dans le topic
-    Note over K: Chaque message a sa propre partition et offset
 ```
 
 ---

@@ -1432,9 +1432,15 @@ curl -k -s -X POST "https://$URL/api/Transactions" \
 ### 5.1 Automated Testing Script
 
 ```bash
+# Run the full deployment and test script (Bash)
+cd day-01-foundations/scripts
+./bash/deploy-and-test-1.2c.sh
+```
+
+```powershell
 # Run the full deployment and test script (PowerShell)
 cd day-01-foundations/scripts
-./deploy-and-test-1.2c.ps1
+.\powershell\deploy-and-test-1.2c.ps1
 ```
 
 ### 6. Alternative : Déploiement par manifeste YAML

@@ -1028,7 +1028,7 @@ oc set env deployment/ebanking-keyed-producer-api \
 
 ```bash
 # Créer une route edge
-oc create route edge ebanking-keyed-producer-api-secure --service=ebanking-keyed-producer-api --port=8080-tcp
+oc create route edge ebanking-keyed-api-secure --service=ebanking-keyed-producer-api --port=8080-tcp
 
 # Obtenir l'URL
 URL=$(oc get route ebanking-keyed-api-secure -o jsonpath='{.spec.host}')
@@ -1041,7 +1041,7 @@ curl -k -i "https://$URL/api/Transactions/health"
 ### 5. 🧪 Validation des concepts (CRC)
 
 ```bash
-URL=$(oc get route ebanking-keyed-producer-api-secure -o jsonpath='{.spec.host}')
+URL=$(oc get route ebanking-keyed-api-secure -o jsonpath='{.spec.host}')
 
 # Envoyer 2 transactions pour le même client
 curl -k -s -X POST "https://$URL/api/Transactions" \
