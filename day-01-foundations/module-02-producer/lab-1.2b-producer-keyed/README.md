@@ -719,14 +719,14 @@ Ouvrir Swagger UI : **<https://localhost:5001/swagger>**
 ```bash
 # Depuis la racine du repository
 cd day-01-foundations/scripts
-./deploy-and-test-1.2b.sh
+./bash/deploy-and-test-1.2b.sh
 ```
 
 **Option 2 : Script PowerShell (Windows)**
 ```powershell
 # Depuis la racine du repository
 cd day-01-foundations/scripts
-.\deploy-and-test-1.2b.ps1
+.\powershell\deploy-and-test-1.2b.ps1
 ```
 
 Ces scripts effectuent automatiquement :
@@ -774,13 +774,13 @@ oc set env deployment/ebanking-keyed-producer-api \
 > Standard routes may hang on the Sandbox. Use an **edge route** for reliable public access.
 
 ```bash
-oc create route edge ebanking-keyed-api --service=ebanking-keyed-producer-api --port=8080-tcp
+oc create route edge ebanking-keyed-api-secure --service=ebanking-keyed-producer-api --port=8080-tcp
 ```
 
 ### 4. Tester l'API déployée
 
 ```bash
-HOST=$(oc get route ebanking-keyed-api -o jsonpath='{.spec.host}')
+HOST=$(oc get route ebanking-keyed-api-secure -o jsonpath='{.spec.host}')
 echo "Swagger UI : https://$HOST/swagger"
 ```
 
@@ -1031,7 +1031,7 @@ oc set env deployment/ebanking-keyed-producer-api \
 oc create route edge ebanking-keyed-producer-api-secure --service=ebanking-keyed-producer-api --port=8080-tcp
 
 # Obtenir l'URL
-URL=$(oc get route ebanking-keyed-producer-api-secure -o jsonpath='{.spec.host}')
+URL=$(oc get route ebanking-keyed-api-secure -o jsonpath='{.spec.host}')
 echo "https://$URL/swagger"
 
 # Tester

@@ -234,7 +234,7 @@ partition = murmur2_hash(key) % nombre_partitions
 docker exec kafka /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --create --if-not-exists \
-  --topic orders.created \
+  --topic banking.transactions \
   --partitions 6 \
   --replication-factor 1
 
@@ -242,18 +242,16 @@ docker exec kafka /opt/kafka/bin/kafka-topics.sh \
 kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
   --restart=Never -n kafka -- \
   bin/kafka-topics.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
-  --create --if-not-exists --topic orders.created --partitions 6 --replication-factor 3
+  --create --if-not-exists --topic banking.transactions --partitions 6 --replication-factor 3
 
-```bash
 # OpenShift Sandbox (via pod existant)
 oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --create \
   --if-not-exists \
-  --topic orders.created \
-  --partitions 3 \
+  --topic banking.transactions \
+  --partitions 6 \
   --replication-factor 3
-```
 ```
 
 ### Lister les messages produits
@@ -261,7 +259,7 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
 # Docker
 docker exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
-  --topic orders.created \
+  --topic banking.transactions \
   --from-beginning \
   --max-messages 10
 
@@ -269,16 +267,14 @@ docker exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
 kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
   --restart=Never -n kafka -- \
   bin/kafka-console-consumer.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
-  --topic orders.created --from-beginning --max-messages 10
+  --topic banking.transactions --from-beginning --max-messages 10
 
-```bash
 # OpenShift Sandbox (via pod existant)
 oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
-  --topic orders.created \
+  --topic banking.transactions \
   --from-beginning \
   --max-messages 10
-```
 ```
 
 ### Voir les détails d'un topic
@@ -287,21 +283,19 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
 docker exec kafka /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --describe \
-  --topic orders.created
+  --topic banking.transactions
 
 # OKD/K3s
 kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
   --restart=Never -n kafka -- \
   bin/kafka-topics.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
-  --describe --topic orders.created
+  --describe --topic banking.transactions
 
-```bash
 # OpenShift Sandbox (via pod existant)
 oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --describe \
-  --topic orders.created
-```
+  --topic banking.transactions
 ```
 
 ---

@@ -165,7 +165,7 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --create --if-not-exists \
   --topic banking.transactions \
-  --partitions 3 \
+  --partitions 6 \
   --replication-factor 3
 ```
 
@@ -677,8 +677,8 @@ Cliquer sur **POST /api/transactions/batch** → **Try it out** :
 ```json
 [
   {
-    "fromAccount": "FR7630001000123456789",
-    "toAccount": "FR7630001000111111111",
+    "fromAccount": "FR7630001000111111111",
+    "toAccount": "FR7630001000222222222",
     "amount": 50.00,
     "currency": "EUR",
     "type": 2,
@@ -686,8 +686,8 @@ Cliquer sur **POST /api/transactions/batch** → **Try it out** :
     "customerId": "CUST-001"
   },
   {
-    "fromAccount": "FR7630001000123456789",
-    "toAccount": "FR7630001000222222222",
+    "fromAccount": "FR7630001000333333333",
+    "toAccount": "FR7630001000444444444",
     "amount": 120.00,
     "currency": "EUR",
     "type": 2,
@@ -695,13 +695,13 @@ Cliquer sur **POST /api/transactions/batch** → **Try it out** :
     "customerId": "CUST-001"
   },
   {
-    "fromAccount": "FR7630001000123456789",
-    "toAccount": "FR7630001000333333333",
-    "amount": 35.00,
+    "fromAccount": "FR7630001000555555555",
+    "toAccount": "GB29NWBK60161331926819",
+    "amount": 5000.00,
     "currency": "EUR",
-    "type": 5,
-    "description": "Paiement carte restaurant",
-    "customerId": "CUST-001"
+    "type": 6,
+    "description": "Transfert international",
+    "customerId": "CUST-003"
   }
 ]
 ```
@@ -773,18 +773,18 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
 > [!TIP]
 > Utilisez les scripts de déploiement automatisé pour un déploiement complet avec validation des objectifs du lab.
 
-**Option 1 : Script Bash (Linux/macOS/WSL)**
+ **Option 1 : Script Bash (Linux/macOS/WSL)**
 ```bash
 # Depuis la racine du repository
 cd day-01-foundations/scripts
-./deploy-and-test-1.2a.sh
+./bash/deploy-and-test-1.2a.sh
 ```
 
-**Option 2 : Script PowerShell (Windows)**
+ **Option 2 : Script PowerShell (Windows)**
 ```powershell
 # Depuis la racine du repository
 cd day-01-foundations/scripts
-.\deploy-and-test-1.2a.ps1
+.\powershell\deploy-and-test-1.2a.ps1
 ```
 
 Ces scripts effectuent automatiquement :
@@ -842,13 +842,13 @@ oc set env deployment/ebanking-producer-api \
 > Standard routes may hang on the Sandbox. Use an **edge route** for reliable public access.
 
 ```bash
-oc create route edge ebanking-producer-api --service=ebanking-producer-api --port=8080-tcp
+oc create route edge ebanking-producer-api-secure --service=ebanking-producer-api --port=8080-tcp
 ```
 
 ### 5. Obtenir l'URL publique
 
 ```bash
-HOST=$(oc get route ebanking-producer-api -o jsonpath='{.spec.host}')
+HOST=$(oc get route ebanking-producer-api-secure -o jsonpath='{.spec.host}')
 echo "Swagger UI : https://$HOST/swagger"
 ```
 
