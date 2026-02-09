@@ -272,7 +272,46 @@ using var producer = new ProducerBuilder<string, Transaction>(producerConfig)
 
 ---
 
-## 🐳 Déploiement Docker Compose
+## � Déploiement Automatisé (Scripts)
+
+> **Recommandé pour OpenShift Sandbox** : Utilisez les scripts de déploiement automatisés pour un déploiement rapide et testé.
+
+### Bash (Linux/macOS/WSL)
+
+```bash
+# Déploiement complet avec validation
+cd day-02-development/scripts
+./bash/deploy-and-test-2.1a.sh --token=<TOKEN> --server=<SERVER>
+
+# Déploiement sans tests (plus rapide)
+./bash/deploy-and-test-2.1a.sh --token=<TOKEN> --server=<SERVER> --skip-tests
+```
+
+### PowerShell (Windows)
+
+```powershell
+# Déploiement complet avec validation
+cd day-02-development\scripts
+.\powershell\deploy-and-test-2.1a.ps1 -Token <TOKEN> -Server <SERVER>
+
+# Déploiement sans tests (plus rapide)
+.\powershell\deploy-and-test-2.1a.ps1 -Token <TOKEN> -Server <SERVER> -SkipTests
+```
+
+### Ce que fait le script
+
+1. ✅ **Login OpenShift** avec votre token et serveur
+2. ✅ **Build S2I** : `oc new-build` + `oc start-build`
+3. ✅ **Déploiement** : `oc new-app` avec variables d'environnement
+4. ✅ **Route sécurisée** : `oc create route edge`
+5. ✅ **Validation** : Tests automatiques des objectifs du lab
+6. ✅ **Rapport** : URLs d'accès et commandes de vérification
+
+> **Note** : Les scripts utilisent les mêmes commandes manuelles que dans les sections ci-dessous, mais de manière automatisée avec validation.
+
+---
+
+## �🐳 Déploiement Docker Compose
 
 ```bash
 # Depuis la racine du module M04
