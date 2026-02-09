@@ -959,6 +959,7 @@ Appeler **GET /api/transactions/stats/partitions** :
 
 **Observation clé** : CUST-001 a 4 messages, tous sur la **même partition** (2).
 
+![Kafka UI showing keyed producer messages](assets/kafka-ui-keyed_producer_messages.png)
 ---
 
 ## 📊 Vérifier dans Kafka

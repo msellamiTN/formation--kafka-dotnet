@@ -1,0 +1,9 @@
+{
+  "fromAccount": "FR7630001000123456",
+  "toAccount": "FR7630001000987654",
+  "amount": 300.00,
+  "currency": "EUR",
+  "type": 1,
+  "description": "Test keyed transaction 3",
+  "customerId": "CUST-KEY-002"
+}

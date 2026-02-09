@@ -310,7 +310,7 @@ try {
         for ($p = 0; $p -lt [int]$partitions; $p++) {
             $offsetInfo = oc exec kafka-0 -- /opt/kafka/bin/kafka-run-class.sh kafka.tools.GetOffsetShell --bootstrap-server localhost:9092 --topic banking.transactions --partitions $p 2>$null
             $count = ($offsetInfo | ForEach-Object { ($_ -split ':')[2] } | Measure-Object -Sum).Sum
-            Write-Host "  Partition $p: $count messages"
+            Write-Host "  Partition $p`: $count messages"
         }
     }
 } catch {
