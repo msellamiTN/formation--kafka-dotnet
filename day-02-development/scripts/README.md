@@ -39,11 +39,14 @@ scripts/
 | `deploy-all-labs.ps1` | Deploys all 3 labs sequentially | PowerShell (Windows) | `powershell/` |
 
 ### 🧪 Individual Lab Scripts
-| Lab | Bash Script | PowerShell Script | Location |
-|-----|------------|-------------------|----------|
-| 2.1a - Serialization API | `deploy-and-test-2.1a.sh` | `deploy-and-test-2.1a.ps1` | `bash/` / `powershell/` |
-| 2.2a - Idempotent Producer | `deploy-and-test-2.2a.sh` | `deploy-and-test-2.2a.ps1` | `bash/` / `powershell/` |
-| 2.3a - DLT Consumer | `deploy-and-test-2.3a.sh` | `deploy-and-test-2.3a.ps1` | `bash/` / `powershell/` |
+| Script | Description | Platform | Location |
+|--------|-------------|----------|----------|
+| `deploy-and-test-2.1a.sh` | Serialization API with schema evolution - **UPDATED** | Bash | `bash/` |
+| `deploy-and-test-2.2a.sh` | Idempotent Producer with PID tracking | Bash | `bash/` |
+| `deploy-and-test-2.3a.sh` | DLT Consumer with retry patterns | Bash | `bash/` |
+| `deploy-and-test-2.1a.ps1` | Serialization API with schema evolution - **NEW** | PowerShell | `powershell/` |
+| `deploy-and-test-2.2a.ps1` | Idempotent Producer with PID tracking | PowerShell | `powershell/` |
+| `deploy-and-test-2.3a.ps1` | DLT Consumer with retry patterns | PowerShell | `powershell/` |
 
 ### 📊 Testing Scripts
 | Script | Description | Platform | Location |
@@ -92,8 +95,11 @@ cd day-02-development\scripts
 ### Deploy Individual Lab
 
 ```bash
-# Lab 2.1a - Serialization API
+# Lab 2.1a - Serialization API (Updated with comprehensive tests)
 ./bash/deploy-and-test-2.1a.sh --token=<TOKEN> --server=<SERVER>
+
+# PowerShell version
+.\powershell\deploy-and-test-2.1a.ps1 -Token <TOKEN> -Server <SERVER>
 
 # Lab 2.2a - Idempotent Producer  
 ./bash/deploy-and-test-2.2a.sh --token=<TOKEN> --server=<SERVER>
@@ -108,6 +114,36 @@ cd day-02-development\scripts
 # After deployment
 ./bash/test-all-apis.sh
 ```
+
+## 🧪 Lab 2.1a - Updated Testing Features
+
+The **Lab 2.1a scripts** have been updated with comprehensive testing based on actual deployment validation:
+
+### ✅ **Automated Tests Included**
+
+1. **Health Check** - Verifies API is running and healthy
+2. **V1 Transaction** - Tests original schema serialization
+3. **V2 Transaction** - Tests schema evolution with new fields
+4. **Validation Test** - Tests rejection of invalid transactions
+5. **Metrics Endpoint** - Verifies production statistics
+6. **Schema Info** - Tests compatibility documentation
+7. **Kafka Verification** - Confirms messages in topic
+
+### 📊 **Test Results Validation**
+
+Each test includes:
+- ✅ **Success/Failure** validation
+- 📈 **Metrics extraction** (V1/V2 message counts)
+- 🔍 **Schema version** verification
+- 📦 **Kafka topic** verification
+- 🚫 **Error handling** validation
+
+### 🎯 **Real Test Data**
+
+Scripts use actual test transactions that were validated:
+- V1: `test-valid-*` transactions with proper validation
+- V2: `test-v2-*` transactions with `riskScore` and `sourceChannel`
+- Invalid: Negative amounts to test validation rejection
 
 ## 📋 What Each Script Does
 

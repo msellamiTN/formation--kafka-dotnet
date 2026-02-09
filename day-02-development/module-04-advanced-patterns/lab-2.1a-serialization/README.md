@@ -1056,30 +1056,35 @@ Naviguer vers : **<https://localhost:5170/swagger>**
 
 ### Test 1 : Créer une transaction V1 (schéma original)
 
+**URL**: https://ebanking-serialization-api-secure-msellamitn-dev.apps.rm3.7wse.p1.openshiftapps.com/swagger/index.html
+
 Dans Swagger UI, cliquer sur **POST /api/transactions** → **Try it out** :
 
 ```json
 {
-  "fromAccount": "FR7630001000123456789",
-  "toAccount": "FR7630001000987654321",
-  "amount": 1500.00,
+  "transactionId": "test-valid-456",
+  "customerId": "CUST-002",
+  "fromAccount": "FR7630001000111111111",
+  "toAccount": "FR7630001000222222222",
+  "amount": 2500.50,
   "currency": "EUR",
-  "type": 1,
-  "description": "Virement mensuel loyer",
-  "customerId": "CUST-001"
+  "type": 2,
+  "description": "Valid test transaction",
+  "timestamp": "2026-02-09T21:16:00.000Z"
 }
 ```
 
-**Réponse attendue** (201 Created) :
+**Réponse obtenue** (200 OK) :
 
 ```json
 {
-  "transactionId": "a1b2c3d4-...",
-  "status": "Processing",
-  "kafkaPartition": 3,
-  "kafkaOffset": 0,
-  "timestamp": "2026-02-06T00:00:00Z",
-  "schemaVersion": "v1"
+  "transactionId": "test-valid-456",
+  "status": "Produced",
+  "schemaVersion": 1,
+  "partition": 1,
+  "offset": 3,
+  "errorMessage": null,
+  "serializerUsed": "TransactionJsonSerializer (validated)"
 }
 ```
 
@@ -1089,30 +1094,31 @@ Cliquer sur **POST /api/transactions/v2** → **Try it out** :
 
 ```json
 {
-  "fromAccount": "FR7630001000123456789",
-  "toAccount": "FR7630001000987654321",
-  "amount": 2500.00,
-  "currency": "EUR",
+  "transactionId": "test-v2-789",
+  "customerId": "CUST-003",
+  "fromAccount": "FR7630001000333333333",
+  "toAccount": "FR7630001000444444444",
+  "amount": 5000.00,
+  "currency": "USD",
   "type": 1,
-  "description": "Virement avec risque élevé",
-  "customerId": "CUST-002",
-  "riskScore": 0.85,
-  "sourceChannel": "mobile-app",
-  "deviceFingerprint": "FP-12345"
+  "description": "V2 transaction with risk score",
+  "timestamp": "2026-02-09T21:21:00.000Z",
+  "riskScore": 0.75,
+  "sourceChannel": "mobile"
 }
 ```
 
-**Réponse attendue** (201 Created) :
+**Réponse obtenue** (200 OK) :
 
 ```json
 {
-  "transactionId": "b2c3d4e5-...",
-  "status": "Processing",
-  "kafkaPartition": 4,
-  "kafkaOffset": 1,
-  "timestamp": "2026-02-06T00:01:00Z",
-  "schemaVersion": "v2",
-  "riskScore": 0.85
+  "transactionId": "test-v2-789",
+  "status": "Produced",
+  "schemaVersion": 2,
+  "partition": 2,
+  "offset": 3,
+  "errorMessage": null,
+  "serializerUsed": "JsonSerializer (v2 with riskScore)"
 }
 ```
 
@@ -1120,42 +1126,117 @@ Cliquer sur **POST /api/transactions/v2** → **Try it out** :
 
 ```json
 {
-  "fromAccount": "FR76",
-  "toAccount": "FR76",
-  "amount": -50,
+  "transactionId": "test-invalid-123",
+  "customerId": "CUST-001",
+  "fromAccount": "FR7630001000123456789",
+  "toAccount": "FR7630001000987654321",
+  "amount": -100.00,
   "currency": "EUR",
   "type": 1,
-  "description": "Test validation",
-  "customerId": "CUST-INVALID"
+  "description": "Invalid test",
+  "timestamp": "2026-02-09T21:15:00.000Z"
 }
 ```
 
-**Réponse attendue** (400 Bad Request) avec erreur de validation.
+**Réponse obtenue** (500 Internal Server Error) - Validation correctement rejetée.
 
-### Test 4 : Vérifier la compatibilité BACKWARD
+### Test 4 : Métriques de production
 
-Cliquer sur **GET /api/transactions/consumed** → **Try it out** → **Execute**
+Cliquer sur **GET /api/transactions/metrics** → **Try it out** → **Execute**
 
-**Résultat attendu** : Liste des transactions consommées, y compris les V2 converties en V1.
-
-### Test 5 : Informations de schéma
-
-Cliquer sur **GET /api/transactions/schema-info** → **Try it out** → **Execute**
-
-**Réponse attendue** :
+**Réponse obtenue** :
 
 ```json
 {
-  "currentVersion": "v2",
-  "supportedVersions": ["v1", "v2"],
-  "compatibility": "BACKWARD",
-  "description": "V1 can read V2 messages (new fields ignored)"
+  "producer": {
+    "v1MessagesProduced": 2,
+    "v2MessagesProduced": 1,
+    "validationErrors": 2,
+    "serializationErrors": 5,
+    "recentMessages": [
+      {
+        "transactionId": "test-v2-789",
+        "schemaVersion": 2,
+        "partition": 2,
+        "offset": 3,
+        "timestamp": "2026-02-09T21:33:59.634Z",
+        "hasRiskScore": true
+      },
+      {
+        "transactionId": "test-valid-456",
+        "schemaVersion": 1,
+        "partition": 1,
+        "offset": 3,
+        "timestamp": "2026-02-09T21:20:17.287Z",
+        "hasRiskScore": false
+      }
+    ]
+  },
+  "consumer": {
+    "status": "Consumer disabled for deployment"
+  }
+}
+```
+
+### Test 5 : Informations de schéma et compatibilité
+
+Cliquer sur **GET /api/transactions/schema-info** → **Try it out** → **Execute**
+
+**Réponse obtenue** :
+
+```json
+{
+  "schemas": [
+    {
+      "version": 1,
+      "type": "Transaction",
+      "fields": ["transactionId", "customerId", "fromAccount", "toAccount", "amount", "currency", "type", "description", "timestamp"],
+      "serializer": "TransactionJsonSerializer (ISerializer<Transaction>)",
+      "deserializer": "TransactionJsonDeserializer (IDeserializer<Transaction>)",
+      "validation": "amount > 0, currency 3-letter ISO, required: transactionId, customerId, fromAccount, toAccount"
+    },
+    {
+      "version": 2,
+      "type": "TransactionV2 (extends Transaction)",
+      "fields": ["transactionId", "customerId", "fromAccount", "toAccount", "amount", "currency", "type", "description", "timestamp", "riskScore (NEW)", "sourceChannel (NEW)"],
+      "serializer": "JsonSerializer (raw, v2 fields included)",
+      "deserializer": "TransactionV2JsonDeserializer (IDeserializer<TransactionV2>)",
+      "validation": "same as v1 + riskScore must be 0.0-1.0 if present"
+    }
+  ],
+  "compatibility": {
+    "backward": "v1 consumer can read v2 messages (extra fields ignored) ✅",
+    "forward": "v2 consumer can read v1 messages (riskScore = null) ✅",
+    "full": "Both directions supported ✅"
+  },
+  "kafkaHeaders": {
+    "schemaVersion": "header 'schema-version' added to each message (1 or 2)",
+    "serializer": "header 'serializer' identifies the serializer used",
+    "source": "header 'source' identifies the producing application"
+  }
 }
 ```
 
 ---
 
 ## 📊 Vérifier dans Kafka
+
+### Avec Kafka CLI (OpenShift)
+
+```bash
+# Lister les messages dans le topic banking.transactions
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic banking.transactions \
+  --from-beginning \
+  --max-messages 5
+```
+
+**Messages obtenus** :
+```json
+{"transactionId":"test-valid-456","customerId":"CUST-002","fromAccount":"FR7630001000111111111","toAccount":"FR763000100022222222","amount":2500.50,"currency":"EUR","type":2,"description":"Valid test transaction","timestamp":"2026-02-09T21:20:17.2874603Z"}
+{"transactionId":"test-v2-789","customerId":"CUST-003","fromAccount":"FR7630001000333333333","toAccount":"FR7630001000444444444","amount":5000.00,"currency":"USD","type":1,"description":"V2 transaction with risk score","timestamp":"2026-02-09T21:21:00.000Z","riskScore":0.75,"sourceChannel":"mobile"}
+```
 
 ### Avec Kafka UI
 

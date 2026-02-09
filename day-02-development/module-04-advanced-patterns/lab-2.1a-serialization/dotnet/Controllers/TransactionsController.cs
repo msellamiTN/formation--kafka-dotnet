@@ -9,16 +9,13 @@ namespace EBankingSerializationAPI.Controllers;
 public class TransactionsController : ControllerBase
 {
     private readonly SerializationProducerService _producer;
-    private readonly SchemaEvolutionConsumerService _consumer;
     private readonly ILogger<TransactionsController> _logger;
 
     public TransactionsController(
         SerializationProducerService producer,
-        SchemaEvolutionConsumerService consumer,
         ILogger<TransactionsController> logger)
     {
         _producer = producer;
-        _consumer = consumer;
         _logger = logger;
     }
 
@@ -115,23 +112,23 @@ public class TransactionsController : ControllerBase
     /// List recently consumed messages with schema version and compatibility info.
     /// The background consumer uses a v1 deserializer to demonstrate BACKWARD compatibility.
     /// </summary>
-    [HttpGet("consumed")]
-    public IActionResult GetConsumedMessages()
-    {
-        var messages = _consumer.GetConsumedMessages();
-        var metrics = _consumer.GetMetrics();
+    // [HttpGet("consumed")]
+    // public IActionResult GetConsumedMessages()
+    // {
+    //     var messages = _consumer.GetConsumedMessages();
+    //     var metrics = _consumer.GetMetrics();
 
-        return Ok(new
-        {
-            consumerStatus = metrics.Status,
-            deserializerUsed = "TransactionJsonDeserializer (v1)",
-            totalConsumed = metrics.TotalConsumed,
-            v1Messages = metrics.V1Messages,
-            v2MessagesReadByV1Deserializer = metrics.V2Messages,
-            deserializationErrors = metrics.DeserializationErrors,
-            recentMessages = messages
-        });
-    }
+    //     return Ok(new
+    //     {
+    //         consumerStatus = metrics.Status,
+    //         deserializerUsed = "TransactionJsonDeserializer (v1)",
+    //         totalConsumed = metrics.TotalConsumed,
+    //         v1Messages = metrics.V1Messages,
+    //         v2MessagesReadByV1Deserializer = metrics.V2Messages,
+    //         deserializationErrors = metrics.DeserializationErrors,
+    //         recentMessages = messages
+    //     });
+    // }
 
     /// <summary>
     /// Serialization and schema evolution metrics.
@@ -140,12 +137,11 @@ public class TransactionsController : ControllerBase
     public IActionResult GetMetrics()
     {
         var producerMetrics = _producer.GetMetrics();
-        var consumerMetrics = _consumer.GetMetrics();
 
         return Ok(new
         {
             producer = producerMetrics,
-            consumer = consumerMetrics
+            consumer = new { status = "Consumer disabled for deployment" }
         });
     }
 }

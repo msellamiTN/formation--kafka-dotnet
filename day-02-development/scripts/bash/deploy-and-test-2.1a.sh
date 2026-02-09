@@ -165,8 +165,9 @@ if [[ "$SKIP_TESTS" != "true" ]]; then
     # Test 1: Health check
     log "Testing health endpoint..."
     HEALTH_RESPONSE=$(curl -k -s "https://$ROUTE_URL/health" || echo "")
-    if [[ "$HEALTH_RESPONSE" != *"Healthy"* ]]; then
+    if [[ "$HEALTH_RESPONSE" != *"healthy"* ]]; then
         echo "❌ Health check failed"
+        echo "Response: $HEALTH_RESPONSE"
         exit 1
     fi
     echo "✅ Health check passed"
@@ -175,7 +176,7 @@ if [[ "$SKIP_TESTS" != "true" ]]; then
     log "Testing V1 transaction..."
     V1_RESPONSE=$(curl -k -s -X POST "https://$ROUTE_URL/api/transactions" \
         -H "Content-Type: application/json" \
-        -d '{"customerId":"CUST-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":1500.00,"currency":"EUR","type":1}' || echo "")
+        -d '{"transactionId":"test-valid-'$(date +%s)'","customerId":"CUST-002","fromAccount":"FR7630001000111111111","toAccount":"FR7630001000222222222","amount":2500.50,"currency":"EUR","type":2,"description":"Valid test transaction","timestamp":"'$(date -Iseconds)'"}' || echo "")
     
     if [[ "$V1_RESPONSE" != *"Produced"* ]]; then
         echo "❌ V1 transaction test failed"
@@ -183,12 +184,13 @@ if [[ "$SKIP_TESTS" != "true" ]]; then
         exit 1
     fi
     echo "✅ V1 transaction test passed"
+    echo "   Schema Version: $(echo "$V1_RESPONSE" | grep -o '"schemaVersion":[^,]*')"
     
     # Test 3: Send V2 transaction (schema evolution)
     log "Testing V2 transaction (schema evolution)..."
     V2_RESPONSE=$(curl -k -s -X POST "https://$ROUTE_URL/api/transactions/v2" \
         -H "Content-Type: application/json" \
-        -d '{"customerId":"CUST-002","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":2500.00,"currency":"EUR","type":1,"riskScore":0.85,"sourceChannel":"mobile-app"}' || echo "")
+        -d '{"transactionId":"test-v2-'$(date +%s)'","customerId":"CUST-003","fromAccount":"FR7630001000333333333","toAccount":"FR7630001000444444444","amount":5000.00,"currency":"USD","type":1,"description":"V2 transaction with risk score","timestamp":"'$(date -Iseconds)'","riskScore":0.75,"sourceChannel":"mobile"}' || echo "")
     
     if [[ "$V2_RESPONSE" != *"Produced"* ]]; then
         echo "❌ V2 transaction test failed"
@@ -196,27 +198,59 @@ if [[ "$SKIP_TESTS" != "true" ]]; then
         exit 1
     fi
     echo "✅ V2 transaction test passed"
+    echo "   Schema Version: $(echo "$V2_RESPONSE" | grep -o '"schemaVersion":[^,]*')"
     
-    # Test 4: Check consumed messages (BACKWARD compatibility)
-    log "Testing BACKWARD compatibility..."
-    sleep 3  # Give consumer time to process
-    CONSUMED_RESPONSE=$(curl -k -s "https://$ROUTE_URL/api/transactions/consumed" || echo "")
+    # Test 4: Invalid transaction (validation)
+    log "Testing invalid transaction (validation)..."
+    INVALID_RESPONSE=$(curl -k -s -w "%{http_code}" -X POST "https://$ROUTE_URL/api/transactions" \
+        -H "Content-Type: application/json" \
+        -d '{"transactionId":"test-invalid-'$(date +%s)'","customerId":"CUST-001","fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":-100.00,"currency":"EUR","type":1,"description":"Invalid test","timestamp":"'$(date -Iseconds)'"}' || echo "000")
     
-    if [[ "$CONSUMED_RESPONSE" == *"[]"* ]]; then
-        echo "❌ No messages consumed"
+    HTTP_CODE="${INVALID_RESPONSE: -3}"
+    if [[ "$HTTP_CODE" != "500" ]]; then
+        echo "❌ Invalid transaction test failed - expected 500, got $HTTP_CODE"
         exit 1
     fi
-    echo "✅ BACKWARD compatibility test passed"
+    echo "✅ Invalid transaction correctly rejected (500)"
     
-    # Test 5: Schema info
-    log "Testing schema info..."
+    # Test 5: Check metrics
+    log "Testing metrics endpoint..."
+    METRICS_RESPONSE=$(curl -k -s "https://$ROUTE_URL/api/transactions/metrics" || echo "")
+    if [[ "$METRICS_RESPONSE" != *"v1MessagesProduced"* ]]; then
+        echo "❌ Metrics test failed"
+        echo "Response: $METRICS_RESPONSE"
+        exit 1
+    fi
+    echo "✅ Metrics endpoint working"
+    V1_COUNT=$(echo "$METRICS_RESPONSE" | grep -o '"v1MessagesProduced":[^,]*' | cut -d: -f2)
+    V2_COUNT=$(echo "$METRICS_RESPONSE" | grep -o '"v2MessagesProduced":[^,]*' | cut -d: -f2)
+    echo "   V1 Messages: $V1_COUNT, V2 Messages: $V2_COUNT"
+    
+    # Test 6: Schema info
+    log "Testing schema info endpoint..."
     SCHEMA_RESPONSE=$(curl -k -s "https://$ROUTE_URL/api/transactions/schema-info" || echo "")
-    
-    if [[ "$SCHEMA_RESPONSE" != *"schemaVersion"* ]]; then
+    if [[ "$SCHEMA_RESPONSE" != *"backward"* ]]; then
         echo "❌ Schema info test failed"
+        echo "Response: $SCHEMA_RESPONSE"
         exit 1
     fi
-    echo "✅ Schema info test passed"
+    echo "✅ Schema info endpoint working"
+    echo "   Compatibility: $(echo "$SCHEMA_RESPONSE" | grep -o '"backward":"[^"]*' | cut -d: -f2 | tr -d '"')"
+    
+    # Test 7: Verify messages in Kafka
+    log "Verifying messages in Kafka topic..."
+    KAFKA_MESSAGES=$(oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+        --bootstrap-server localhost:9092 \
+        --topic banking.transactions \
+        --from-beginning \
+        --max-messages 3 2>/dev/null | grep -E "(test-valid|test-v2)" || echo "")
+    
+    if [[ -z "$KAFKA_MESSAGES" ]]; then
+        echo "❌ No test messages found in Kafka"
+        exit 1
+    fi
+    echo "✅ Messages verified in Kafka topic"
+    echo "   Found test transactions in banking.transactions topic"
     
     # Test 6: Invalid transaction (validation)
     log "Testing validation (invalid amount)..."

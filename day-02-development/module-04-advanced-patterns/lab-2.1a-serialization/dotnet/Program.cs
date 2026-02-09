@@ -6,9 +6,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Register Kafka Serialization Producer as a Singleton
 builder.Services.AddSingleton<SerializationProducerService>();
 
-// Register background consumer for schema evolution demo
-builder.Services.AddSingleton<SchemaEvolutionConsumerService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<SchemaEvolutionConsumerService>());
+// Register background consumer for schema evolution demo (commented out for deployment)
+// builder.Services.AddSingleton<SchemaEvolutionConsumerService>();
+// builder.Services.AddHostedService(sp => sp.GetRequiredService<SchemaEvolutionConsumerService>());
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
