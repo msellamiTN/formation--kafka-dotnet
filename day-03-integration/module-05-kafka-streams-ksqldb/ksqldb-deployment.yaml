@@ -15,6 +15,13 @@ spec:
       labels:
         app: ksqldb
     spec:
+      initContainers:
+      - name: copy-config
+        image: confluentinc/ksqldb-server:0.29.0
+        command: ["sh", "-c", "cp -a /etc/ksqldb/* /mnt/ksqldb-etc/ 2>/dev/null || true"]
+        volumeMounts:
+        - name: ksqldb-etc
+          mountPath: /mnt/ksqldb-etc
       containers:
       - name: ksqldb-server
         image: confluentinc/ksqldb-server:0.29.0
@@ -38,39 +45,25 @@ spec:
           value: "/tmp/ksql"
         - name: KSQL_LOGGING_PROCESSING_TOPIC_REPLICATION_FACTOR
           value: "3"
-        - name: KSQL_KSQL_SCHEMA_REGISTRY_URL
-          value: ""
-        - name: KSQL_CONNECT_BOOTSTRAP_SERVERS
-          value: ""
-        - name: KSQL_CONNECT_GROUP_ID
-          value: ""
-        - name: KSQL_CONNECT_CONFIG_STORAGE_TOPIC
-          value: ""
-        - name: KSQL_CONNECT_OFFSET_STORAGE_TOPIC
-          value: ""
-        - name: KSQL_CONNECT_STATUS_STORAGE_TOPIC
-          value: ""
         volumeMounts:
+        - name: ksqldb-etc
+          mountPath: /etc/ksqldb
         - name: ksql-config
           mountPath: /tmp/ksql
         - name: logs
           mountPath: /usr/logs
-        - name: ksqldb-etc
-          mountPath: /etc/ksqldb
-        - name: ksqldb-templates
-          mountPath: /etc/ksqldb/templates
         livenessProbe:
+          httpGet:
+            path: /info
+            port: 8088
+          initialDelaySeconds: 60
+          periodSeconds: 15
+        readinessProbe:
           httpGet:
             path: /info
             port: 8088
           initialDelaySeconds: 30
           periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /info
-            port: 8088
-          initialDelaySeconds: 10
-          periodSeconds: 5
         resources:
           limits:
             cpu: "1"
@@ -79,13 +72,11 @@ spec:
             cpu: 500m
             memory: 1Gi
       volumes:
+      - name: ksqldb-etc
+        emptyDir: {}
       - name: ksql-config
         emptyDir: {}
       - name: logs
-        emptyDir: {}
-      - name: ksqldb-etc
-        emptyDir: {}
-      - name: ksqldb-templates
         emptyDir: {}
 ---
 apiVersion: v1

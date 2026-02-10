@@ -1,0 +1,67 @@
+### ═══════════════════════════════════════════════════════════
+### E-Banking Transactional Producer API — Lab 2.2b Test Requests
+### ═══════════════════════════════════════════════════════════
+
+@baseUrl = http://localhost:5172
+
+### ─── Health Check ─────────────────────────────────────────
+GET {{baseUrl}}/api/transactions/health
+
+### ─── DEMO 1: Single Atomic Transaction ─────────────────────
+### Exactly-once semantics: BeginTransaction → Send → CommitTransaction
+POST {{baseUrl}}/api/transactions/single
+Content-Type: application/json
+
+{
+    "customerId": "CUST-EOS-001",
+    "fromAccount": "FR7630001000123456789",
+    "toAccount": "FR7630001000987654321",
+    "amount": 2500.00,
+    "currency": "EUR",
+    "type": 1,
+    "description": "Single atomic transaction with EOS"
+}
+
+### ─── DEMO 2: Batch Atomic Transaction ──────────────────────
+### Multiple messages in a single Kafka transaction (all-or-nothing)
+POST {{baseUrl}}/api/transactions/batch
+Content-Type: application/json
+
+{
+    "transactions": [
+        {
+            "customerId": "CUST-EOS-001",
+            "fromAccount": "FR7630001000111111111",
+            "toAccount": "FR7630001000222222222",
+            "amount": 100.00,
+            "currency": "EUR",
+            "type": 1,
+            "description": "Batch tx 1 - Transfer"
+        },
+        {
+            "customerId": "CUST-EOS-002",
+            "fromAccount": "FR7630001000333333333",
+            "toAccount": "FR7630001000444444444",
+            "amount": 250.00,
+            "currency": "EUR",
+            "type": 2,
+            "description": "Batch tx 2 - Payment"
+        },
+        {
+            "customerId": "CUST-EOS-003",
+            "fromAccount": "FR7630001000555555555",
+            "toAccount": "FR7630001000666666666",
+            "amount": 5000.00,
+            "currency": "EUR",
+            "type": 1,
+            "description": "Batch tx 3 - Large transfer"
+        }
+    ]
+}
+
+### ─── Metrics ──────────────────────────────────────────────
+### Shows transactional ID, committed/aborted counts, active transactions
+GET {{baseUrl}}/api/transactions/metrics
+
+### ─── Swagger UI ───────────────────────────────────────────
+### Open in browser: http://localhost:5172/swagger

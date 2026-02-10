@@ -1,0 +1,15 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: banking-ksqldb-lab
+  namespace: msellamitn-dev
+spec:
+  host: banking-ksqldb-lab-msellamitn-dev.apps.rm3.7wse.p1.openshiftapps.com
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  to:
+    kind: Service
+    name: banking-ksqldb-lab
+  port:
+    targetPort: 8080

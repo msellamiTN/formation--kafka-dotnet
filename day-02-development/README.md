@@ -170,7 +170,7 @@ flowchart LR
 | **At-least-once** | `Acks = All` + Idempotence | Manual commit après traitement |
 | **Exactly-once** | `Acks = All` + Transactions | `IsolationLevel = ReadCommitted` |
 
-### Lab 2.2 — Producer Idempotent & Transactions
+### Lab 2.2a — Producer Idempotent
 
 > 📂 **[lab-2.2a — Producer Idempotent](./module-04-advanced-patterns/lab-2.2-producer-advanced/README.md)**
 
@@ -179,7 +179,18 @@ flowchart LR
 1. Activer `EnableIdempotence = true` et observer le Producer ID (PID)
 2. Simuler des retries réseau et vérifier l'absence de duplicatas
 3. Comparer throughput avec/sans idempotence
-4. (Bonus) Implémenter une transaction Kafka read-process-write
+4. Observer les sequence numbers dans les métriques
+
+### Lab 2.2b — Transactions Kafka (Exactly-Once)
+
+> 📂 **[lab-2.2b — Kafka Transactions](./module-04-advanced-patterns/lab-2.2b-transactions/README.md)**
+
+**Objectifs du lab** :
+
+1. Configurer un `TransactionalId` persistant
+2. Implémenter `BeginTransaction()` → `CommitTransaction()` / `AbortTransaction()`
+3. Envoyer un lot de messages atomique (all-or-nothing)
+4. Configurer un consumer avec `IsolationLevel.ReadCommitted`
 
 **Code clé** :
 
@@ -316,8 +327,9 @@ flowchart TB
             SER["🔷 .NET Serializer Demo"]
         end
 
-        subgraph Bloc22["Bloc 2.2 - Idempotent Producer"]
+        subgraph Bloc22["Bloc 2.2 - Producer Advanced"]
             IDEM["🔷 .NET Idempotent Producer"]
+            TXAPI["🔷 .NET Transactional Producer"]
         end
 
         subgraph Bloc23["Bloc 2.3 - Consumer Advanced"]
@@ -327,6 +339,7 @@ flowchart TB
 
     SER --> K
     IDEM --> K
+    TXAPI --> K
     K -->|"banking.transactions"| NET04
     NET04 -->|"banking.transactions.dlq"| K
     UI --> K
@@ -340,7 +353,8 @@ flowchart TB
 | Bloc | Module | Lab | Durée | Description |
 | ---- | ------ | --- | ----- | ----------- |
 | 2.1 | [Serialization](./module-04-advanced-patterns/lab-2.1a-serialization/README.md) | Lab 2.1a | 40 min | JSON typé, validation, intro Avro |
-| 2.2 | [Producer Advanced](./module-04-advanced-patterns/lab-2.2-producer-advanced/README.md) | Lab 2.2a | 55 min | Idempotence, PID, transactions |
+| 2.2 | [Producer Advanced](./module-04-advanced-patterns/lab-2.2-producer-advanced/README.md) | Lab 2.2a | 30 min | Idempotence, PID, sequence numbers |
+| 2.2 | [Transactions](./module-04-advanced-patterns/lab-2.2b-transactions/README.md) | Lab 2.2b | 25 min | Kafka Transactions, Exactly-Once Semantics |
 | 2.3 | [Consumer Advanced](./module-04-advanced-patterns/lab-2.3a-consumer-dlt-retry/README.md) | Lab 2.3a | 1h10 | DLT, Retry, Rebalancing |
 | 2.4 | Kafka Connect | (Day 03 preview) | 15 min | Démo Source/Sink connectors |
 
@@ -386,6 +400,10 @@ dotnet run
 
 # Lab 2.2a — Idempotent Producer (port 5171)
 cd ../../lab-2.2-producer-advanced/dotnet
+dotnet run
+
+# Lab 2.2b — Transactional Producer (port 5172)
+cd ../../lab-2.2b-transactions/dotnet
 dotnet run
 
 # Lab 2.3a — DLT & Retry Consumer (port 18083)
@@ -436,6 +454,7 @@ Chaque lab Day 02 peut être déployé dans **3 environnements**, comme les labs
 | --- | -------- | ---------- | ----------- |
 | 2.1a | Serialization API | `:5170` | `http://localhost:5170/swagger` |
 | 2.2a | Idempotent Producer API | `:5171` | `http://localhost:5171/swagger` |
+| 2.2b | Transactional Producer API | `:5172` | `http://localhost:5172/swagger` |
 | 2.3a | DLT Consumer API | `:18083` | `http://localhost:18083/swagger` |
 
 ### Déploiement sur OpenShift (Sandbox ou CRC)
@@ -472,6 +491,7 @@ kubectl port-forward svc/<app-name> 8080:8080
 | --- | --------------------- | ------------ | --- |
 | 2.1a | `ebanking-serialization-api` | `ebanking-serialization-api:latest` | `SerializationLab.dll` |
 | 2.2a | `ebanking-idempotent-api` | `ebanking-idempotent-api:latest` | `EBankingIdempotentProducerAPI.dll` |
+| 2.2b | `ebanking-transactional-api` | `ebanking-transactional-api:latest` | `EBankingTransactionsAPI.dll` |
 | 2.3a | `ebanking-dlt-consumer` | `ebanking-dlt-consumer:latest` | `EBankingDltConsumer.dll` |
 
 > **Note** : Lab 2.3a utilise `KAFKA_*` (env vars directes) au lieu de `Kafka__*` (ASP.NET config). Voir le README du lab pour les variables exactes.
@@ -495,7 +515,8 @@ Pour les instructions détaillées par lab, consultez chaque README individuel.
 ## ✅ Validation Day 02
 
 - [ ] Lab 2.1 : Serializer JSON typé fonctionne, validation détecte les schémas invalides
-- [ ] Lab 2.2 : Producer idempotent activé, PID visible dans les logs, pas de duplicatas après retry
+- [ ] Lab 2.2a : Producer idempotent activé, PID visible dans les logs, pas de duplicatas après retry
+- [ ] Lab 2.2b : Transactions Kafka fonctionnelles, lot atomique commité, consumer ReadCommitted
 - [ ] Lab 2.3 : Messages invalides routés vers DLT, retries visibles dans les logs, rebalancing observé
 - [ ] Comprendre la différence entre at-least-once et exactly-once
 - [ ] Savoir quand utiliser `EnableIdempotence` vs Transactions complètes
