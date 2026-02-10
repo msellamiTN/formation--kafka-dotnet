@@ -13,8 +13,9 @@ This directory contains scripts to manage OpenShift resources for the Kafka trai
 ### Cleanup Scripts
 | Script | Purpose | Environment |
 |--------|---------|-------------|
-| `bash/cleanup-all-resources.sh` | Remove ALL OpenShift resources | Linux/macOS |
-| `powershell/cleanup-all-resources.ps1` | Remove ALL OpenShift resources | Windows PowerShell |
+| `bash/cleanup-all-resources.sh` | Remove ALL OpenShift resources with detailed logging | Linux/macOS |
+| `powershell/cleanup-all-resources.ps1` | Remove ALL OpenShift resources with detailed logging | Windows PowerShell |
+| `powershell/cleanup-simple.ps1` | Simple cleanup using `oc delete all --all` | Windows PowerShell |
 
 ## 🗑️ Cleanup All Resources
 
@@ -26,10 +27,20 @@ This directory contains scripts to manage OpenShift resources for the Kafka trai
 ```
 
 ### PowerShell (Windows)
+
+#### Detailed Cleanup
 ```powershell
 ./scripts/powershell/cleanup-all-resources.ps1 `
   -Token "sha256~xxx" `
   -Server "https://api.xxx.com:6443"
+```
+
+#### Simple Cleanup (Recommended)
+```powershell
+./scripts/powershell/cleanup-simple.ps1 `
+  -Token "sha256~xxx" `
+  -Server "https://api.xxx.com:6443" `
+  -Force
 ```
 
 ### Options

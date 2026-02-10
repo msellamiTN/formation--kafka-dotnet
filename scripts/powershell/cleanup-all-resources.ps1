@@ -52,7 +52,7 @@ param(
 )
 
 # Logging function
-function Log-Message {
+function Write-Log {
     param([string]$Message)
     if ($Verbose) {
         Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] $Message" -ForegroundColor Gray
@@ -60,7 +60,7 @@ function Log-Message {
 }
 
 # Login to OpenShift
-Log-Message "Logging into OpenShift..."
+Write-Log "Logging into OpenShift..."
 $LoginResult = oc login --token=$Token --server=$Server 2>$null
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Error: Failed to login to OpenShift"
@@ -68,7 +68,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # Switch to project
-Log-Message "Switching to project: $Project"
+Write-Log "Switching to project: $Project"
 $ProjectResult = oc project $Project 2>$null
 
 # Get current resources
@@ -118,7 +118,7 @@ function Remove-Resources {
         [string]$Description
     )
     
-    Log-Message "Deleting $Description..."
+    Write-Log "Deleting $Description..."
     $resources = oc get $ResourceType -o name 2>$null
     if ($resources) {
         $resources | ForEach-Object {
