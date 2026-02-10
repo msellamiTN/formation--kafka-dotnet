@@ -111,6 +111,13 @@ Invoke-LabDeployment "Lab 1.3a - Fraud Detection Consumer" "$scriptDir\deploy-an
 Invoke-LabDeployment "Lab 1.3b - Balance Consumer" "$scriptDir\deploy-and-test-1.3b.ps1"
 Invoke-LabDeployment "Lab 1.3c - Audit Consumer" "$scriptDir\deploy-and-test-1.3c.ps1"
 
+# Deploy Java Consumers
+Write-Info "Deploying Consumer APIs (Java) (1.3a, 1.3b, 1.3c)..."
+
+Invoke-LabDeployment "Lab 1.3a - Fraud Detection Consumer (Java)" "$scriptDir\deploy-and-test-1.3a-java.ps1"
+Invoke-LabDeployment "Lab 1.3b - Balance Consumer (Java)" "$scriptDir\deploy-and-test-1.3b-java.ps1"
+Invoke-LabDeployment "Lab 1.3c - Audit Consumer (Java)" "$scriptDir\deploy-and-test-1.3c-java.ps1"
+
 # =============================================================================
 # FINAL SUMMARY
 # =============================================================================

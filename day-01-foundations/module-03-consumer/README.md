@@ -223,6 +223,150 @@ dotnet --version
 # Attendu : 8.0.x ou supérieur
 ```
 
+### Java / Spring Boot (Alternative Track)
+
+**JDK 17+** :
+
+```bash
+java -version
+# Expected: 17.x or higher
+```
+
+**Maven 3.9+** :
+
+```bash
+mvn -version
+# Expected: 3.9.x or higher
+```
+
+Each consumer lab has a `java/` subfolder with a complete Spring Boot + Spring Kafka project.
+
+#### Docker (Java)
+
+```bash
+# Lab 1.3a - Fraud Detection Consumer
+cd lab-1.3a-consumer-basic/java
+docker build -t ebanking-fraud-consumer-java .
+docker run -p 8080:8080 -e KAFKA_BOOTSTRAP_SERVERS=host.docker.internal:9092 ebanking-fraud-consumer-java
+
+# Lab 1.3b - Balance Consumer Group
+cd lab-1.3b-consumer-group/java
+docker build -t ebanking-balance-consumer-java .
+docker run -p 8081:8080 -e KAFKA_BOOTSTRAP_SERVERS=host.docker.internal:9092 ebanking-balance-consumer-java
+
+# Lab 1.3c - Audit Consumer (Manual Commit + DLQ)
+cd lab-1.3c-consumer-manual-commit/java
+docker build -t ebanking-audit-consumer-java .
+docker run -p 8082:8080 -e KAFKA_BOOTSTRAP_SERVERS=host.docker.internal:9092 ebanking-audit-consumer-java
+```
+
+#### Maven (Java - local run)
+
+```bash
+cd lab-1.3a-consumer-basic/java
+mvn spring-boot:run
+# API available at http://localhost:8080
+```
+
+#### Java API Endpoints
+
+| Lab | Endpoint | Description |
+| --- | -------- | ----------- |
+| 1.3a | `GET /api/v1/alerts` | Fraud alerts |
+| 1.3a | `GET /api/v1/stats` | Consumer metrics |
+| 1.3b | `GET /api/v1/balances` | Customer balances |
+| 1.3b | `GET /api/v1/balances/{customerId}` | Single customer balance |
+| 1.3b | `GET /api/v1/rebalancing` | Rebalancing history |
+| 1.3b | `GET /api/v1/stats` | Consumer metrics |
+| 1.3c | `GET /api/v1/audit` | Audit log |
+| 1.3c | `GET /api/v1/dlq` | DLQ messages |
+| 1.3c | `GET /api/v1/stats` | Consumer metrics |
+| All | `GET /actuator/health` | Health check |
+
+#### OpenShift Deployment (Java) - Option A: S2I Binary Build
+
+This approach builds the Java application directly inside OpenShift using S2I (Source-to-Image) — no external Docker registry needed.
+
+##### Lab 1.3A - Fraud Detection Consumer (Java)
+
+```bash
+cd module-03-consumer/lab-1.3a-consumer-basic/java
+
+# Create BuildConfig
+oc new-build java:17 --binary=true --name=ebanking-fraud-consumer-java
+
+# Build from local source
+oc start-build ebanking-fraud-consumer-java --from-dir=. --follow
+
+# Deploy
+oc new-app ebanking-fraud-consumer-java
+oc set env deployment/ebanking-fraud-consumer-java \
+  SERVER_PORT=8080 \
+  KAFKA_BOOTSTRAP_SERVERS=kafka-svc:9092 \
+  KAFKA_TOPIC=banking.transactions
+
+# Create route
+oc create route edge ebanking-fraud-consumer-java-secure \
+  --service=ebanking-fraud-consumer-java --port=8080-tcp
+
+# Verify
+curl -k https://$(oc get route ebanking-fraud-consumer-java-secure -o jsonpath='{.spec.host}')/actuator/health
+```
+
+##### Lab 1.3B - Balance Consumer Group (Java)
+
+```bash
+cd module-03-consumer/lab-1.3b-consumer-group/java
+
+oc new-build java:17 --binary=true --name=ebanking-balance-consumer-java
+oc start-build ebanking-balance-consumer-java --from-dir=. --follow
+oc new-app ebanking-balance-consumer-java
+oc set env deployment/ebanking-balance-consumer-java \
+  SERVER_PORT=8080 \
+  KAFKA_BOOTSTRAP_SERVERS=kafka-svc:9092 \
+  KAFKA_TOPIC=banking.transactions
+oc create route edge ebanking-balance-consumer-java-secure \
+  --service=ebanking-balance-consumer-java --port=8080-tcp
+```
+
+##### Lab 1.3C - Audit Consumer / Manual Commit + DLQ (Java)
+
+```bash
+cd module-03-consumer/lab-1.3c-consumer-manual-commit/java
+
+oc new-build java:17 --binary=true --name=ebanking-audit-consumer-java
+oc start-build ebanking-audit-consumer-java --from-dir=. --follow
+oc new-app ebanking-audit-consumer-java
+oc set env deployment/ebanking-audit-consumer-java \
+  SERVER_PORT=8080 \
+  KAFKA_BOOTSTRAP_SERVERS=kafka-svc:9092 \
+  KAFKA_TOPIC=banking.transactions \
+  KAFKA_DLQ_TOPIC=banking.transactions.audit-dlq \
+  MAX_RETRY_ATTEMPTS=3 \
+  RETRY_BACKOFF_MS=1000
+oc create route edge ebanking-audit-consumer-java-secure \
+  --service=ebanking-audit-consumer-java --port=8080-tcp
+```
+
+##### Automated Scripts (Java)
+
+| Script | Description |
+| ------ | ----------- |
+| `scripts/bash/deploy-and-test-1.3a-java.sh` | Deploy + test Lab 1.3a (Bash) |
+| `scripts/bash/deploy-and-test-1.3b-java.sh` | Deploy + test Lab 1.3b (Bash) |
+| `scripts/bash/deploy-and-test-1.3c-java.sh` | Deploy + test Lab 1.3c (Bash) |
+| `scripts/powershell/deploy-and-test-1.3a-java.ps1` | Deploy + test Lab 1.3a (PowerShell) |
+| `scripts/powershell/deploy-and-test-1.3b-java.ps1` | Deploy + test Lab 1.3b (PowerShell) |
+| `scripts/powershell/deploy-and-test-1.3c-java.ps1` | Deploy + test Lab 1.3c (PowerShell) |
+
+```bash
+# Bash
+./scripts/bash/deploy-and-test-1.3a-java.sh
+
+# PowerShell
+.\scripts\powershell\deploy-and-test-1.3a-java.ps1
+```
+
 ---
 
 ## 📚 Ordre de Réalisation

@@ -119,6 +119,13 @@ deploy_lab "Lab 1.3a - Fraud Detection Consumer" "$SCRIPT_DIR/deploy-and-test-1.
 deploy_lab "Lab 1.3b - Balance Consumer" "$SCRIPT_DIR/deploy-and-test-1.3b.sh"
 deploy_lab "Lab 1.3c - Audit Consumer" "$SCRIPT_DIR/deploy-and-test-1.3c.sh"
 
+# Deploy Java Consumers
+info "Deploying Consumer APIs (Java) (1.3a, 1.3b, 1.3c)..."
+
+deploy_lab "Lab 1.3a - Fraud Detection Consumer (Java)" "$SCRIPT_DIR/deploy-and-test-1.3a-java.sh"
+deploy_lab "Lab 1.3b - Balance Consumer (Java)" "$SCRIPT_DIR/deploy-and-test-1.3b-java.sh"
+deploy_lab "Lab 1.3c - Audit Consumer (Java)" "$SCRIPT_DIR/deploy-and-test-1.3c-java.sh"
+
 # =============================================================================
 # FINAL SUMMARY
 # =============================================================================
