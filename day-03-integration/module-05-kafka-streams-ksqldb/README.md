@@ -176,6 +176,36 @@ kubectl get kafka -n kafka
 
 </details>
 
+<details>
+<summary>☁️ OpenShift Sandbox (Recommended)</summary>
+
+```bash
+# Prérequis: oc CLI installé
+# Token et serveur depuis votre sandbox OpenShift
+
+# Déploiement automatisé complet
+./scripts/deploy-and-test-ksqldb-lab.sh \
+  --token=sha256~xxxx \
+  --server=https://api.sandbox.xxx.openshiftapps.com:6443
+
+# Ou PowerShell sur Windows
+./scripts/deploy-and-test-ksqldb-lab.ps1 `
+  -Token "sha256~xxxx" `
+  -Server "https://api.sandbox.xxx.openshiftapps.com:6443"
+```
+
+**Le script gère automatiquement :**
+- ✅ Scale Kafka cluster (si nécessaire)
+- ✅ Déployer ksqlDB avec configuration optimale
+- ✅ Créer tous les topics Kafka requis
+- ✅ Builder et déployer l'API C# .NET
+- ✅ Configurer route TLS edge termination
+- ✅ Initialiser les streams ksqlDB
+- ✅ Générer transactions de test
+- ✅ Valider les push/pull queries
+
+</details>
+
 ### Créer les topics nécessaires
 
 <details>
@@ -212,6 +242,24 @@ do
     bin/kafka-topics.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
     --create --if-not-exists --topic "$TOPIC" --partitions 3 --replication-factor 3
 done
+```
+
+</details>
+
+<details>
+<summary>☁️ OpenShift Sandbox</summary>
+
+```bash
+# Les topics sont créés automatiquement par le script de déploiement
+# Si vous devez les créer manuellement :
+
+oc exec deployment/ksqldb -n msellamitn-dev -- bash -c "
+  kafka-topics --bootstrap-server kafka-0.kafka-svc:9092 --create --topic transactions --partitions 3 --replication-factor 1 --if-not-exists
+  kafka-topics --bootstrap-server kafka-0.kafka-svc:9092 --create --topic verified_transactions --partitions 3 --replication-factor 1 --if-not-exists
+  kafka-topics --bootstrap-server kafka-0.kafka-svc:9092 --create --topic fraud_alerts --partitions 3 --replication-factor 1 --if-not-exists
+  kafka-topics --bootstrap-server kafka-0.kafka-svc:9092 --create --topic account_balances --partitions 3 --replication-factor 1 --if-not-exists
+  kafka-topics --bootstrap-server kafka-0.kafka-svc:9092 --create --topic hourly_stats --partitions 3 --replication-factor 1 --if-not-exists
+"
 ```
 
 </details>
