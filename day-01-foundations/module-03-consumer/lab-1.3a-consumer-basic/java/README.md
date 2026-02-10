@@ -228,6 +228,27 @@ java/
             └── FraudController.java
 ```
 
+### Étape 1 : Configuration Maven (`pom.xml`)
+
+> **⚠️ Important** : Assurez-vous que le plugin Spring Boot Maven est correctement configuré pour créer un JAR exécutable :
+
+```xml
+<plugin>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-maven-plugin</artifactId>
+    <version>${spring-boot.version}</version>
+    <executions>
+        <execution>
+            <goals>
+                <goal>repackage</goal>
+            </goals>
+        </execution>
+    </executions>
+</plugin>
+```
+
+> **📝 Note** : Sans la configuration `repackage`, le JAR n'aura pas de manifest principal et ne pourra pas être exécuté.
+
 ### Étape 2 : Dépendances Maven (`pom.xml`)
 
 ```xml
@@ -516,8 +537,8 @@ docker run -p 8080:8080 \
 ```bash
 cd module-03-consumer/lab-1.3a-consumer-basic/java
 
-# Créer le BuildConfig
-oc new-build java:17 --binary=true --name=ebanking-fraud-consumer-java
+# Créer le BuildConfig (avec image stream explicite)
+oc new-build --image-stream="openshift/java:openjdk-17-ubi8" --binary=true --name=ebanking-fraud-consumer-java
 
 # Build depuis le source local
 oc start-build ebanking-fraud-consumer-java --from-dir=. --follow
@@ -557,6 +578,13 @@ curl -k -s "https://$URL/api/v1/stats"
 # Alertes fraude
 curl -k -s "https://$URL/api/v1/alerts"
 ```
+
+> **📝 Note** : Sur PowerShell, utilisez :
+> ```powershell
+> $URL = oc get route ebanking-fraud-consumer-java-secure -o jsonpath='{.spec.host}'
+> [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+> (New-Object System.Net.WebClient).DownloadString("https://$URL/api/v1/stats")
+> ```
 
 #### 5. ✅ Critères de succès
 

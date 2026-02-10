@@ -673,8 +673,8 @@ oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
 ```bash
 cd module-03-consumer/lab-1.3c-consumer-manual-commit/java
 
-# Créer le BuildConfig
-oc new-build java:17 --binary=true --name=ebanking-audit-consumer-java
+# Créer le BuildConfig (avec image stream explicite)
+oc new-build --image-stream="openshift/java:openjdk-17-ubi8" --binary=true --name=ebanking-audit-consumer-java
 
 # Build depuis le source local
 oc start-build ebanking-audit-consumer-java --from-dir=. --follow
@@ -719,6 +719,13 @@ curl -k -s "https://$URL/api/v1/dlq"
 # Métriques
 curl -k -s "https://$URL/api/v1/stats"
 ```
+
+> **📝 Note** : Sur PowerShell, utilisez :
+> ```powershell
+> $URL = oc get route ebanking-audit-consumer-java-secure -o jsonpath='{.spec.host}'
+> [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+> (New-Object System.Net.WebClient).DownloadString("https://$URL/api/v1/audit")
+> ```
 
 #### 6. ✅ Critères de succès
 

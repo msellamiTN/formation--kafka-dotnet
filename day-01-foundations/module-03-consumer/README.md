@@ -292,8 +292,8 @@ This approach builds the Java application directly inside OpenShift using S2I (S
 ```bash
 cd module-03-consumer/lab-1.3a-consumer-basic/java
 
-# Create BuildConfig
-oc new-build java:17 --binary=true --name=ebanking-fraud-consumer-java
+# Create BuildConfig (with explicit image stream)
+oc new-build --image-stream="openshift/java:openjdk-17-ubi8" --binary=true --name=ebanking-fraud-consumer-java
 
 # Build from local source
 oc start-build ebanking-fraud-consumer-java --from-dir=. --follow
@@ -318,7 +318,8 @@ curl -k https://$(oc get route ebanking-fraud-consumer-java-secure -o jsonpath='
 ```bash
 cd module-03-consumer/lab-1.3b-consumer-group/java
 
-oc new-build java:17 --binary=true --name=ebanking-balance-consumer-java
+# Create BuildConfig (with explicit image stream)
+oc new-build --image-stream="openshift/java:openjdk-17-ubi8" --binary=true --name=ebanking-balance-consumer-java
 oc start-build ebanking-balance-consumer-java --from-dir=. --follow
 oc new-app ebanking-balance-consumer-java
 oc set env deployment/ebanking-balance-consumer-java \
@@ -334,7 +335,15 @@ oc create route edge ebanking-balance-consumer-java-secure \
 ```bash
 cd module-03-consumer/lab-1.3c-consumer-manual-commit/java
 
-oc new-build java:17 --binary=true --name=ebanking-audit-consumer-java
+# Create DLQ topic first
+oc exec kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists \
+  --topic banking.transactions.audit-dlq \
+  --partitions 6 --replication-factor 3
+
+# Create BuildConfig (with explicit image stream)
+oc new-build --image-stream="openshift/java:openjdk-17-ubi8" --binary=true --name=ebanking-audit-consumer-java
 oc start-build ebanking-audit-consumer-java --from-dir=. --follow
 oc new-app ebanking-audit-consumer-java
 oc set env deployment/ebanking-audit-consumer-java \
@@ -347,6 +356,8 @@ oc set env deployment/ebanking-audit-consumer-java \
 oc create route edge ebanking-audit-consumer-java-secure \
   --service=ebanking-audit-consumer-java --port=8080-tcp
 ```
+
+> **⚠️ Important Note** : All Java applications require the Spring Boot Maven plugin to be configured with the `repackage` goal to create an executable JAR. See individual lab READMEs for the exact `pom.xml` configuration.
 
 ##### Automated Scripts (Java)
 

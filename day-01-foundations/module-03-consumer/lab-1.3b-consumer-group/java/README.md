@@ -595,8 +595,8 @@ docker run -p 8080:8080 \
 ```bash
 cd module-03-consumer/lab-1.3b-consumer-group/java
 
-# Créer le BuildConfig
-oc new-build java:17 --binary=true --name=ebanking-balance-consumer-java
+# Créer le BuildConfig (avec image stream explicite)
+oc new-build --image-stream="openshift/java:openjdk-17-ubi8" --binary=true --name=ebanking-balance-consumer-java
 
 # Build depuis le source local
 oc start-build ebanking-balance-consumer-java --from-dir=. --follow
@@ -638,6 +638,13 @@ curl -k -s "https://$URL/api/v1/rebalancing"
 # Stats consumer
 curl -k -s "https://$URL/api/v1/stats"
 ```
+
+> **📝 Note** : Sur PowerShell, utilisez :
+> ```powershell
+> $URL = oc get route ebanking-balance-consumer-java-secure -o jsonpath='{.spec.host}'
+> [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+> (New-Object System.Net.WebClient).DownloadString("https://$URL/api/v1/balances")
+> ```
 
 #### 5. ✅ Critères de succès
 

@@ -10,6 +10,37 @@ This directory contains scripts to manage OpenShift resources for the Kafka trai
 | `bash/deploy-and-test-*.sh` | Deploy and validate individual labs | Linux/macOS |
 | `powershell/deploy-and-test-*.ps1` | Deploy and validate individual labs | Windows PowerShell |
 
+## 📋 Individual Lab Scripts
+
+### Day 01 - Module 02 (Producers)
+| Script | Lab | Description |
+|--------|-----|-------------|
+| `deploy-and-test-1.2a.sh/.ps1` | Lab 1.2a - Basic Producer | Simple transaction producer |
+| `deploy-and-test-1.2b.sh/.ps1` | Lab 1.2b - Keyed Producer | Producer with custom partitioning |
+| `deploy-and-test-1.2c.sh/.ps1` | Lab 1.2c - Resilient Producer | Producer with retry & DLQ |
+
+### Day 01 - Module 03 (Consumers - .NET)
+| Script | Lab | Description |
+|--------|-----|-------------|
+| `deploy-and-test-1.3a.sh/.ps1` | Lab 1.3a - Fraud Detection | Auto-commit consumer |
+| `deploy-and-test-1.3b.sh/.ps1` | Lab 1.3b - Balance Consumer | Consumer group & rebalancing |
+| `deploy-and-test-1.3c.sh/.ps1` | Lab 1.3c - Audit Consumer | Manual commit & DLQ |
+
+### Day 01 - Module 03 (Consumers - Java)
+| Script | Lab | Description |
+|--------|-----|-------------|
+| `deploy-and-test-1.3a-java.sh/.ps1` | Lab 1.3a - Fraud Detection (Java) | Auto-commit consumer |
+| `deploy-and-test-1.3b-java.sh/.ps1` | Lab 1.3b - Balance Consumer (Java) | Consumer group & rebalancing |
+| `deploy-and-test-1.3c-java.sh/.ps1` | Lab 1.3c - Audit Consumer (Java) | Manual commit & DLQ |
+
+### Day 02 - Module 04 (Advanced Patterns)
+| Script | Lab | Description |
+|--------|-----|-------------|
+| `deploy-and-test-2.1a.sh/.ps1` | Lab 2.1a - Serialization | Avro & Schema Registry |
+| `deploy-and-test-2.2a.sh/.ps1` | Lab 2.2a - Idempotent Producer | Idempotence patterns |
+| `deploy-and-test-2.2b.sh/.ps1` | Lab 2.2b - Transactions | Kafka transactions |
+| `deploy-and-test-2.3a.sh/.ps1` | Lab 2.3a - Consumer DLT/Retry | Consumer error handling |
+
 ### Cleanup Scripts
 | Script | Purpose | Environment |
 |--------|---------|-------------|
@@ -131,13 +162,18 @@ Scripts show:
 After cleanup, you can redeploy labs using the individual deployment scripts:
 
 ```bash
-# Deploy all Day 01 labs
+# Deploy all Day 01 labs (.NET)
 ./scripts/bash/deploy-and-test-1.2a.sh --token=xxx --server=xxx
 ./scripts/bash/deploy-and-test-1.2b.sh --token=xxx --server=xxx
 ./scripts/bash/deploy-and-test-1.2c.sh --token=xxx --server=xxx
 ./scripts/bash/deploy-and-test-1.3a.sh --token=xxx --server=xxx
 ./scripts/bash/deploy-and-test-1.3b.sh --token=xxx --server=xxx
 ./scripts/bash/deploy-and-test-1.3c.sh --token=xxx --server=xxx
+
+# Deploy all Day 01 labs (Java)
+./scripts/bash/deploy-and-test-1.3a-java.sh --token=xxx --server=xxx
+./scripts/bash/deploy-and-test-1.3b-java.sh --token=xxx --server=xxx
+./scripts/bash/deploy-and-test-1.3c-java.sh --token=xxx --server=xxx
 
 # Deploy all Day 02 labs
 ./scripts/bash/deploy-and-test-2.1a.sh --token=xxx --server=xxx

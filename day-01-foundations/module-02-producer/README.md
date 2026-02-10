@@ -310,8 +310,8 @@ ROUTE=${APP}-secure
 
 cd lab-1.2a-producer-basic/java
 
-# 1) Create BuildConfig (once)
-oc new-build java:17 --binary=true --name=$APP
+# 1) Create BuildConfig (with explicit image stream)
+oc new-build --image-stream="openshift/java:openjdk-17-ubi8" --binary=true --name=$APP
 
 # 2) Start binary build from local folder
 oc start-build $APP --from-dir=. --follow
@@ -341,7 +341,7 @@ APP=ebanking-producer-keyed-java
 ROUTE=${APP}-secure
 
 cd lab-1.2b-producer-keyed/java
-oc new-build java:17 --binary=true --name=$APP
+oc new-build --image-stream="openshift/java:openjdk-17-ubi8" --binary=true --name=$APP
 oc start-build $APP --from-dir=. --follow
 oc new-app $APP
 oc set env deployment/$APP SERVER_PORT=8080 KAFKA_BOOTSTRAP_SERVERS=kafka-svc:9092 KAFKA_TOPIC=banking.transactions
@@ -355,7 +355,7 @@ APP=ebanking-producer-resilient-java
 ROUTE=${APP}-secure
 
 cd lab-1.2c-producer-error-handling/java
-oc new-build java:17 --binary=true --name=$APP
+oc new-build --image-stream="openshift/java:openjdk-17-ubi8" --binary=true --name=$APP
 oc start-build $APP --from-dir=. --follow
 oc new-app $APP
 oc set env deployment/$APP \
@@ -369,6 +369,8 @@ oc set env deployment/$APP \
   CIRCUIT_BREAKER_OPEN_MS=60000
 oc create route edge $ROUTE --service=$APP --port=8080-tcp
 ```
+
+> **⚠️ Important Note** : All Java applications require the Spring Boot Maven plugin to be configured with the `repackage` goal to create an executable JAR. See individual lab READMEs for the exact `pom.xml` configuration.
 
 #### Automated scripts (Option A)
 
