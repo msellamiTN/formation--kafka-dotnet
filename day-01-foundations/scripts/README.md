@@ -46,8 +46,11 @@ scripts/
 | Lab | Bash Script | PowerShell Script | Location |
 |-----|------------|-------------------|----------|
 | 1.2a - Basic Producer | `deploy-and-test-1.2a.sh` | `deploy-and-test-1.2a.ps1` | `bash/` / `powershell/` |
+| 1.2a - Basic Producer (Java) | `deploy-and-test-1.2a-java.sh` | `deploy-and-test-1.2a-java.ps1` | `bash/` / `powershell/` |
 | 1.2b - Keyed Producer | `deploy-and-test-1.2b.sh` | `deploy-and-test-1.2b.ps1` | `bash/` / `powershell/` |
+| 1.2b - Keyed Producer (Java) | `deploy-and-test-1.2b-java.sh` | `deploy-and-test-1.2b-java.ps1` | `bash/` / `powershell/` |
 | 1.2c - Resilient Producer | `deploy-and-test-1.2c.sh` | `deploy-and-test-1.2c.ps1` | `bash/` / `powershell/` |
+| 1.2c - Resilient Producer (Java) | `deploy-and-test-1.2c-java.sh` | `deploy-and-test-1.2c-java.ps1` | `bash/` / `powershell/` |
 | 1.3a - Fraud Detection | `deploy-and-test-1.3a.sh` | `deploy-and-test-1.3a.ps1` | `bash/` / `powershell/` |
 | 1.3b - Balance Service | `deploy-and-test-1.3b.sh` | `deploy-and-test-1.3b.ps1` | `bash/` / `powershell/` |
 | 1.3c - Audit Service | `deploy-and-test-1.3c.sh` | `deploy-and-test-1.3c.ps1` | `bash/` / `powershell/` |
@@ -103,12 +106,22 @@ scripts/
 # Deploy Lab 1.2a (Basic Producer)
 ./bash/deploy-and-test-1.2a.sh
 
+# Deploy Lab 1.2a (Basic Producer - Java)
+./bash/deploy-and-test-1.2a-java.sh
+
 # Deploy Lab 1.2b (Keyed Producer)
 ./bash/deploy-and-test-1.2b.sh
+
+# Deploy Lab 1.2b (Keyed Producer - Java)
+./bash/deploy-and-test-1.2b-java.sh
 
 # PowerShell equivalent
 .\powershell\deploy-and-test-1.2a.ps1
 .\powershell\deploy-and-test-1.2b.ps1
+
+# PowerShell Java equivalents
+.\powershell\deploy-and-test-1.2a-java.ps1
+.\powershell\deploy-and-test-1.2b-java.ps1
 ```
 
 ### Option 3: Test All Deployed APIs

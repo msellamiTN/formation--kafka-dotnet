@@ -97,6 +97,13 @@ Invoke-LabDeployment "Lab 1.2a - Basic Producer" "$scriptDir\deploy-and-test-1.2
 Invoke-LabDeployment "Lab 1.2b - Keyed Producer" "$scriptDir\deploy-and-test-1.2b.ps1"
 Invoke-LabDeployment "Lab 1.2c - Resilient Producer" "$scriptDir\deploy-and-test-1.2c.ps1"
 
+# Deploy Java Producers
+Write-Info "Deploying Producer APIs (Java) (1.2a, 1.2b, 1.2c)..."
+
+Invoke-LabDeployment "Lab 1.2a - Basic Producer (Java)" "$scriptDir\deploy-and-test-1.2a-java.ps1"
+Invoke-LabDeployment "Lab 1.2b - Keyed Producer (Java)" "$scriptDir\deploy-and-test-1.2b-java.ps1"
+Invoke-LabDeployment "Lab 1.2c - Resilient Producer (Java)" "$scriptDir\deploy-and-test-1.2c-java.ps1"
+
 # Deploy Consumers
 Write-Info "Deploying Consumer APIs (1.3a, 1.3b, 1.3c)..."
 

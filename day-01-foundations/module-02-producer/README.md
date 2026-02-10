@@ -41,6 +41,8 @@ Ce module contient 3 labs progressifs :
 **Objectif** : Créer un producer simple qui envoie des messages string à Kafka avec gestion d'erreurs de base.
 
 📁 [`lab-1.2a-producer-basic/`](./lab-1.2a-producer-basic/)
+ 
+**Java (Spring Boot)** : `lab-1.2a-producer-basic/java/`
 
 **Ce que vous allez apprendre** :
 - Configuration minimale d'un Producer
@@ -56,6 +58,8 @@ Ce module contient 3 labs progressifs :
 **Objectif** : Comprendre comment la clé détermine la partition et garantit l'ordre des messages.
 
 📁 [`lab-1.2b-producer-keyed/`](./lab-1.2b-producer-keyed/)
+ 
+**Java (Spring Boot)** : `lab-1.2b-producer-keyed/java/`
 
 **Ce que vous allez apprendre** :
 - Différence entre messages avec et sans clé
@@ -71,6 +75,8 @@ Ce module contient 3 labs progressifs :
 **Objectif** : Implémenter un pattern production-ready avec retry et Dead Letter Queue.
 
 📁 [`lab-1.2c-producer-error-handling/`](./lab-1.2c-producer-error-handling/)
+ 
+**Java (Spring Boot)** : `lab-1.2c-producer-error-handling/java/`
 
 **Ce que vous allez apprendre** :
 - Classification des erreurs (retriable vs permanent)
@@ -147,9 +153,239 @@ dotnet --version
 # Attendu : 8.0.x ou supérieur
 ```
 
+### Java (Spring Boot)
+
+#### JDK
+```bash
+java -version
+# Attendu : 17.x
+```
+
+#### Maven
+```bash
+mvn -version
+```
+
 ---
 
-## 📚 Ordre de Réalisation
+## ☕ Java Track (Spring Boot) — Run & Test
+
+Chaque lab contient une version Java Spring Boot dans le dossier `java/`.
+
+### Variables d'environnement
+
+Les applications Java utilisent les variables suivantes (avec valeurs par défaut) :
+
+- **`KAFKA_BOOTSTRAP_SERVERS`** (default: `localhost:9092`)
+- **`KAFKA_TOPIC`** (default: `banking.transactions`)
+- **`KAFKA_DLQ_TOPIC`** (Lab 1.2C only, default: `banking.transactions.dlq`)
+- **`SERVER_PORT`** (default: `8080`)
+
+Lab 1.2C (résilience) ajoute :
+
+- **`MAX_RETRIES`** (default: `3`)
+- **`RETRY_BACKOFF_MS`** (default: `1000`)
+- **`CIRCUIT_BREAKER_THRESHOLD`** (default: `5`)
+- **`CIRCUIT_BREAKER_OPEN_MS`** (default: `60000`)
+
+### Démarrer une application Java
+
+#### Lab 1.2A — Producer Basic
+```bash
+cd lab-1.2a-producer-basic/java
+mvn spring-boot:run
+```
+
+#### Lab 1.2B — Producer Keyed (key = customerId)
+```bash
+cd lab-1.2b-producer-keyed/java
+mvn spring-boot:run
+```
+
+#### Lab 1.2C — Producer Resilient (retry + DLQ)
+```bash
+cd lab-1.2c-producer-error-handling/java
+mvn spring-boot:run
+```
+
+### Endpoints
+
+Labs 1.2A / 1.2B / 1.2C exposent :
+
+- **POST** `http://localhost:8080/api/v1/transactions`
+- **POST** `http://localhost:8080/api/v1/transactions/batch`
+
+Lab 1.2C expose aussi :
+
+- **GET** `http://localhost:8080/api/v1/transactions/metrics`
+
+### Health
+
+```bash
+curl http://localhost:8080/actuator/health
+```
+
+### Docker (Java)
+
+Each Java lab includes a `java/Dockerfile`.
+
+#### Build
+
+```bash
+# Lab 1.2A
+cd lab-1.2a-producer-basic/java
+docker build -t ebanking-producer-basic-java:latest .
+
+# Lab 1.2B
+cd ../../lab-1.2b-producer-keyed/java
+docker build -t ebanking-producer-keyed-java:latest .
+
+# Lab 1.2C
+cd ../../lab-1.2c-producer-error-handling/java
+docker build -t ebanking-producer-resilient-java:latest .
+```
+
+#### Run
+
+```bash
+docker run --rm -p 8080:8080 \
+  -e KAFKA_BOOTSTRAP_SERVERS=localhost:9092 \
+  -e KAFKA_TOPIC=banking.transactions \
+  ebanking-producer-basic-java:latest
+```
+
+For Lab 1.2C, add DLQ + retry env vars:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -e KAFKA_BOOTSTRAP_SERVERS=localhost:9092 \
+  -e KAFKA_TOPIC=banking.transactions \
+  -e KAFKA_DLQ_TOPIC=banking.transactions.dlq \
+  -e MAX_RETRIES=3 \
+  -e RETRY_BACKOFF_MS=1000 \
+  ebanking-producer-resilient-java:latest
+```
+
+### OpenShift (Java)
+
+Each Java lab includes an OpenShift manifest:
+
+- Lab 1.2A: `lab-1.2a-producer-basic/java/deployment/openshift-deployment.yaml`
+- Lab 1.2B: `lab-1.2b-producer-keyed/java/deployment/openshift-deployment.yaml`
+- Lab 1.2C: `lab-1.2c-producer-error-handling/java/deployment/openshift-deployment.yaml`
+
+#### Deploy (example: Lab 1.2A)
+
+```bash
+cd lab-1.2a-producer-basic/java
+
+# Build image in your registry/workflow (Docker/CI), then update image field if needed.
+
+oc apply -f deployment/openshift-deployment.yaml
+
+# Get route
+oc get route ebanking-producer-basic-java -o jsonpath='{.spec.host}'
+```
+
+#### Health check
+
+```bash
+HOST=$(oc get route ebanking-producer-basic-java -o jsonpath='{.spec.host}')
+curl -k "https://$HOST/actuator/health"
+```
+
+#### Option A (Recommended): OpenShift S2I Binary Build (no external registry)
+
+This option builds the Java application **inside OpenShift** using the S2I builder image and a **binary build**.
+
+**Builder image** used in this training:
+
+- `java:17`
+
+##### Lab 1.2A — Basic Producer (Java)
+
+```bash
+APP=ebanking-producer-basic-java
+ROUTE=${APP}-secure
+
+cd lab-1.2a-producer-basic/java
+
+# 1) Create BuildConfig (once)
+oc new-build java:17 --binary=true --name=$APP
+
+# 2) Start binary build from local folder
+oc start-build $APP --from-dir=. --follow
+
+# 3) Create app + configure env vars
+oc new-app $APP
+oc set env deployment/$APP \
+  SERVER_PORT=8080 \
+  KAFKA_BOOTSTRAP_SERVERS=kafka-svc:9092 \
+  KAFKA_TOPIC=banking.transactions
+
+# 4) Expose via edge route
+oc create route edge $ROUTE --service=$APP --port=8080-tcp
+
+# 5) Wait + test
+oc wait --for=condition=available deployment/$APP --timeout=300s
+HOST=$(oc get route $ROUTE -o jsonpath='{.spec.host}')
+curl -k "https://$HOST/actuator/health"
+```
+
+##### Lab 1.2B — Keyed Producer (Java)
+
+Same process, different `APP` name and folder:
+
+```bash
+APP=ebanking-producer-keyed-java
+ROUTE=${APP}-secure
+
+cd lab-1.2b-producer-keyed/java
+oc new-build java:17 --binary=true --name=$APP
+oc start-build $APP --from-dir=. --follow
+oc new-app $APP
+oc set env deployment/$APP SERVER_PORT=8080 KAFKA_BOOTSTRAP_SERVERS=kafka-svc:9092 KAFKA_TOPIC=banking.transactions
+oc create route edge $ROUTE --service=$APP --port=8080-tcp
+```
+
+##### Lab 1.2C — Resilient Producer (Java)
+
+```bash
+APP=ebanking-producer-resilient-java
+ROUTE=${APP}-secure
+
+cd lab-1.2c-producer-error-handling/java
+oc new-build java:17 --binary=true --name=$APP
+oc start-build $APP --from-dir=. --follow
+oc new-app $APP
+oc set env deployment/$APP \
+  SERVER_PORT=8080 \
+  KAFKA_BOOTSTRAP_SERVERS=kafka-svc:9092 \
+  KAFKA_TOPIC=banking.transactions \
+  KAFKA_DLQ_TOPIC=banking.transactions.dlq \
+  MAX_RETRIES=3 \
+  RETRY_BACKOFF_MS=1000 \
+  CIRCUIT_BREAKER_THRESHOLD=5 \
+  CIRCUIT_BREAKER_OPEN_MS=60000
+oc create route edge $ROUTE --service=$APP --port=8080-tcp
+```
+
+#### Automated scripts (Option A)
+
+The repository includes scripts that automate the steps above:
+
+- Bash:
+  - `day-01-foundations/scripts/bash/deploy-and-test-1.2a-java.sh`
+  - `day-01-foundations/scripts/bash/deploy-and-test-1.2b-java.sh`
+  - `day-01-foundations/scripts/bash/deploy-and-test-1.2c-java.sh`
+- PowerShell:
+  - `day-01-foundations/scripts/powershell/deploy-and-test-1.2a-java.ps1`
+  - `day-01-foundations/scripts/powershell/deploy-and-test-1.2b-java.ps1`
+  - `day-01-foundations/scripts/powershell/deploy-and-test-1.2c-java.ps1`
+
+---
+
+## Ordre de Réalisation
 
 Suivez les labs dans l'ordre :
 

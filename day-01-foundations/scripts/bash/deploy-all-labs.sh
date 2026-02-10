@@ -105,6 +105,13 @@ deploy_lab "Lab 1.2a - Basic Producer" "$SCRIPT_DIR/deploy-and-test-1.2a.sh"
 deploy_lab "Lab 1.2b - Keyed Producer" "$SCRIPT_DIR/deploy-and-test-1.2b.sh"
 deploy_lab "Lab 1.2c - Resilient Producer" "$SCRIPT_DIR/deploy-and-test-1.2c.sh"
 
+# Deploy Java Producers
+info "Deploying Producer APIs (Java) (1.2a, 1.2b, 1.2c)..."
+
+deploy_lab "Lab 1.2a - Basic Producer (Java)" "$SCRIPT_DIR/deploy-and-test-1.2a-java.sh"
+deploy_lab "Lab 1.2b - Keyed Producer (Java)" "$SCRIPT_DIR/deploy-and-test-1.2b-java.sh"
+deploy_lab "Lab 1.2c - Resilient Producer (Java)" "$SCRIPT_DIR/deploy-and-test-1.2c-java.sh"
+
 # Deploy Consumers
 info "Deploying Consumer APIs (1.3a, 1.3b, 1.3c)..."
 

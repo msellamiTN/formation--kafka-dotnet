@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ebanking-producer-keyed-java
+  labels:
+    app: ebanking-producer-keyed-java
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ebanking-producer-keyed-java
+  template:
+    metadata:
+      labels:
+        app: ebanking-producer-keyed-java
+    spec:
+      containers:
+        - name: api
+          image: ebanking-producer-keyed-java:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: SERVER_PORT
+              value: "8080"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka-svc:9092"
+            - name: KAFKA_TOPIC
+              value: "banking.transactions"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ebanking-producer-keyed-java
+  labels:
+    app: ebanking-producer-keyed-java
+spec:
+  selector:
+    app: ebanking-producer-keyed-java
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ebanking-producer-keyed-java
+spec:
+  to:
+    kind: Service
+    name: ebanking-producer-keyed-java
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
