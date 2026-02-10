@@ -86,8 +86,8 @@ oc login --token=sha256~xxxxx --server=https://api.sandbox-xxxx.openshiftapps.co
 
 ```bash
 # Aller dans le répertoire des scripts
-cd infra/scripts
-
+cd infra/Scripts
+chmod +  *.sh
 # Déployer un cluster Kafka 3-brokers
 ./08-install-kafka-sandbox.sh
 
