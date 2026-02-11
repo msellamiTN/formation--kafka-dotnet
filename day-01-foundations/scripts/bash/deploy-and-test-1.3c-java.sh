@@ -13,7 +13,7 @@ PASS=0; FAIL=0; SKIP=0
 PROJECT="${PROJECT:-msellamitn-dev}"
 APP_NAME="ebanking-audit-consumer-java"
 ROUTE_NAME="${APP_NAME}-secure"
-BUILDER_IMAGE="java:17"
+BUILDER_IMAGE="java:openjdk-17-ubi8"
 
 header()  { echo -e "\n${BOLD}${BLUE}═══════════════════════════════════════════════${NC}\n${BOLD}${BLUE}  $1${NC}\n${BOLD}${BLUE}═══════════════════════════════════════════════${NC}"; }
 step()    { echo -e "\n${CYAN}▶ $1${NC}"; }

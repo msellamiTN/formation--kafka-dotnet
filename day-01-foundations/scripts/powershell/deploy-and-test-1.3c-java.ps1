@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 
 $AppName   = "ebanking-audit-consumer-java"
 $RouteName = "$AppName-secure"
-$Builder   = "java:17"
+$Builder   = "java:openjdk-17-ubi8"
 
 $pass = 0; $fail = 0; $skip = 0
 

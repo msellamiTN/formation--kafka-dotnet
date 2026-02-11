@@ -62,7 +62,7 @@ function Log-Message {
 
 # Get script directory
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$LabDir = Join-Path (Split-Path -Parent $ScriptDir) "module-04-advanced-patterns\lab-2.2b-transactions\dotnet"
+$LabDir = Join-Path (Split-Path -Parent (Split-Path -Parent $ScriptDir)) "module-04-advanced-patterns\lab-2.2b-transactions\dotnet"
 
 Log-Message "Starting Lab 2.2b deployment..."
 

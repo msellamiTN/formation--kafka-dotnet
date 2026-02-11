@@ -16,7 +16,7 @@ PASS=0; FAIL=0; SKIP=0
 PROJECT="${PROJECT:-msellamitn-dev}"
 APP_NAME="ebanking-producer-keyed-java"
 ROUTE_NAME="ebanking-producer-keyed-java-secure"
-BUILDER_IMAGE="java:17"
+BUILDER_IMAGE="java:openjdk-17-ubi8"
 
 # --- Helper functions ---
 header()  { echo -e "\n${BOLD}${BLUE}═══════════════════════════════════════════════${NC}\n${BOLD}${BLUE}  $1${NC}\n${BOLD}${BLUE}═══════════════════════════════════════════════${NC}"; }

@@ -14,7 +14,7 @@ $script:Skip = 0
 
 $AppName = "ebanking-producer-basic-java"
 $RouteName = "ebanking-producer-basic-java-secure"
-$BuilderImage = "java:17"
+$BuilderImage = "java:openjdk-17-ubi8"
 
 function Write-Header($msg) {
     Write-Host "";
