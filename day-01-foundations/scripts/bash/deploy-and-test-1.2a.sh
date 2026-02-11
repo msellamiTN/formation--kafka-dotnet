@@ -66,7 +66,7 @@ fi
 header "STEP 1: Build Application"
 
 step "Navigate to project directory"
-cd "$(dirname "$0")/../module-02-producer/lab-1.2a-producer-basic/EBankingProducerAPI"
+cd "$(dirname "$0")/../../module-02-producer/lab-1.2a-producer-basic/EBankingProducerAPI"
 pwd
 
 step "Create buildconfig"

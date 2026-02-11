@@ -28,11 +28,25 @@
 - ✅ **Day 01 complété** (M01-M03, Labs 1.2a–1.3c)
 - ✅ Infrastructure Kafka fonctionnelle (Docker ou OpenShift Sandbox)
 - ✅ Topic `banking.transactions` existant (6 partitions)
-- ✅ .NET 8 SDK + Confluent.Kafka 2.3.0+
+- ✅ **.NET 8 SDK + Confluent.Kafka 2.3.0+** (piste .NET)
+- ✅ **Java 17 + Spring Boot 3.2+** (piste Java)
 
 ---
 
-## 🗓️ Planning de la journée
+## �️ Dual Track : .NET vs Java
+
+Day 02 propose **deux pistes parallèles** pour couvrir les deux écosystèmes principaux de Kafka :
+
+| Piste | Technologie | Public Cible | Avantages |
+| ----- | ----------- | ------------ | --------- |
+| **.NET** | C# + Confluent.Kafka | Équipes Microsoft | Performance native, intégration écosystème .NET |
+| **Java** | Spring Boot + Spring Kafka | Équipes Java/Spring | Écosystème mature, Spring Cloud Stream |
+
+> **📋 Choix de piste** : Les deux pistes couvrent les mêmes concepts. Choisissez selon votre expertise ou explorez les deux pour comparer !
+
+---
+
+## �️ Planning de la journée
 
 | Créneau | Bloc | Durée | Contenu |
 | ------- | ---- | ----- | ------- |
@@ -90,7 +104,8 @@ flowchart LR
 
 ### Lab 2.1 — Sérialisation JSON structurée & intro Avro
 
-> 📂 **[lab-2.1a — Serialization](./module-04-advanced-patterns/lab-2.1a-serialization/README.md)**
+#### 📂 Piste .NET
+> **[lab-2.1a — Serialization (.NET)](./module-04-advanced-patterns/lab-2.1a-serialization/README.md)**
 
 **Objectifs du lab** :
 
@@ -108,6 +123,29 @@ var producerConfig = new ProducerConfig { /* ... */ };
 using var producer = new ProducerBuilder<string, Transaction>(producerConfig)
     .SetValueSerializer(new TransactionJsonSerializer())  // Custom serializer
     .Build();
+```
+
+#### 📂 Piste Java
+> **[lab-2.1a — Serialization (Java)](./module-04-advanced-patterns/lab-2.1a-serialization/java/README.md)**
+
+**Objectifs du lab** :
+
+1. Implémenter des `Serializer<T>` et `Deserializer<T>` personnalisés
+2. Ajouter la validation de schéma côté producer et consumer
+3. Démontrer l'évolution de schéma avec backward compatibility
+4. (Bonus) Configurer Avro avec Schema Registry
+
+**Concepts Java** :
+
+```java
+// Custom JSON serializer with schema validation
+@Bean
+public ProducerFactory<String, Transaction> producerFactory() {
+    Map<String, Object> configProps = new HashMap<>();
+    configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, 
+                     TransactionSerializer.class);
+    return new DefaultKafkaProducerFactory<>(configProps);
+}
 ```
 
 ---
@@ -172,7 +210,8 @@ flowchart LR
 
 ### Lab 2.2a — Producer Idempotent
 
-> 📂 **[lab-2.2a — Producer Idempotent](./module-04-advanced-patterns/lab-2.2-producer-advanced/README.md)**
+#### 📂 Piste .NET
+> **[lab-2.2a — Producer Idempotent (.NET)](./module-04-advanced-patterns/lab-2.2-producer-advanced/README.md)**
 
 **Objectifs du lab** :
 
@@ -181,9 +220,44 @@ flowchart LR
 3. Comparer throughput avec/sans idempotence
 4. Observer les sequence numbers dans les métriques
 
+**Concepts .NET** :
+
+```csharp
+var config = new ProducerConfig
+{
+    EnableIdempotence = true,       // Active PID + sequence numbers
+    Acks = Acks.All,                // Required for idempotence
+    MaxInFlight = 5,                // Max with idempotence
+    MessageSendMaxRetries = int.MaxValue
+};
+```
+
+#### 📂 Piste Java
+> **[lab-2.2a — Producer Idempotent (Java)](./module-04-advanced-patterns/lab-2.2-producer-advanced/java/README.md)**
+
+**Objectifs du lab** :
+
+1. Configurer `enable.idempotence=true` et observer le Producer ID
+2. Simuler des retries réseau et vérifier l'absence de duplicatas
+3. Comparer throughput avec/sans idempotence
+4. Observer les sequence numbers dans les métriques
+
+**Concepts Java** :
+
+```yaml
+spring:
+  kafka:
+    producer:
+      enable.idempotence: true
+      acks: all
+      max-in-flight-requests-per-connection: 5
+      message-send-max-retries: 2147483647
+```
+
 ### Lab 2.2b — Transactions Kafka (Exactly-Once)
 
-> 📂 **[lab-2.2b — Kafka Transactions](./module-04-advanced-patterns/lab-2.2b-transactions/README.md)**
+#### 📂 Piste .NET
+> **[lab-2.2b — Kafka Transactions (.NET)](./module-04-advanced-patterns/lab-2.2b-transactions/README.md)**
 
 **Objectifs du lab** :
 
@@ -191,6 +265,44 @@ flowchart LR
 2. Implémenter `BeginTransaction()` → `CommitTransaction()` / `AbortTransaction()`
 3. Envoyer un lot de messages atomique (all-or-nothing)
 4. Configurer un consumer avec `IsolationLevel.ReadCommitted`
+
+**Concepts .NET** :
+
+```csharp
+var config = new ProducerConfig
+{
+    TransactionalId = "ebanking-transactional-producer",
+    EnableIdempotence = true,
+    Acks = Acks.All
+};
+
+using var producer = new ProducerBuilder<string, Transaction>(config)
+    .Build();
+```
+
+#### 📂 Piste Java
+> **[lab-2.2b — Kafka Transactions (Java)](./module-04-advanced-patterns/lab-2.2b-transactions/java/README.md)**
+
+**Objectifs du lab** :
+
+1. Configurer un `transactional-id-prefix` persistant
+2. Implémenter `@Transactional` et `KafkaTransactionManager`
+3. Envoyer un lot de messages atomique (all-or-nothing)
+4. Configurer un consumer avec `isolation.level=read_committed`
+
+**Concepts Java** :
+
+```java
+@Bean
+public KafkaTransactionManager<String, Transaction> kafkaTransactionManager() {
+    return new KafkaTransactionManager<>(transactionalProducerFactory());
+}
+
+@Transactional
+public void sendTransactionBatch(List<Transaction> transactions) {
+    // All messages in this method are part of the same transaction
+}
+```
 
 **Code clé** :
 
@@ -246,7 +358,8 @@ flowchart LR
 
 ### Lab 2.3 — DLT, Retry & Rebalancing
 
-> 📂 **[lab-2.3a — Consumer DLT & Retry](./module-04-advanced-patterns/lab-2.3a-consumer-dlt-retry/README.md)**
+#### 📂 Piste .NET
+> **[lab-2.3a — Consumer DLT & Retry (.NET)](./module-04-advanced-patterns/lab-2.3a-consumer-dlt-retry/README.md)**
 
 **Objectifs du lab** :
 
@@ -254,6 +367,46 @@ flowchart LR
 2. Observer les retries avec backoff exponentiel dans les logs
 3. Scaler le consumer à 2 replicas et observer le rebalancing CooperativeSticky
 4. Consulter les métriques via `/api/v1/stats` et `/api/v1/dlt/messages`
+
+**Concepts .NET** :
+
+```csharp
+// Error classification
+public bool IsTransient(Exception ex) => ex is TimeoutException || ex is SocketException;
+
+// Retry with exponential backoff
+var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt) * baseDelay);
+await Task.Delay(delay);
+```
+
+#### 📂 Piste Java
+> **[lab-2.3a — Consumer DLT & Retry (Java)](./module-04-advanced-patterns/lab-2.3a-consumer-dlt-retry/java/README.md)**
+
+**Objectifs du lab** :
+
+1. Implémenter la classification d'erreurs (transient vs permanent)
+2. Configurer retry avec exponential backoff et jitter
+3. Implémenter Dead Letter Queue pour messages échoués
+4. Monitorer les métriques de retry et DLT
+
+**Concepts Java** :
+
+```java
+// Error classification
+@Component
+public class ErrorClassifier {
+    public boolean isTransient(Throwable throwable) {
+        return throwable instanceof SocketTimeoutException ||
+               throwable instanceof TransientException;
+    }
+}
+
+// Retry with exponential backoff
+@Retryable(maxAttempts = 3, backoff = @Backoff(delay = 1000, multiplier = 2))
+public void processMessage(Message message) {
+    // Processing logic
+}
+```
 
 **Concepts couverts** :
 

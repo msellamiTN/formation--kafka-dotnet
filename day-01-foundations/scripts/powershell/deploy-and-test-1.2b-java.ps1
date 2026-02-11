@@ -62,7 +62,7 @@ Write-Pass "Using project: $(oc project -q 2>$null)"
 Write-Header "STEP 1: Build (S2I binary)"
 Write-Step "Navigate to Java source directory"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$javaDir = Join-Path $scriptDir "..\module-02-producer\lab-1.2b-producer-keyed\java"
+$javaDir = Join-Path $scriptDir "..\..\module-02-producer\lab-1.2b-producer-keyed\java"
 Set-Location $javaDir
 Write-Info "Build context: $(Get-Location)"
 

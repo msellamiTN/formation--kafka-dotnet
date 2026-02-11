@@ -1,0 +1,48 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ebanking-serialization-java
+  
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka-svc:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      linger-ms: 10
+      batch-size: 16384
+      compression-type: snappy
+    consumer:
+      group-id: serialization-consumer-group
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: 100
+      session-timeout-ms: 30000
+      heartbeat-interval-ms: 10000
+      properties:
+        spring.json.trusted.packages: com.data2ai.kafka.serialization.model
+
+app:
+  kafka:
+    topic: ${KAFKA_TOPIC:banking.transactions}
+
+logging:
+  level:
+    com.data2ai.kafka.serialization: INFO
+    org.apache.kafka: WARN
+    org.springframework.kafka: WARN
+
+# Metrics endpoint
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always

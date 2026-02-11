@@ -110,7 +110,7 @@ Write-Header "STEP 1: Build Application"
 
 Write-Step "Navigate to project directory"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$projectDir = Join-Path $scriptDir "..\module-03-consumer\lab-1.3a-consumer-basic\EBankingFraudDetectionAPI"
+$projectDir = Join-Path $scriptDir "..\..\module-03-consumer\lab-1.3a-consumer-basic\EBankingFraudDetectionAPI"
 Set-Location $projectDir
 Write-Info "Current dir: $(Get-Location)"
 

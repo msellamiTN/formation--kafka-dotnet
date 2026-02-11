@@ -30,7 +30,7 @@ oc project "$PROJECT" >/dev/null 2>&1 || { fail "Cannot switch to project $PROJE
 pass "Using project: $(oc project -q)"
 
 header "STEP 1: Build (S2I binary)"
-cd "$(dirname "$0")/../module-03-consumer/lab-1.3b-consumer-group/java"
+cd "$(dirname "$0")/../../module-03-consumer/lab-1.3b-consumer-group/java"
 info "Build context: $(pwd)"
 
 step "Create BuildConfig (if missing)"

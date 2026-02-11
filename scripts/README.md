@@ -33,13 +33,21 @@ This directory contains scripts to manage OpenShift resources for the Kafka trai
 | `deploy-and-test-1.3b-java.sh/.ps1` | Lab 1.3b - Balance Consumer (Java) | Consumer group & rebalancing |
 | `deploy-and-test-1.3c-java.sh/.ps1` | Lab 1.3c - Audit Consumer (Java) | Manual commit & DLQ |
 
-### Day 02 - Module 04 (Advanced Patterns)
+### Day 02 - Module 04 (Advanced Patterns - .NET)
 | Script | Lab | Description |
 |--------|-----|-------------|
 | `deploy-and-test-2.1a.sh/.ps1` | Lab 2.1a - Serialization | Avro & Schema Registry |
 | `deploy-and-test-2.2a.sh/.ps1` | Lab 2.2a - Idempotent Producer | Idempotence patterns |
 | `deploy-and-test-2.2b.sh/.ps1` | Lab 2.2b - Transactions | Kafka transactions |
 | `deploy-and-test-2.3a.sh/.ps1` | Lab 2.3a - Consumer DLT/Retry | Consumer error handling |
+
+### Day 02 - Module 04 (Advanced Patterns - Java)
+| Script | Lab | Description |
+|--------|-----|-------------|
+| `deploy-and-test-2.1a-java.sh/.ps1` | Lab 2.1a - Serialization (Java) | JSON serialization & schema evolution |
+| `deploy-and-test-2.2a-java.sh/.ps1` | Lab 2.2a - Idempotent Producer (Java) | Idempotent producer with Spring Kafka |
+| `deploy-and-test-2.2b-java.sh/.ps1` | Lab 2.2b - Transactions (Java) | Kafka transactions & exactly-once |
+| `deploy-and-test-2.3a-java.sh/.ps1` | Lab 2.3a - Consumer DLT/Retry (Java) | DLT, retry & error handling |
 
 ### Cleanup Scripts
 | Script | Purpose | Environment |

@@ -1,0 +1,10 @@
+{
+  "fromAccount": "FR7630001000123456789",
+  "toAccount": "FR7630001000987654321",
+  "amount": 1000.00,
+  "currency": "EUR",
+  "type": "TRANSFER",
+  "description": "V1 test",
+  "customerId": "CUST-001",
+  "category": "BANK_TRANSFER"
+}

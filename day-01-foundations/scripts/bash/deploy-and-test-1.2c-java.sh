@@ -37,7 +37,7 @@ pass "Using project: $(oc project -q)"
 
 header "STEP 1: Build (S2I binary)"
 step "Navigate to Java source directory"
-cd "$(dirname "$0")/../module-02-producer/lab-1.2c-producer-error-handling/java"
+cd "$(dirname "$0")/../../module-02-producer/lab-1.2c-producer-error-handling/java"
 info "Build context: $(pwd)"
 
 step "Create BuildConfig (if missing)"

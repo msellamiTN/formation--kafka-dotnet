@@ -102,7 +102,7 @@ Write-Header "STEP 1: Build Application"
 
 Write-Step "Navigate to project directory"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$projectDir = Join-Path $scriptDir "..\module-02-producer\lab-1.2b-producer-keyed\EBankingKeyedProducerAPI"
+$projectDir = Join-Path $scriptDir "..\..\module-02-producer\lab-1.2b-producer-keyed\EBankingKeyedProducerAPI"
 Set-Location $projectDir
 Write-Info "Current dir: $(Get-Location)"
 

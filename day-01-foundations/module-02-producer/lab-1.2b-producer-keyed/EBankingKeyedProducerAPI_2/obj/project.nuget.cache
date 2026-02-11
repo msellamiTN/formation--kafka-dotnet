@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "stlN+mcExEU=",
+  "success": true,
+  "projectFilePath": "D:\\Data2AI Academy\\Kafka\\formation -kafka-dotnet\\day-01-foundations\\module-02-producer\\lab-1.2b-producer-keyed\\EBankingKeyedProducerAPI_2\\EBankingKeyedProducerAPI_2.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\mokht\\.nuget\\packages\\microsoft.aspnetcore.openapi\\10.0.2\\microsoft.aspnetcore.openapi.10.0.2.nupkg.sha512",
+    "C:\\Users\\mokht\\.nuget\\packages\\microsoft.openapi\\2.0.0\\microsoft.openapi.2.0.0.nupkg.sha512"
+  ],
+  "logs": []
+}
