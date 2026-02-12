@@ -1,0 +1,64 @@
+# =============================================================================
+# PostgreSQL Banking - Deployment + Service for OpenShift Sandbox
+# =============================================================================
+# Uses OpenShift SCL image (postgresql:10-el8) which runs as non-root.
+# The postgres:15-alpine image fails on Sandbox with "chmod: Operation not permitted".
+# ConfigMap postgres-cdc-config is mounted to enable wal_level=logical.
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-banking
+  labels:
+    app: postgres-banking
+    module: kafka-connect
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-banking
+  template:
+    metadata:
+      labels:
+        app: postgres-banking
+    spec:
+      containers:
+      - name: postgresql
+        image: image-registry.openshift-image-registry.svc:5000/openshift/postgresql:10-el8
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRESQL_USER
+          value: banking
+        - name: POSTGRESQL_PASSWORD
+          value: banking123
+        - name: POSTGRESQL_DATABASE
+          value: core_banking
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 300m
+            memory: 512Mi
+        volumeMounts:
+        - name: cdc-config
+          mountPath: /opt/app-root/src/postgresql-cfg/
+      volumes:
+      - name: cdc-config
+        configMap:
+          name: postgres-cdc-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-banking
+  labels:
+    app: postgres-banking
+    module: kafka-connect
+spec:
+  selector:
+    app: postgres-banking
+  ports:
+  - port: 5432
+    targetPort: 5432

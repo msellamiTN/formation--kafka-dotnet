@@ -1,0 +1,19 @@
+# =============================================================================
+# PostgreSQL CDC ConfigMap - WAL Logical Replication Configuration
+# =============================================================================
+# This ConfigMap is mounted into the PostgreSQL container at
+# /opt/app-root/src/postgresql-cfg/ to enable wal_level=logical at startup.
+# Required for Debezium CDC to create replication slots.
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-cdc-config
+  labels:
+    app: postgres-banking
+    module: kafka-connect
+data:
+  custom.conf: |
+    wal_level = logical
+    max_replication_slots = 4
+    max_wal_senders = 4
