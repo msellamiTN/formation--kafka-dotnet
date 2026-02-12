@@ -41,17 +41,360 @@ docker compose -f docker-compose.module.yml up -d
 curl http://localhost:8083/connectors
 ```
 
-### Déploiement OpenShift
+### Déploiement OpenShift Sandbox (☁️) — Testé et Vérifié
+
+> **⚠️ Limitations OpenShift Sandbox** : Le Sandbox Developer a des contraintes (pas de Strimzi, pas de Helm, ressources limitées). L'approche ci-dessous a été **testée et validée** sur le Sandbox `msellamitn-dev`.
+>
+> **Points clés découverts lors du test** :
+> - L'image `postgres:15-alpine` ne fonctionne **pas** sur Sandbox (erreurs de permissions `chmod`)
+> - Il faut utiliser l'image **OpenShift SCL PostgreSQL** (`postgresql:10-el8`) avec un **ConfigMap** pour `wal_level=logical`
+> - L'utilisateur `banking` a besoin du rôle **REPLICATION** pour Debezium
+> - L'extension `uuid-ossp` nécessite l'utilisateur **postgres** (superuser)
+
+#### Prérequis Sandbox
 
 ```bash
-# Déployer Kafka Connect sur OpenShift
+# Se connecter au Sandbox
+oc login --token=sha256~XXX --server=https://api.rm3.7wse.p1.openshiftapps.com:6443
+oc project msellamitn-dev
+
+# Vérifier que Kafka est déjà déployé (3 brokers)
+oc get pods -l app=kafka
+# NAME      READY   STATUS    RESTARTS   AGE
+# kafka-0   1/1     Running   0          ...
+# kafka-1   1/1     Running   0          ...
+# kafka-2   1/1     Running   0          ...
+
+# Si Kafka est à 0 replicas, le remonter
+oc scale statefulset kafka --replicas=3
+```
+
+#### Étape 1 : Déployer PostgreSQL avec WAL logique (ConfigMap)
+
+> **Important** : L'image `postgres:15-alpine` échoue sur Sandbox avec `chmod: Operation not permitted`. On utilise l'image SCL PostgreSQL d'OpenShift avec un ConfigMap pour activer `wal_level=logical`.
+
+```bash
+# 1a. Créer le ConfigMap pour la configuration WAL logique
+cat <<EOF | oc apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-cdc-config
+data:
+  custom.conf: |
+    wal_level = logical
+    max_replication_slots = 4
+    max_wal_senders = 4
+EOF
+
+# 1b. Déployer PostgreSQL avec le ConfigMap monté
+cat <<EOF | oc apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-banking
+  labels:
+    app: postgres-banking
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-banking
+  template:
+    metadata:
+      labels:
+        app: postgres-banking
+    spec:
+      containers:
+      - name: postgresql
+        image: image-registry.openshift-image-registry.svc:5000/openshift/postgresql:10-el8
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRESQL_USER
+          value: banking
+        - name: POSTGRESQL_PASSWORD
+          value: banking123
+        - name: POSTGRESQL_DATABASE
+          value: core_banking
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 300m
+            memory: 512Mi
+        volumeMounts:
+        - name: cdc-config
+          mountPath: /opt/app-root/src/postgresql-cfg/
+      volumes:
+      - name: cdc-config
+        configMap:
+          name: postgres-cdc-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-banking
+spec:
+  selector:
+    app: postgres-banking
+  ports:
+  - port: 5432
+    targetPort: 5432
+EOF
+
+# 1c. Attendre que le pod soit prêt (~30 secondes)
+sleep 30
+oc get pods -l app=postgres-banking
+
+# 1d. Vérifier que wal_level = logical
+PG_POD=$(oc get pods -l app=postgres-banking -o jsonpath='{.items[0].metadata.name}')
+oc exec $PG_POD -- psql -U banking -d core_banking -c "SHOW wal_level;"
+# Attendu : logical
+```
+
+#### Étape 2 : Initialiser le schéma Banking PostgreSQL
+
+```bash
+PG_POD=$(oc get pods -l app=postgres-banking -o jsonpath='{.items[0].metadata.name}')
+
+# 2a. Créer l'extension uuid-ossp (nécessite superuser postgres)
+echo 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";' | \
+  oc exec -i $PG_POD -- psql -U postgres -d core_banking
+
+# 2b. Charger le schéma complet depuis le fichier SQL du projet
+cat init-scripts/postgres/01-banking-schema.sql | \
+  oc exec -i $PG_POD -- psql -U banking -d core_banking
+
+# 2c. Accorder le rôle REPLICATION à l'utilisateur banking (requis pour Debezium)
+echo 'ALTER ROLE banking WITH REPLICATION;' | \
+  oc exec -i $PG_POD -- psql -U postgres -d core_banking
+
+# 2d. Vérifier les données
+echo 'SELECT count(*) as customers FROM customers; SELECT count(*) as accounts FROM accounts; SELECT count(*) as transactions FROM transactions;' | \
+  oc exec -i $PG_POD -- psql -U banking -d core_banking
+# Attendu : 5 customers, 6 accounts, 4 transactions
+```
+
+#### Étape 3 : Déployer Kafka Connect avec Debezium
+
+```bash
+# 3a. Déployer Kafka Connect (Debezium 2.5)
+cat <<EOF | oc apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-connect
+  labels:
+    app: kafka-connect
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-connect
+  template:
+    metadata:
+      labels:
+        app: kafka-connect
+    spec:
+      containers:
+      - name: kafka-connect
+        image: docker.io/debezium/connect:2.5
+        ports:
+        - containerPort: 8083
+        env:
+        - name: BOOTSTRAP_SERVERS
+          value: kafka-0.kafka-svc:9092,kafka-1.kafka-svc:9092,kafka-2.kafka-svc:9092
+        - name: GROUP_ID
+          value: connect-cluster
+        - name: CONFIG_STORAGE_TOPIC
+          value: connect-configs
+        - name: OFFSET_STORAGE_TOPIC
+          value: connect-offsets
+        - name: STATUS_STORAGE_TOPIC
+          value: connect-status
+        - name: CONFIG_STORAGE_REPLICATION_FACTOR
+          value: "3"
+        - name: OFFSET_STORAGE_REPLICATION_FACTOR
+          value: "3"
+        - name: STATUS_STORAGE_REPLICATION_FACTOR
+          value: "3"
+        - name: KEY_CONVERTER
+          value: org.apache.kafka.connect.json.JsonConverter
+        - name: VALUE_CONVERTER
+          value: org.apache.kafka.connect.json.JsonConverter
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-connect
+spec:
+  selector:
+    app: kafka-connect
+  ports:
+  - port: 8083
+    targetPort: 8083
+EOF
+
+# 3b. Attendre le démarrage (~40 secondes)
+sleep 40
+oc get pods -l app=kafka-connect
+
+# 3c. Créer la route pour accéder à l'API REST
+oc create route edge kafka-connect --service=kafka-connect --port=8083
+
+# 3d. Obtenir l'URL et vérifier
+CONNECT_ROUTE=$(oc get route kafka-connect -o jsonpath='{.spec.host}')
+echo "Kafka Connect URL: https://$CONNECT_ROUTE"
+curl -sk https://$CONNECT_ROUTE/
+# Réponse : {"version":"3.6.1","commit":"...","kafka_cluster_id":"MkU3OEVBNTcwNTJENDM2Qk"}
+```
+
+#### Étape 4 : Créer le connecteur CDC PostgreSQL
+
+```bash
+CONNECT_ROUTE=$(oc get route kafka-connect -o jsonpath='{.spec.host}')
+
+# Créer le connecteur depuis le fichier JSON du projet
+curl -sk -X POST https://$CONNECT_ROUTE/connectors \
+  -H "Content-Type: application/json" \
+  -d @connectors/postgres-cdc-connector.json
+
+# Vérifier le statut du connecteur (attendre ~15 secondes)
+sleep 15
+curl -sk https://$CONNECT_ROUTE/connectors/postgres-banking-cdc/status
+# Attendu : {"name":"postgres-banking-cdc","connector":{"state":"RUNNING",...},"tasks":[{"id":0,"state":"RUNNING",...}]}
+
+# Si le task est FAILED avec "must be superuser or replication role",
+# c'est que l'étape 2c (ALTER ROLE banking WITH REPLICATION) n'a pas été faite.
+# Exécutez-la puis redémarrez le connecteur :
+# curl -sk -X POST https://$CONNECT_ROUTE/connectors/postgres-banking-cdc/restart?includeTasks=true
+```
+
+#### Étape 5 : Vérifier les topics CDC créés
+
+```bash
+# Lister les topics CDC créés par le snapshot initial
+oc exec kafka-1 -c kafka -- /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server kafka-1.kafka-svc:9092 --list | grep banking
+
+# Topics attendus :
+# banking.postgres.public.accounts
+# banking.postgres.public.customers
+# banking.postgres.public.transactions
+
+# Consommer les événements du snapshot initial (5 customers)
+oc exec kafka-1 -c kafka -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server kafka-1.kafka-svc:9092 \
+  --topic banking.postgres.public.customers \
+  --from-beginning --max-messages 5 --timeout-ms 15000
+
+# Chaque message contient : __op="r" (read/snapshot), __table="customers", données complètes
+```
+
+#### Étape 6 : Simuler des opérations bancaires en temps réel
+
+```bash
+PG_POD=$(oc get pods -l app=postgres-banking -o jsonpath='{.items[0].metadata.name}')
+
+# INSERT — Nouveau client (génère un événement __op="c" = create)
+echo "INSERT INTO customers (customer_number, first_name, last_name, email, phone, city, country, customer_type, kyc_status) VALUES ('CUST-CDC-001', 'Test', 'CDC-Realtime', 'test.cdc@email.fr', '+33699999999', 'Bordeaux', 'FRA', 'RETAIL', 'PENDING');" | \
+  oc exec -i $PG_POD -- psql -U banking -d core_banking
+
+# UPDATE — Mise à jour KYC (génère un événement __op="u" = update)
+echo "UPDATE customers SET kyc_status = 'VERIFIED' WHERE customer_number = 'CUST-CDC-001';" | \
+  oc exec -i $PG_POD -- psql -U banking -d core_banking
+
+# Vérifier les événements CDC en temps réel (5 snapshot + 1 insert + 1 update = 7)
+oc exec kafka-1 -c kafka -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server kafka-1.kafka-svc:9092 \
+  --topic banking.postgres.public.customers \
+  --from-beginning --max-messages 7 --timeout-ms 15000
+
+# Résultat attendu :
+# - 5 messages avec __op="r" (snapshot initial)
+# - 1 message avec __op="c" (INSERT CUST-CDC-001, kyc_status=PENDING)
+# - 1 message avec __op="u" (UPDATE CUST-CDC-001, kyc_status=VERIFIED)
+```
+
+#### Étape 7 : Monitoring des connecteurs sur Sandbox
+
+```bash
+CONNECT_ROUTE=$(oc get route kafka-connect -o jsonpath='{.spec.host}')
+
+# Lister tous les connecteurs
+curl -sk https://$CONNECT_ROUTE/connectors
+
+# Statut détaillé
+curl -sk https://$CONNECT_ROUTE/connectors/postgres-banking-cdc/status
+
+# Mettre en pause
+curl -sk -X PUT https://$CONNECT_ROUTE/connectors/postgres-banking-cdc/pause
+
+# Reprendre
+curl -sk -X PUT https://$CONNECT_ROUTE/connectors/postgres-banking-cdc/resume
+
+# Redémarrer (avec toutes les tasks)
+curl -sk -X POST https://$CONNECT_ROUTE/connectors/postgres-banking-cdc/restart?includeTasks=true
+```
+
+#### Étape 8 : Nettoyage Sandbox
+
+```bash
+# Supprimer le connecteur
+CONNECT_ROUTE=$(oc get route kafka-connect -o jsonpath='{.spec.host}')
+curl -sk -X DELETE https://$CONNECT_ROUTE/connectors/postgres-banking-cdc
+
+# Supprimer les déploiements
+oc delete deployment kafka-connect postgres-banking
+oc delete svc kafka-connect postgres-banking
+oc delete route kafka-connect
+oc delete configmap postgres-cdc-config
+
+# Supprimer les topics CDC
+for topic in banking.postgres.public.customers banking.postgres.public.accounts banking.postgres.public.transactions connect-configs connect-offsets connect-status; do
+  oc exec kafka-1 -c kafka -- /opt/kafka/bin/kafka-topics.sh \
+    --bootstrap-server kafka-1.kafka-svc:9092 --delete --topic $topic
+done
+```
+
+> **💡 Note Sandbox** : Sur le Sandbox, seul le connecteur **PostgreSQL CDC** est recommandé (SQL Server nécessite trop de ressources ~2GB RAM). Pour le lab complet avec PostgreSQL + SQL Server, utilisez le mode Docker ou K8s/OKD.
+
+### Déploiement K8s/OKD (☸️)
+
+```bash
+# Utiliser les scripts d'automatisation
+cd scripts/k8s_okd
+sudo ./01-start-environment.sh
+sudo ./02-verify-postgresql.sh
+sudo ./03-verify-sqlserver.sh
+sudo ./04-create-postgres-connector.sh
+sudo ./05-create-sqlserver-connector.sh
+```
+
+### Déploiement OpenShift Full (scripts/openshift/)
+
+```bash
+# Pour un cluster OpenShift complet avec Strimzi
 cd scripts/openshift
-./deploy-kafka-connect.sh --token "sha256~XXX" --server "https://api..."
+./01-start-environment.sh
+./02-verify-postgresql.sh
+./04-create-postgres-connector.sh
+./06-simulate-banking-operations.sh
+./07-monitor-connectors.sh
 ```
 
 ---
 
-## �📚 Partie Théorique (30%)
+## 📚 Partie Théorique (30%)
 
 ### 1. Introduction à Kafka Connect
 

@@ -1,22 +1,24 @@
-# ksqlDB Lab Deployment Scripts
+# Scripts de Déploiement — Module 05 Kafka Streams & ksqlDB
 
-This directory contains deployment and testing scripts for the ksqlDB Banking Lab.
+Ce répertoire contient les scripts de déploiement et de test pour les labs du Module 05.
 
-## Scripts
+---
 
-### Bash Script
-- **File**: `deploy-and-test-ksqldb-lab.sh`
-- **Usage**: Linux/macOS/WSL
-- **Requirements**: `oc` CLI, `curl`
+## 📋 Scripts Disponibles
 
-### PowerShell Script  
-- **File**: `deploy-and-test-ksqldb-lab.ps1`
-- **Usage**: Windows PowerShell
-- **Requirements**: `oc` CLI, PowerShell 5.1+
+| Script | Lab | Plateforme | Description |
+| ------ | --- | ---------- | ----------- |
+| `deploy-and-test-ksqldb-lab.sh` | Lab 3.1b | Bash/WSL | Déployer et tester le lab ksqlDB (.NET) |
+| `deploy-and-test-ksqldb-lab.ps1` | Lab 3.1b | PowerShell | Déployer et tester le lab ksqlDB (.NET) |
 
-## Quick Start
+> Les scripts des Labs 3.1a (Java/Dotnet) sont dans `day-03-integration/scripts/bash/` et `scripts/powershell/`.
+
+---
+
+## 🚀 Démarrage Rapide
 
 ### Bash/WSL
+
 ```bash
 ./scripts/deploy-and-test-ksqldb-lab.sh \
   --token=sha256~xxxx \
@@ -24,147 +26,187 @@ This directory contains deployment and testing scripts for the ksqlDB Banking La
 ```
 
 ### PowerShell
+
 ```powershell
 ./scripts/deploy-and-test-ksqldb-lab.ps1 `
   -Token "sha256~xxxx" `
   -Server "https://api.sandbox.xxx.openshiftapps.com:6443"
 ```
 
-## What the Scripts Do
+---
 
-1. **Login to OpenShift Sandbox** using provided token and server
-2. **Ensure Kafka is running** (scales up if needed)
-3. **Deploy ksqlDB** with proper configuration
-4. **Create Kafka topics** required for the lab
-5. **Build and deploy C# Banking API** using S2I binary build
-6. **Create edge route** with TLS termination
-7. **Health check** to verify deployment
-8. **Initialize ksqlDB streams** via API
-9. **Generate test transactions** to populate data
-10. **Test pull queries** to verify functionality
+## ⚙️ Ce que font les Scripts
 
-## Customization
+1. **Connexion à OpenShift Sandbox** avec le token et serveur fournis
+2. **Vérifier que Kafka fonctionne** (scale up si nécessaire)
+3. **Déployer ksqlDB** avec la configuration appropriée
+4. **Créer les topics Kafka** requis pour le lab
+5. **Construire et déployer l'API C#** via build binaire S2I
+6. **Créer la route edge** avec terminaison TLS
+7. **Vérification de santé** pour valider le déploiement
+8. **Initialiser les streams ksqlDB** via l'API
+9. **Générer des transactions de test** pour peupler les données
+10. **Tester les pull queries** pour vérifier la fonctionnalité
 
-### Environment Variables
-- `NAMESPACE`: OpenShift namespace (default: `msellamitn-dev`)
-- `BUILD_CONTEXT`: Path to C# project (default: `dotnet/BankingKsqlDBLab`)
-- `APP_NAME`: Application name (default: `banking-ksqldb-lab`)
+---
 
-### Manual Steps
-If the scripts fail, you can perform steps manually:
+## 🔧 Personnalisation
+
+### Variables d'Environnement
+
+| Variable | Défaut | Description |
+| -------- | ------ | ----------- |
+| `NAMESPACE` | `msellamitn-dev` | Namespace OpenShift |
+| `BUILD_CONTEXT` | `dotnet/BankingKsqlDBLab` | Chemin vers le projet C# |
+| `APP_NAME` | `banking-ksqldb-lab` | Nom de l'application |
+
+### Étapes Manuelles
+
+Si les scripts échouent, vous pouvez effectuer les étapes manuellement :
 
 ```bash
-# 1. Deploy ksqlDB
+# 1. Déployer ksqlDB
 oc apply -f ksqldb-deployment.yaml
 
-# 2. Create topics
-oc exec deployment/ksqldb -- bash -c "
-  kafka-topics --bootstrap-server kafka-0.kafka-svc:9092 --create --topic transactions --partitions 3 --replication-factor 1 --if-not-exists
-  kafka-topics --bootstrap-server kafka-0.kafka-svc:9092 --create --topic verified_transactions --partitions 3 --replication-factor 1 --if-not-exists
-  kafka-topics --bootstrap-server kafka-0.kafka-svc:9092 --create --topic fraud_alerts --partitions 3 --replication-factor 1 --if-not-exists
-  kafka-topics --bootstrap-server kafka-0.kafka-svc:9092 --create --topic account_balances --partitions 3 --replication-factor 1 --if-not-exists
-  kafka-topics --bootstrap-server kafka-0.kafka-svc:9092 --create --topic hourly_stats --partitions 3 --replication-factor 1 --if-not-exists
+# 2. Créer les topics
+oc exec kafka-0 -- bash -c "
+  /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-0.kafka-svc:9092 --create --topic transactions --partitions 3 --replication-factor 1 --if-not-exists
+  /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-0.kafka-svc:9092 --create --topic verified_transactions --partitions 3 --replication-factor 1 --if-not-exists
+  /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-0.kafka-svc:9092 --create --topic fraud_alerts --partitions 3 --replication-factor 1 --if-not-exists
+  /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-0.kafka-svc:9092 --create --topic account_balances --partitions 3 --replication-factor 1 --if-not-exists
+  /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-0.kafka-svc:9092 --create --topic hourly_stats --partitions 3 --replication-factor 1 --if-not-exists
 "
 
-# 3. Build and deploy API
+# 3. Construire et déployer l'API
 cd dotnet/BankingKsqlDBLab
 oc start-build banking-ksqldb-lab --from-dir=. --follow
 
-# 4. Create route
-oc apply -f edge-route.yaml
+# 4. Créer la route
+oc create route edge banking-ksqldb-lab-secure \
+  --service=banking-ksqldb-lab --port=8080-tcp
 ```
 
-## Testing the Deployment
+---
 
-After deployment, test the API:
+## 🧪 Tester le Déploiement
 
-### Health Check
+Après le déploiement, testez l'API :
+
 ```bash
-curl -k https://$(oc get route banking-ksqldb-lab -o jsonpath='{.spec.host}')/api/TransactionStream/health
+ROUTE=$(oc get route banking-ksqldb-lab-secure -o jsonpath='{.spec.host}')
 ```
 
-### Initialize Streams
+### Vérification de Santé
+
 ```bash
-curl -k -X POST https://$(oc get route banking-ksqldb-lab -o jsonpath='{.spec.host}')/api/TransactionStream/initialize
+curl -k https://$ROUTE/api/TransactionStream/health
 ```
 
-### Generate Transactions
+### Initialiser les Streams
+
 ```bash
-curl -k -X POST https://$(oc get route banking-ksqldb-lab -o jsonpath='{.spec.host}')/api/TransactionStream/transactions/generate/10
+curl -k -X POST https://$ROUTE/api/TransactionStream/initialize
 ```
 
-### Query Balance
+### Générer des Transactions
+
 ```bash
-curl -k https://$(oc get route banking-ksqldb-lab -o jsonpath='{.spec.host}')/api/TransactionStream/account/ACC001/balance
+curl -k -X POST https://$ROUTE/api/TransactionStream/transactions/generate/10
 ```
 
-### Stream Verified Transactions
+### Interroger le Solde
+
 ```bash
-curl -k -N https://$(oc get route banking-ksqldb-lab -o jsonpath='{.spec.host}')/api/TransactionStream/verified/stream
+curl -k https://$ROUTE/api/TransactionStream/account/ACC001/balance
 ```
 
-## Troubleshooting
+### Streamer les Transactions Vérifiées
 
-### Common Issues
+```bash
+curl -k -N https://$ROUTE/api/TransactionStream/verified/stream
+```
 
-1. **Kafka not running**
+### Streamer les Alertes de Fraude
+
+```bash
+curl -k -N https://$ROUTE/api/TransactionStream/fraud/stream
+```
+
+---
+
+## 🐛 Dépannage
+
+### Problèmes Courants
+
+1. **Kafka ne fonctionne pas**
+
    ```bash
    oc scale statefulset kafka --replicas=3
    oc wait --for=condition=ready pod -l app=kafka --timeout=300s
    ```
 
-2. **ksqlDB startup issues**
+2. **Problèmes de démarrage ksqlDB**
+
    ```bash
    oc logs -f deployment/ksqldb
    ```
 
-3. **C# API issues**
+3. **Problèmes de l'API C#**
+
    ```bash
    oc logs -f deployment/banking-ksqldb-lab
    ```
 
-4. **Route not accessible**
+4. **Route non accessible**
+
    ```bash
-   oc get route banking-ksqldb-lab
-   oc describe route banking-ksqldb-lab
+   oc get route banking-ksqldb-lab-secure
+   oc describe route banking-ksqldb-lab-secure
    ```
 
-### Clean Up
+### Nettoyage
+
 ```bash
 oc delete deployment banking-ksqldb-lab
 oc delete deployment ksqldb
-oc delete route banking-ksqldb-lab
+oc delete route banking-ksqldb-lab-secure
 oc delete route ksqldb
+oc delete svc banking-ksqldb-lab
+oc delete svc ksqldb
 ```
 
-## Architecture
+---
 
-```
+## 🏗️ Architecture
+
+```text
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   C# Banking    │    │     ksqlDB      │    │     Kafka       │
-│      API         │───▶│   Processing    │───▶│   Cluster       │
-│  (REST/Stream)  │    │   Engine        │    │  (3 Brokers)    │
+│   API C# .NET   │    │     ksqlDB      │    │     Kafka       │
+│   Banking Lab   │───▶│   Traitement    │───▶│   Cluster       │
+│  (REST/Stream)  │    │   SQL Streams   │    │  (3 Brokers)    │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
         │                       │                       │
         ▼                       ▼                       ▼
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Swagger UI    │    │   ksqlDB UI     │    │   Topics:       │
-│   /swagger      │    │   :8088/ui      │    │ transactions    │
+│   Swagger UI    │    │   ksqlDB REST   │    │   Topics :      │
+│   /swagger      │    │   :8088         │    │ transactions    │
 └─────────────────┘    └─────────────────┘    │ verified_*      │
-                                                │ fraud_alerts    │
-                                                │ account_balances│
-                                                │ hourly_stats    │
-                                                └─────────────────┘
+                                              │ fraud_alerts    │
+                                              │ account_balances│
+                                              │ hourly_stats    │
+                                              └─────────────────┘
 ```
 
-## Learning Objectives
+---
 
-After completing this lab, you will understand:
+## 📚 Objectifs Pédagogiques
 
-- **ksqlDB stream processing** with CSAS/CTAS queries
-- **Push vs Pull queries** for real-time and on-demand data access
-- **C# .NET integration** with ksqlDB REST API
-- **OpenShift deployment** with S2I builds and edge routes
-- **Stream topology** design for fraud detection
-- **Materialized views** for aggregated account balances
-- **Windowed aggregations** for hourly statistics
+Après avoir complété ce lab, vous comprendrez :
+
+- **Traitement de flux ksqlDB** avec requêtes CSAS/CTAS
+- **Push vs Pull queries** pour accès temps réel et à la demande
+- **Intégration C# .NET** avec l'API REST ksqlDB
+- **Déploiement OpenShift** avec builds S2I et routes edge
+- **Conception de topologie** de streams pour la détection de fraude
+- **Vues matérialisées** pour les soldes de comptes agrégés
+- **Agrégations fenêtrées** pour les statistiques horaires
