@@ -101,30 +101,132 @@ java/
 - Kafka cluster running
 - OpenShift Sandbox (for deployment)
 
+---
+
+## 🚢 Deployment — 4 Environments
+
+| Environment | Tool | Kafka Bootstrap | API Access |
+| ----------- | ---- | --------------- | ---------- |
+| **🐳 Docker / Local** | `mvn spring-boot:run` | `localhost:9092` | `http://localhost:8080/` |
+| **☁️ OpenShift Sandbox** | Scripts automated | `kafka-svc:9092` | `https://{route}/` |
+| **☸️ K8s / OKD** | `docker build` + `kubectl apply` | `kafka-svc:9092` | `http://localhost:8080/` (port-forward) |
+| **🖥️ Local (IDE)** | VS Code / IntelliJ | `localhost:9092` | `http://localhost:8080/` |
+
 ### Local Development
 
 ```bash
 # Build and run locally
 mvn clean spring-boot:run
 
-# Produce a sale event
-curl -X POST http://localhost:8080/api/v1/sales \
-  -H "Content-Type: application/json" \
-  -d '{"productId":"PROD-001","quantity":2,"unitPrice":125.00}'
-
-# Query aggregated stats
-curl http://localhost:8080/api/v1/stats/by-product
+# Swagger UI
+open http://localhost:8080/swagger-ui.html
 ```
 
 ### OpenShift Deployment
 
 ```bash
-# Deploy using scripts
+# Deploy using scripts (recommended)
 cd ../../scripts
 ./bash/deploy-and-test-3.1a-java.sh --token "sha256~XXX" --server "https://api..."
 
-# Or using PowerShell
+# Or PowerShell
 ./powershell/deploy-and-test-3.1a-java.ps1 -Token "sha256~XXX" -Server "https://api..."
+```
+
+> **The script handles automatically:**
+> - ✅ Build with S2I (java:openjdk-17-ubi8)
+> - ✅ Deploy to OpenShift
+> - ✅ Configure environment variables
+> - ✅ Create secure edge route
+> - ✅ Wait for pod readiness
+> - ✅ Run API validation tests
+
+---
+
+## 🧪 API Tests — Validation Scenarios
+
+### Health Check
+
+```bash
+# Local
+curl http://localhost:8080/actuator/health
+
+# OpenShift Sandbox
+curl -k https://ebanking-streams-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/actuator/health
+```
+
+### Produce Sale Event
+
+```bash
+# Local
+curl -X POST http://localhost:8080/api/v1/sales \
+  -H "Content-Type: application/json" \
+  -d '{"productId":"PROD-001","quantity":2,"unitPrice":125.00}'
+
+# OpenShift Sandbox
+curl -k -X POST https://ebanking-streams-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/sales \
+  -H "Content-Type: application/json" \
+  -d '{"productId":"PROD-001","quantity":2,"unitPrice":125.00}'
+```
+
+### Query Aggregated Stats
+
+```bash
+# Local
+curl http://localhost:8080/api/v1/stats/by-product
+
+# OpenShift Sandbox
+curl -k https://ebanking-streams-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/stats/by-product
+```
+
+### Windowed Stats per Minute
+
+```bash
+# Local
+curl http://localhost:8080/api/v1/stats/per-minute
+
+# OpenShift Sandbox
+curl -k https://ebanking-streams-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/stats/per-minute
+```
+
+### Query State Store
+
+```bash
+# Local - All entries
+curl http://localhost:8080/api/v1/stores/sales-by-product/all
+
+# Local - By key
+curl http://localhost:8080/api/v1/stores/sales-by-product/PROD-001
+```
+
+---
+
+## 📊 Verification in Kafka
+
+### Using Kafka UI
+
+**Docker**: <http://localhost:8080>
+
+1. Go to **Topics** → **sales-events**
+2. Click **Messages**
+3. Verify sale events with proper JSON format
+
+### Using Kafka CLI
+
+```bash
+# Docker
+docker exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic sales-events \
+  --from-beginning \
+  --max-messages 5
+
+# OpenShift Sandbox
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server kafka-0.kafka-svc:9092 \
+  --topic sales-events \
+  --from-beginning \
+  --max-messages 5
 ```
 
 ---

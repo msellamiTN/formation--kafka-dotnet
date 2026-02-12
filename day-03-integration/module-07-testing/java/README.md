@@ -60,8 +60,22 @@ java/
 
 - Java 17+
 - Maven 3.6+
+- Docker (for Testcontainers)
 
-### Run Tests
+---
+
+## 🚢 Deployment — 4 Environments
+
+| Environment | Tool | Kafka Bootstrap | Test Execution |
+| ----------- | ---- | --------------- | -------------- |
+| **🐳 Docker / Local** | `mvn test` | Testcontainers | Local JVM |
+| **☁️ OpenShift Sandbox** | N/A (local only) | N/A | N/A |
+| **☸️ K8s / OKD** | N/A (local only) | N/A | N/A |
+| **🖥️ Local (IDE)** | VS Code / IntelliJ | Testcontainers | Local JVM |
+
+> **Note**: This module focuses on **local testing** with Testcontainers. It does not deploy to OpenShift/K8s like other modules.
+
+### Local Testing
 
 ```bash
 # Run all tests
@@ -72,6 +86,12 @@ mvn test -Dtest=**/*Test
 
 # Run with coverage
 mvn clean test jacoco:report
+
+# Run specific test class
+mvn test -Dtest=TransactionProducerTest
+
+# Run with debug
+mvn test -Dmaven.surefire.debug
 ```
 
 ---

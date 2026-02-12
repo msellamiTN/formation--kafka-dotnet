@@ -1,8 +1,8 @@
 #!/bin/bash
 # =============================================================================
-# Day 03 - Test All Java APIs
+# Day 03 - Test All APIs (Java + .NET)
 # =============================================================================
-# Tests all deployed Day-03 Java labs (Kafka Streams + Metrics Dashboard)
+# Tests all deployed Day-03 labs (Java + .NET)
 # Usage: ./test-all-apis.sh [--token "sha256~XXX"] [--server "https://..."]
 # =============================================================================
 
@@ -204,6 +204,106 @@ else
         write_pass "Prometheus metrics accessible"
     else
         write_info "Prometheus returned $STATUS"
+    fi
+fi
+
+# =============================================================================
+# LAB 3.1a: E-Banking Streams API (.NET)
+# =============================================================================
+write_header "LAB 3.1a: E-Banking Streams API (.NET)"
+
+ROUTE_HOST=$(get_route_host "ebanking-streams-dotnet-secure")
+if [ -z "$ROUTE_HOST" ]; then
+    write_skip "Route 'ebanking-streams-dotnet-secure' not found"
+else
+    BASE="https://$ROUTE_HOST"
+    write_info "Route: $BASE"
+
+    write_step "Root Endpoint"
+    STATUS=$(test_endpoint "$BASE/")
+    if [ "$STATUS" = "200" ]; then
+        write_pass "Root endpoint OK"
+    else
+        write_fail "Root endpoint returned $STATUS"
+    fi
+
+    write_step "Health Check"
+    STATUS=$(test_endpoint "$BASE/api/v1/health")
+    if [ "$STATUS" = "200" ]; then
+        write_pass "Health OK"
+    else
+        write_fail "Health returned $STATUS"
+    fi
+
+    write_step "POST /api/v1/sales (produce sale event)"
+    BODY='{"productId":"PROD-001","quantity":3,"unitPrice":99.50}'
+    RESPONSE=$(send_json_request "$BASE/api/v1/sales" "$BODY")
+    if echo "$RESPONSE" | grep -q '"status":"ACCEPTED"'; then
+        write_pass "Sale event accepted"
+    else
+        write_fail "Sale event failed"
+    fi
+
+    write_step "GET /api/v1/stats/by-product"
+    RESPONSE=$(get_json_response "$BASE/api/v1/stats/by-product")
+    if [ "$RESPONSE" != "null" ]; then
+        write_pass "Stats by product accessible"
+    else
+        write_info "Stats not available yet"
+    fi
+
+    write_step "POST /api/v1/transactions (banking)"
+    TX_BODY='{"customerId":"CUST-001","amount":1500.00,"type":"TRANSFER"}'
+    RESPONSE=$(send_json_request "$BASE/api/v1/transactions" "$TX_BODY")
+    if echo "$RESPONSE" | grep -q '"status":"ACCEPTED"'; then
+        write_pass "Transaction accepted"
+    else
+        write_fail "Transaction failed"
+    fi
+
+    write_step "Swagger UI"
+    STATUS=$(test_endpoint "$BASE/swagger/index.html")
+    if [ "$STATUS" = "200" ]; then
+        write_pass "Swagger UI accessible"
+    else
+        write_info "Swagger returned $STATUS"
+    fi
+fi
+
+# =============================================================================
+# LAB 3.1b: Banking ksqlDB Lab (.NET)
+# =============================================================================
+write_header "LAB 3.1b: Banking ksqlDB Lab (.NET)"
+
+ROUTE_HOST=$(get_route_host "banking-ksqldb-lab-secure")
+if [ -z "$ROUTE_HOST" ]; then
+    write_skip "Route 'banking-ksqldb-lab-secure' not found"
+else
+    BASE="https://$ROUTE_HOST"
+    write_info "Route: $BASE"
+
+    write_step "Health Check"
+    STATUS=$(test_endpoint "$BASE/api/TransactionStream/health")
+    if [ "$STATUS" = "200" ]; then
+        write_pass "Health OK"
+    else
+        write_fail "Health returned $STATUS"
+    fi
+
+    write_step "POST /api/TransactionStream/transactions/generate/5"
+    RESPONSE=$(send_json_request "$BASE/api/TransactionStream/transactions/generate/5" "")
+    if [ "$RESPONSE" != "null" ]; then
+        write_pass "Transaction generation accepted"
+    else
+        write_fail "Transaction generation failed"
+    fi
+
+    write_step "Swagger UI"
+    STATUS=$(test_endpoint "$BASE/swagger/index.html")
+    if [ "$STATUS" = "200" ]; then
+        write_pass "Swagger UI accessible"
+    else
+        write_info "Swagger returned $STATUS"
     fi
 fi
 

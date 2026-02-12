@@ -1,7 +1,7 @@
 # =============================================================================
-# Day 03 - Test All Java APIs
+# Day 03 - Test All APIs (Java + .NET)
 # =============================================================================
-# Tests all deployed Day-03 Java labs (Kafka Streams + Metrics Dashboard)
+# Tests all deployed Day-03 labs (Java + .NET)
 # Usage: .\test-all-apis.ps1 [-Token "sha256~XXX"] [-Server "https://..."]
 # =============================================================================
 
@@ -151,6 +151,72 @@ if (-not $routeHost) { Write-Skip "Route 'ebanking-metrics-java-secure' not foun
     Write-Step "GET /actuator/prometheus"
     $s = Test-Endpoint "$base/actuator/prometheus"
     if ($s -eq 200) { Write-Pass "Prometheus metrics accessible" } else { Write-Info "Prometheus returned $s" }
+}
+
+# =============================================================================
+# LAB 3.1a: E-Banking Streams API (.NET)
+# =============================================================================
+Write-Header "LAB 3.1a: E-Banking Streams API (.NET)"
+
+$routeHost = Get-RouteHost "ebanking-streams-dotnet-secure"
+if (-not $routeHost) { Write-Skip "Route 'ebanking-streams-dotnet-secure' not found" } else {
+    $base = "https://$routeHost"
+    Write-Info "Route: $base"
+
+    Write-Step "Root Endpoint"
+    $s = Test-Endpoint "$base/"
+    if ($s -eq 200) { Write-Pass "Root endpoint OK" } else { Write-Fail "Root endpoint returned $s" }
+
+    Write-Step "Health Check"
+    $s = Test-Endpoint "$base/api/v1/health"
+    if ($s -eq 200) { Write-Pass "Health OK" } else { Write-Fail "Health returned $s" }
+
+    Write-Step "POST /api/v1/sales (produce sale event)"
+    $body = '{"productId":"PROD-001","quantity":3,"unitPrice":99.50}'
+    $r = Send-JsonRequest "$base/api/v1/sales" $body
+    if ($null -ne $r -and $r.status -eq "ACCEPTED") {
+        Write-Pass "Sale event accepted"
+    } else { Write-Fail "Sale event failed" }
+
+    Write-Step "GET /api/v1/stats/by-product"
+    $r = Get-JsonResponse "$base/api/v1/stats/by-product"
+    if ($null -ne $r) { Write-Pass "Stats by product accessible" } else { Write-Info "Stats not available yet" }
+
+    Write-Step "POST /api/v1/transactions (banking)"
+    $txBody = '{"customerId":"CUST-001","amount":1500.00,"type":"TRANSFER"}'
+    $r = Send-JsonRequest "$base/api/v1/transactions" $txBody
+    if ($null -ne $r -and $r.status -eq "ACCEPTED") {
+        Write-Pass "Transaction accepted"
+    } else { Write-Fail "Transaction failed" }
+
+    Write-Step "Swagger UI"
+    $s = Test-Endpoint "$base/swagger/index.html"
+    if ($s -eq 200) { Write-Pass "Swagger UI accessible" } else { Write-Info "Swagger returned $s" }
+}
+
+# =============================================================================
+# LAB 3.1b: Banking ksqlDB Lab (.NET)
+# =============================================================================
+Write-Header "LAB 3.1b: Banking ksqlDB Lab (.NET)"
+
+$routeHost = Get-RouteHost "banking-ksqldb-lab-secure"
+if (-not $routeHost) { Write-Skip "Route 'banking-ksqldb-lab-secure' not found" } else {
+    $base = "https://$routeHost"
+    Write-Info "Route: $base"
+
+    Write-Step "Health Check"
+    $s = Test-Endpoint "$base/api/TransactionStream/health"
+    if ($s -eq 200) { Write-Pass "Health OK" } else { Write-Fail "Health returned $s" }
+
+    Write-Step "POST /api/TransactionStream/transactions/generate/5"
+    $r = Send-JsonRequest "$base/api/TransactionStream/transactions/generate/5" ""
+    if ($null -ne $r) {
+        Write-Pass "Transaction generation accepted"
+    } else { Write-Fail "Transaction generation failed" }
+
+    Write-Step "Swagger UI"
+    $s = Test-Endpoint "$base/swagger/index.html"
+    if ($s -eq 200) { Write-Pass "Swagger UI accessible" } else { Write-Info "Swagger returned $s" }
 }
 
 # =============================================================================

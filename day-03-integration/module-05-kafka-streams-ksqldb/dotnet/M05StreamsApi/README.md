@@ -49,6 +49,17 @@ M05StreamsApi/
 - .NET 8 SDK
 - Kafka cluster running (Docker or OpenShift)
 
+---
+
+## 🚢 Deployment — 4 Environments
+
+| Environment | Tool | Kafka Bootstrap | API Access |
+| ----------- | ---- | --------------- | ---------- |
+| **🐳 Docker / Local** | `dotnet run` | `localhost:9092` | `http://localhost:5000/` |
+| **☁️ OpenShift Sandbox** | Scripts automated | `kafka-svc:9092` | `https://{route}/` |
+| **☸️ K8s / OKD** | `docker build` + `kubectl apply` | `kafka-svc:9092` | `http://localhost:8080/` (port-forward) |
+| **🖥️ Local (IDE)** | VS Code | `localhost:9092` | `http://localhost:5000/` |
+
 ### Local Development
 
 ```bash
@@ -57,33 +68,127 @@ dotnet run
 
 # Swagger UI
 open http://localhost:5000/swagger
-
-# Post a sale
-curl -X POST http://localhost:5000/api/v1/sales \
-  -H "Content-Type: application/json" \
-  -d '{"productId":"PROD-001","quantity":2,"unitPrice":125.00}'
-
-# Check stats
-curl http://localhost:5000/api/v1/stats/by-product
-
-# Post a transaction
-curl -X POST http://localhost:5000/api/v1/transactions \
-  -H "Content-Type: application/json" \
-  -d '{"customerId":"CUST-001","amount":1500.00,"type":"TRANSFER"}'
-
-# Check balances
-curl http://localhost:5000/api/v1/balances
 ```
 
 ### OpenShift Deployment
 
 ```bash
-# Using scripts
+# Deploy using scripts (recommended)
 cd ../../scripts
 ./bash/deploy-and-test-3.1a-dotnet.sh --token "sha256~XXX" --server "https://api..."
 
 # Or PowerShell
 ./powershell/deploy-and-test-3.1a-dotnet.ps1 -Token "sha256~XXX" -Server "https://api..."
+```
+
+> **The script handles automatically:**
+> - ✅ Build with S2I (dotnet:8.0-ubi8)
+> - ✅ Deploy to OpenShift
+> - ✅ Configure environment variables
+> - ✅ Create secure edge route
+> - ✅ Wait for pod readiness
+> - ✅ Run API validation tests
+
+---
+
+## 🧪 API Tests — Validation Scenarios
+
+### Health Check
+
+```bash
+# Local
+curl http://localhost:5000/api/v1/health
+
+# OpenShift Sandbox
+curl -k https://ebanking-streams-dotnet-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/health
+```
+
+### Produce Sale Event
+
+```bash
+# Local
+curl -X POST http://localhost:5000/api/v1/sales \
+  -H "Content-Type: application/json" \
+  -d '{"productId":"PROD-001","quantity":2,"unitPrice":125.00}'
+
+# OpenShift Sandbox
+curl -k -X POST https://ebanking-streams-dotnet-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/sales \
+  -H "Content-Type: application/json" \
+  -d '{"productId":"PROD-001","quantity":2,"unitPrice":125.00}'
+```
+
+### Produce Banking Transaction
+
+```bash
+# Local
+curl -X POST http://localhost:5000/api/v1/transactions \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"CUST-001","amount":1500.00,"type":"TRANSFER"}'
+
+# OpenShift Sandbox
+curl -k -X POST https://ebanking-streams-dotnet-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/transactions \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"CUST-001","amount":1500.00,"type":"TRANSFER"}'
+```
+
+### Query Aggregated Stats
+
+```bash
+# Local
+curl http://localhost:5000/api/v1/stats/by-product
+
+# OpenShift Sandbox
+curl -k https://ebanking-streams-dotnet-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/stats/by-product
+```
+
+### Query Customer Balances
+
+```bash
+# Local
+curl http://localhost:5000/api/v1/balances
+
+# OpenShift Sandbox
+curl -k https://ebanking-streams-dotnet-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/balances
+```
+
+### Query State Store
+
+```bash
+# Local - All entries
+curl http://localhost:5000/api/v1/stores/sales-by-product/all
+
+# Local - By key
+curl http://localhost:5000/api/v1/stores/sales-by-product/PROD-001
+```
+
+---
+
+## 📊 Verification in Kafka
+
+### Using Kafka UI
+
+**Docker**: <http://localhost:8080>
+
+1. Go to **Topics** → **sales-events**
+2. Click **Messages**
+3. Verify sale events with proper JSON format
+
+### Using Kafka CLI
+
+```bash
+# Docker
+docker exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic sales-events \
+  --from-beginning \
+  --max-messages 5
+
+# OpenShift Sandbox
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server kafka-0.kafka-svc:9092 \
+  --topic sales-events \
+  --from-beginning \
+  --max-messages 5
 ```
 
 ---

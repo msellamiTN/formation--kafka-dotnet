@@ -465,13 +465,14 @@ dotnet test
 
 ## 🚢 Déploiement — 3 Environnements
 
-Chaque lab Day 03 peut être déployé dans **3 environnements**, comme les labs Day 01 et Day 02 :
+Chaque lab Day 03 peut être déployé dans **4 environnements**, comme les labs Day 01 et Day 02 :
 
 | Environnement | Outil | Kafka Bootstrap | Accès API |
 | ------------- | ----- | --------------- | --------- |
-| **🐳 Docker / Local** | `mvn spring-boot:run` | `localhost:9092` | `http://localhost:8080/` |
-| **☁️ OpenShift Sandbox** | `oc new-build` + Binary Build | `kafka-svc:9092` | `https://{route}/` |
+| **🐳 Docker / Local** | `mvn spring-boot:run` / `dotnet run` | `localhost:9092` | `http://localhost:8080/` |
+| **☁️ OpenShift Sandbox** | Scripts automatisés | `kafka-svc:9092` | `https://{route}/` |
 | **☸️ K8s / OKD** | `docker build` + `kubectl apply` | `kafka-svc:9092` | `http://localhost:8080/` (port-forward) |
+| **🖥️ Local (IDE)** | VS Code / IntelliJ | `localhost:9092` | `http://localhost:8080/` |
 
 ### Ports locaux Day 03
 
@@ -482,23 +483,34 @@ Chaque lab Day 03 peut être déployé dans **3 environnements**, comme les labs
 
 ### Récapitulatif des noms d'applications
 
-| Lab | App Name (oc/kubectl) | Route OpenShift |
-| --- | --------------------- | --------------- |
-| 3.1a | `ebanking-streams-java` | `ebanking-streams-java-secure` |
-| 3.4a | `ebanking-metrics-java` | `ebanking-metrics-java-secure` |
+| Lab | Piste | App Name (oc/kubectl) | Route OpenShift |
+| --- | ----- | --------------------- | --------------- |
+| 3.1a | Java | `ebanking-streams-java` | `ebanking-streams-java-secure` |
+| 3.1a | .NET | `ebanking-streams-dotnet` | `ebanking-streams-dotnet-secure` |
+| 3.1b | .NET | `banking-ksqldb-lab` | `banking-ksqldb-lab-secure` |
+| 3.4a | Java | `ebanking-metrics-java` | `ebanking-metrics-java-secure` |
 
 ### Déploiement sur OpenShift (Sandbox ou CRC)
 
 ```bash
-# Pattern commun : Binary Build S2I pour chaque lab Java
+# ── Piste Java (S2I avec java:openjdk-17-ubi8) ──
 cd day-03-integration/module-05-kafka-streams-ksqldb/java
-
 oc new-build java:openjdk-17-ubi8 --binary=true --name=ebanking-streams-java
 oc start-build ebanking-streams-java --from-dir=. --follow
 oc new-app ebanking-streams-java
 oc set env deployment/ebanking-streams-java SERVER_PORT=8080 KAFKA_BOOTSTRAP_SERVERS=kafka-svc:9092
 oc create route edge ebanking-streams-java-secure --service=ebanking-streams-java --port=8080-tcp
+
+# ── Piste .NET (S2I avec dotnet:8.0-ubi8) ──
+cd day-03-integration/module-05-kafka-streams-ksqldb/dotnet/M05StreamsApi
+oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-streams-dotnet
+oc start-build ebanking-streams-dotnet --from-dir=. --follow
+oc new-app ebanking-streams-dotnet
+oc set env deployment/ebanking-streams-dotnet Kafka__BootstrapServers=kafka-svc:9092 ASPNETCORE_URLS=http://0.0.0.0:8080
+oc create route edge ebanking-streams-dotnet-secure --service=ebanking-streams-dotnet --port=8080-tcp
 ```
+
+> **Scripts automatisés** : Utilisez les scripts dans `scripts/bash/` ou `scripts/powershell/` pour un déploiement complet avec tests intégrés. Voir [scripts/README.md](scripts/README.md).
 
 ---
 
@@ -516,6 +528,31 @@ oc create route edge ebanking-streams-java-secure --service=ebanking-streams-jav
 | GET | `/api/v1/stores/{name}/all` | Interroger un state store |
 | GET | `/api/v1/stores/{name}/{key}` | Interroger un state store par clé |
 
+### Lab 3.1a (.NET) — Streams API
+
+| Méthode | Endpoint | Description |
+| ------- | -------- | ----------- |
+| GET | `/` | Informations de l'application |
+| GET | `/swagger` | Swagger UI |
+| GET | `/api/v1/health` | Vérification de santé |
+| POST | `/api/v1/sales` | Produire un événement de vente |
+| GET | `/api/v1/stats/by-product` | Statistiques agrégées par produit |
+| POST | `/api/v1/transactions` | Produire une transaction bancaire |
+| GET | `/api/v1/balances` | Soldes clients |
+| GET | `/api/v1/stores/{name}/all` | Interroger un state store |
+
+### Lab 3.1b (.NET) — ksqlDB Lab
+
+| Méthode | Endpoint | Description |
+| ------- | -------- | ----------- |
+| GET | `/swagger` | Swagger UI |
+| GET | `/api/TransactionStream/health` | Vérification de santé |
+| POST | `/api/TransactionStream/initialize` | Initialiser les streams ksqlDB |
+| POST | `/api/TransactionStream/transactions/generate/{n}` | Générer N transactions de test |
+| GET | `/api/TransactionStream/account/{id}/balance` | Pull query — solde compte |
+| GET | `/api/TransactionStream/verified/stream` | Push query — transactions vérifiées |
+| GET | `/api/TransactionStream/fraud/stream` | Push query — alertes fraude |
+
 ### Lab 3.4a — Tableau de bord Métriques
 
 | Méthode | Endpoint | Description |
@@ -526,6 +563,80 @@ oc create route edge ebanking-streams-java-secure --service=ebanking-streams-jav
 | GET | `/api/v1/metrics/cluster` | Santé du cluster Kafka (brokers, contrôleur) |
 | GET | `/api/v1/metrics/topics` | Métadonnées des topics (partitions, réplication) |
 | GET | `/api/v1/metrics/consumers` | Consumer lag par groupe |
+
+---
+
+## 🧪 Tests API — Scénarios de Validation
+
+### Lab 3.1a (Java) — Kafka Streams Processing
+
+```bash
+# Health check
+curl -k https://ebanking-streams-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/actuator/health
+
+# Produire un événement de vente
+curl -k -X POST https://ebanking-streams-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/sales \
+  -H "Content-Type: application/json" \
+  -d '{"productId":"PROD-001","quantity":2,"unitPrice":125.00}'
+
+# Statistiques par produit
+curl -k https://ebanking-streams-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/stats/by-product
+```
+
+### Lab 3.1a (.NET) — Streams API
+
+```bash
+# Health check
+curl -k https://ebanking-streams-dotnet-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/health
+
+# Produire un événement de vente
+curl -k -X POST https://ebanking-streams-dotnet-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/sales \
+  -H "Content-Type: application/json" \
+  -d '{"productId":"PROD-001","quantity":3,"unitPrice":99.50}'
+
+# Produire une transaction bancaire
+curl -k -X POST https://ebanking-streams-dotnet-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/transactions \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"CUST-001","amount":1500.00,"type":"TRANSFER"}'
+
+# Statistiques par produit
+curl -k https://ebanking-streams-dotnet-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/stats/by-product
+```
+
+### Lab 3.1b (.NET) — ksqlDB Lab
+
+```bash
+# Health check
+curl -k https://banking-ksqldb-lab-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/TransactionStream/health
+
+# Initialiser les streams ksqlDB
+curl -k -X POST https://banking-ksqldb-lab-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/TransactionStream/initialize
+
+# Générer 5 transactions de test
+curl -k -X POST https://banking-ksqldb-lab-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/TransactionStream/transactions/generate/5
+
+# Solde d'un compte (Pull query)
+curl -k https://banking-ksqldb-lab-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/TransactionStream/account/CUST-001/balance
+```
+
+### Lab 3.4a (Java) — Metrics Dashboard
+
+```bash
+# Health check
+curl -k https://ebanking-metrics-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/actuator/health
+
+# Santé du cluster Kafka
+curl -k https://ebanking-metrics-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/metrics/cluster
+
+# Métadonnées des topics
+curl -k https://ebanking-metrics-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/metrics/topics
+
+# Consumer lag par groupe
+curl -k https://ebanking-metrics-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/metrics/consumers
+
+# Métriques Prometheus
+curl -k https://ebanking-metrics-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/actuator/prometheus
+```
 
 ---
 
@@ -540,18 +651,33 @@ oc create route edge ebanking-streams-java-secure --service=ebanking-streams-jav
 | `Streams not ready (503)` | Kafka Streams en démarrage | Attendre state = RUNNING |
 | `AdminClient timeout` | Broker Kafka inaccessible | Vérifier KAFKA_BOOTSTRAP_SERVERS |
 | `MockProducer history empty` | Mock non injecté | Vérifier l'injection dans le service |
+| `dotnet build failed` | .NET 8 SDK manquant | Installer .NET 8 ou utiliser `dotnet:8.0-ubi8` |
+| `ksqlDB initialize failed` | ksqlDB non déployé | Déployer ksqlDB d'abord via le script 3.1b |
 
 ---
 
 ## ✅ Validation Day 03
 
+### Piste Java
+
 - [ ] Lab 3.1a : Topologie Kafka Streams fonctionnelle, agrégations par produit, fenêtrage par minute
 - [ ] Lab 3.1a : State stores accessibles via REST API
-- [ ] Lab 3.2 : Comprendre Source/Sink connectors et la REST API de Kafka Connect
 - [ ] Lab 3.3a : 9 tests unitaires passent (5 producer + 4 consumer) avec MockProducer/Consumer
 - [ ] Lab 3.4a : Santé du cluster visible via `/api/v1/metrics/cluster`
 - [ ] Lab 3.4a : Consumer lag calculé via `/api/v1/metrics/consumers`
 - [ ] Lab 3.4a : Métriques Prometheus exposées via `/actuator/prometheus`
+
+### Piste .NET
+
+- [ ] Lab 3.1a : Streams API déployée, POST /api/v1/sales accepté, stats par produit accessibles
+- [ ] Lab 3.1a : Transactions bancaires et soldes clients fonctionnels
+- [ ] Lab 3.1a : Swagger UI accessible
+- [ ] Lab 3.1b : ksqlDB initialisé, streams créés
+- [ ] Lab 3.1b : Push/Pull queries fonctionnelles (soldes, transactions vérifiées, alertes fraude)
+
+### Commun
+
+- [ ] Lab 3.2 : Comprendre Source/Sink connectors et la REST API de Kafka Connect
 - [ ] Comprendre les 3 piliers de l'observabilité (métriques, logs, traces)
 
 ---

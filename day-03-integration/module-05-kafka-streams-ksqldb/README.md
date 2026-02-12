@@ -72,6 +72,81 @@ cd dotnet/BankingKsqlDBLab && dotnet run
 
 ---
 
+## 🚢 Déploiement — 4 Environnements
+
+Chaque lab peut être déployé dans **4 environnements**, comme les labs Day 01 et Day 02 :
+
+| Environnement | Outil | Kafka Bootstrap | Accès API |
+| ------------- | ----- | --------------- | --------- |
+| **🐳 Docker / Local** | `mvn spring-boot:run` / `dotnet run` | `localhost:9092` | `http://localhost:8080/` |
+| **☁️ OpenShift Sandbox** | Scripts automatisés | `kafka-svc:9092` | `https://{route}/` |
+| **☸️ K8s / OKD** | `docker build` + `kubectl apply` | `kafka-svc:9092` | `http://localhost:8080/` (port-forward) |
+| **🖥️ Local (IDE)** | VS Code / IntelliJ | `localhost:9092` | `http://localhost:8080/` |
+
+### Ports locaux
+
+| Lab | API Name | Port Local | URL |
+| --- | -------- | ---------- | --- |
+| 3.1a (Java/.NET) | Kafka Streams API | `:8080` | `http://localhost:8080/api/v1/sales` |
+| 3.1b (.NET) | ksqlDB Lab API | `:8080` | `http://localhost:8080/api/TransactionStream/health` |
+
+---
+
+## 🧪 Tests API — Scénarios de Validation
+
+### Lab 3.1a (Java) — Kafka Streams
+
+```bash
+# Health check
+curl http://localhost:8080/actuator/health
+
+# Produire un événement de vente
+curl -X POST http://localhost:8080/api/v1/sales \
+  -H "Content-Type: application/json" \
+  -d '{"productId":"PROD-001","quantity":2,"unitPrice":125.00}'
+
+# Statistiques par produit
+curl http://localhost:8080/api/v1/stats/by-product
+```
+
+### Lab 3.1a (.NET) — Streams API
+
+```bash
+# Health check
+curl http://localhost:8080/api/v1/health
+
+# Produire un événement de vente
+curl -X POST http://localhost:8080/api/v1/sales \
+  -H "Content-Type: application/json" \
+  -d '{"productId":"PROD-001","quantity":3,"unitPrice":99.50}'
+
+# Produire une transaction bancaire
+curl -X POST http://localhost:8080/api/v1/transactions \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"CUST-001","amount":1500.00,"type":"TRANSFER"}'
+
+# Statistiques par produit
+curl http://localhost:8080/api/v1/stats/by-product
+```
+
+### Lab 3.1b (.NET) — ksqlDB Lab
+
+```bash
+# Health check
+curl http://localhost:8080/api/TransactionStream/health
+
+# Initialiser les streams ksqlDB
+curl -X POST http://localhost:8080/api/TransactionStream/initialize
+
+# Générer 5 transactions de test
+curl -X POST http://localhost:8080/api/TransactionStream/transactions/generate/5
+
+# Solde d'un compte (Pull query)
+curl http://localhost:8080/api/TransactionStream/account/CUST-001/balance
+```
+
+---
+
 ## 🏦 Contexte E-Banking
 
 Dans les labs précédents, vous avez appris à :

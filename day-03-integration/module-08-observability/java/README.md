@@ -89,34 +89,150 @@ java/
 - Kafka cluster running
 - OpenShift Sandbox (for deployment)
 
+---
+
+## 🚢 Deployment — 4 Environments
+
+| Environment | Tool | Kafka Bootstrap | API Access |
+| ----------- | ---- | --------------- | ---------- |
+| **🐳 Docker / Local** | `mvn spring-boot:run` | `localhost:9092` | `http://localhost:8080/` |
+| **☁️ OpenShift Sandbox** | Scripts automated | `kafka-svc:9092` | `https://{route}/` |
+| **☸️ K8s / OKD** | `docker build` + `kubectl apply` | `kafka-svc:9092` | `http://localhost:8080/` (port-forward) |
+| **🖥️ Local (IDE)** | VS Code / IntelliJ | `localhost:9092` | `http://localhost:8080/` |
+
 ### Local Development
 
 ```bash
 # Build and run locally
 mvn clean spring-boot:run
 
-# Check cluster health
-curl http://localhost:8080/api/v1/metrics/cluster
-
-# List topics
-curl http://localhost:8080/api/v1/metrics/topics
-
-# Check consumer groups
-curl http://localhost:8080/api/v1/metrics/consumers
-
-# Prometheus metrics
-curl http://localhost:8080/actuator/prometheus
+# Swagger UI
+open http://localhost:8080/swagger-ui.html
 ```
 
 ### OpenShift Deployment
 
 ```bash
-# Deploy using scripts
+# Deploy using scripts (recommended)
 cd ../../scripts
 ./bash/deploy-and-test-3.4a-java.sh --token "sha256~XXX" --server "https://api..."
 
-# Or using PowerShell
+# Or PowerShell
 ./powershell/deploy-and-test-3.4a-java.ps1 -Token "sha256~XXX" -Server "https://api..."
+```
+
+> **The script handles automatically:**
+> - ✅ Build with S2I (java:openjdk-17-ubi8)
+> - ✅ Deploy to OpenShift
+> - ✅ Configure environment variables
+> - ✅ Create secure edge route
+> - ✅ Wait for pod readiness
+> - ✅ Run API validation tests
+
+---
+
+## 🧪 API Tests — Validation Scenarios
+
+### Health Check
+
+```bash
+# Local
+curl http://localhost:8080/actuator/health
+
+# OpenShift Sandbox
+curl -k https://ebanking-metrics-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/actuator/health
+```
+
+### Cluster Health Metrics
+
+```bash
+# Local
+curl http://localhost:8080/api/v1/metrics/cluster
+
+# OpenShift Sandbox
+curl -k https://ebanking-metrics-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/metrics/cluster
+```
+
+### Topic Metadata
+
+```bash
+# Local
+curl http://localhost:8080/api/v1/metrics/topics
+
+# OpenShift Sandbox
+curl -k https://ebanking-metrics-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/metrics/topics
+```
+
+### Consumer Lag Monitoring
+
+```bash
+# Local
+curl http://localhost:8080/api/v1/metrics/consumers
+
+# OpenShift Sandbox
+curl -k https://ebanking-metrics-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/metrics/consumers
+```
+
+### Prometheus Metrics
+
+```bash
+# Local
+curl http://localhost:8080/actuator/prometheus
+
+# OpenShift Sandbox
+curl -k https://ebanking-metrics-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/actuator/prometheus
+```
+
+---
+
+## 📊 Monitoring Setup
+
+### Prometheus Configuration
+
+```yaml
+# prometheus.yml
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'kafka-metrics'
+    static_configs:
+      - targets: ['ebanking-metrics-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com']
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 10s
+```
+
+### Grafana Dashboard
+
+Import the pre-configured dashboard from `grafana/dashboard.json`:
+
+```bash
+# Import dashboard to Grafana
+curl -X POST http://localhost:3000/api/dashboards/db \
+  -H "Content-Type: application/json" \
+  -d @grafana/dashboard.json \
+  -u admin:admin
+```
+
+---
+
+## 🔍 Verification
+
+### Check Metrics Collection
+
+```bash
+# Verify metrics are being collected
+curl -s http://localhost:8080/actuator/prometheus | grep kafka_consumer
+
+# Check consumer lag
+curl -s http://localhost:8080/api/v1/metrics/consumers | jq '.consumerGroups[0].lag'
+```
+
+### Validate JMX Connection
+
+```bash
+# Check if JMX metrics are accessible
+curl -s http://localhost:8080/api/v1/metrics/cluster | jq '.status'
 ```
 
 ---

@@ -15,7 +15,43 @@
 
 ---
 
-## 📚 Partie Théorique (30%)
+## � Déploiement — 4 Environnements
+
+Chaque lab peut être déployé dans **4 environnements**, comme les labs Day 01 et Day 02 :
+
+| Environnement | Outil | Kafka Bootstrap | Connect Access |
+| ------------- | ----- | --------------- | -------------- |
+| **🐳 Docker / Local** | `docker compose` | `localhost:9092` | `http://localhost:8083/` |
+| **☁️ OpenShift Sandbox** | Scripts automatisés | `kafka-svc:9092` | `https://{route}/` |
+| **☸️ K8s / OKD** | `kubectl apply` | `kafka-svc:9092` | `http://localhost:8083/` (port-forward) |
+| **🖥️ Local (IDE)** | VS Code | `localhost:9092` | `http://localhost:8083/` |
+
+### Déploiement Local
+
+```bash
+# Démarrer Kafka Connect avec Docker Compose
+cd ../../module-01-cluster
+docker compose -f docker-compose.yml up -d
+
+# Démarrer Kafka Connect
+cd ../../module-06-kafka-connect
+docker compose -f docker-compose.module.yml up -d
+
+# Accéder à l'API REST
+curl http://localhost:8083/connectors
+```
+
+### Déploiement OpenShift
+
+```bash
+# Déployer Kafka Connect sur OpenShift
+cd scripts/openshift
+./deploy-kafka-connect.sh --token "sha256~XXX" --server "https://api..."
+```
+
+---
+
+## �📚 Partie Théorique (30%)
 
 ### 1. Introduction à Kafka Connect
 
