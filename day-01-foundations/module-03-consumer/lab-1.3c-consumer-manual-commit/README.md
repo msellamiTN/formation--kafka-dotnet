@@ -1069,7 +1069,15 @@ oc set env deployment/ebanking-audit-api \
   ASPNETCORE_URLS=http://0.0.0.0:8080 \
   ASPNETCORE_ENVIRONMENT=Development
 ```
-
+```powershell
+oc set env deployment/ebanking-audit-api `
+  Kafka__BootstrapServers=kafka-svc:9092 `
+  Kafka__GroupId=audit-compliance-service `
+  Kafka__Topic=banking.transactions `
+  Kafka__DlqTopic=banking.transactions.audit-dlq `
+  ASPNETCORE_URLS=http://0.0.0.0:8080 `
+  ASPNETCORE_ENVIRONMENT=Development
+```
 ### 4. Exposer publiquement (Secure Edge Route)
 
 > [!IMPORTANT]
