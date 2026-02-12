@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.kstream.*;
 import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.WindowStore;
@@ -115,7 +116,7 @@ public class SalesTopology {
                     return KeyValue.pair(newKey, "{}");
                 }
             })
-            .to("sales-per-minute", Produced.with(Serdes.String(), Serdes.String()));
+            .to("sales-per-minute", Produced.<String, String>with(Serdes.String(), Serdes.String()));
 
         // 4. Join with products table for enrichment
         KTable<String, String> productsTable = builder.table(productsTopic,
