@@ -1,6 +1,76 @@
-# LAB 3.1 : Kafka Streams avec ksqlDB - Stream Processing Avancé
+# LAB 3.1 : Kafka Streams & ksqlDB - Stream Processing Avancé
 
 ## ⏱️ Durée estimée : 2 heures
+
+---
+
+## 🔀 Double Piste — Java & .NET
+
+Ce module contient **3 labs** couvrant le stream processing avec deux approches :
+
+| Lab | Piste | Technologie | Déploiement | README |
+| --- | ----- | ----------- | ----------- | ------ |
+| **3.1a** | Java | Kafka Streams (Spring Boot) | OpenShift S2I | [java/README.md](java/README.md) |
+| **3.1a** | .NET | Confluent.Kafka + BackgroundService | OpenShift S2I | [dotnet/M05StreamsApi/README.md](dotnet/M05StreamsApi/README.md) |
+| **3.1b** | .NET | ksqlDB + C# REST Client | OpenShift + ksqlDB | [dotnet/BankingKsqlDBLab/README.md](dotnet/BankingKsqlDBLab/README.md) |
+
+### Applications déployées sur OpenShift
+
+| App Name | Piste | Route | Port |
+| -------- | ----- | ----- | ---- |
+| `ebanking-streams-java` | Java | `ebanking-streams-java-secure` | 8080 |
+| `ebanking-streams-dotnet` | .NET | `ebanking-streams-dotnet-secure` | 8080 |
+| `banking-ksqldb-lab` | .NET | `banking-ksqldb-lab-secure` | 8080 |
+
+### Déploiement rapide — OpenShift Sandbox
+
+<details>
+<summary>🖥️ PowerShell</summary>
+
+```powershell
+# Lab 3.1a Java — Kafka Streams
+.\scripts\powershell\deploy-and-test-3.1a-java.ps1 -Token "sha256~XXX" -Server "https://api..."
+
+# Lab 3.1a .NET — Streams API
+.\scripts\powershell\deploy-and-test-3.1a-dotnet.ps1 -Token "sha256~XXX" -Server "https://api..."
+
+# Lab 3.1b .NET — ksqlDB Lab (déploie ksqlDB + app)
+.\scripts\powershell\deploy-and-test-3.1b-dotnet.ps1 -Token "sha256~XXX" -Server "https://api..."
+```
+
+</details>
+
+<details>
+<summary>🐧 Bash</summary>
+
+```bash
+# Lab 3.1a Java — Kafka Streams
+./scripts/bash/deploy-and-test-3.1a-java.sh --token "sha256~XXX" --server "https://api..."
+
+# Lab 3.1a .NET — Streams API
+./scripts/bash/deploy-and-test-3.1a-dotnet.sh --token "sha256~XXX" --server "https://api..."
+
+# Lab 3.1b .NET — ksqlDB Lab (déploie ksqlDB + app)
+./scripts/bash/deploy-and-test-3.1b-dotnet.sh --token "sha256~XXX" --server "https://api..."
+```
+
+</details>
+
+### Déploiement local — Docker
+
+```bash
+# Lab 3.1a Java
+cd java && mvn spring-boot:run
+
+# Lab 3.1a .NET
+cd dotnet/M05StreamsApi && dotnet run
+
+# Lab 3.1b .NET (nécessite ksqlDB)
+docker compose -f docker-compose.module.yml up -d
+cd dotnet/BankingKsqlDBLab && dotnet run
+```
+
+---
 
 ## 🏦 Contexte E-Banking
 
@@ -16,7 +86,7 @@ Mais **transmettre les données n'est que la première étape**. En production, 
 - ❌ **Générer des statistiques** : Fenêtrages horaires, quotidiens des transactions
 - ❌ **Respecter la conformité** : Audit, déclenchement d'alertes réglementaires
 
-Dans ce lab, vous allez implémenter un **système de stream processing production-grade** avec **ksqlDB + C#**, combinant la puissance de Kafka avec le SQL pour les opérations complexes.
+Dans ce lab, vous allez implémenter un **système de stream processing production-grade** avec deux approches : **Kafka Streams (Java)** pour le traitement natif et **ksqlDB + C# (.NET)** pour le traitement SQL.
 
 ### Architecture Globale
 

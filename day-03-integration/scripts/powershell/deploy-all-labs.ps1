@@ -1,7 +1,7 @@
 # =============================================================================
-# Day 03 - Deploy All Java Labs
+# Day 03 - Deploy All Labs (Java + .NET)
 # =============================================================================
-# Deploys all Day-03 Java labs to OpenShift (S2I binary build)
+# Deploys all Day-03 labs to OpenShift (S2I binary build)
 # Usage: .\deploy-all-labs.ps1 [-Token "sha256~XXX"] [-Server "https://..."]
 # =============================================================================
 
@@ -37,8 +37,10 @@ Write-Host "Logged in as: $user" -ForegroundColor Green
 
 # Deploy each lab
 $labs = @(
-    @{ Name = "Lab 3.1a - Kafka Streams"; Script = "deploy-and-test-3.1a-java.ps1" },
-    @{ Name = "Lab 3.4a - Metrics Dashboard"; Script = "deploy-and-test-3.4a-java.ps1" }
+    @{ Name = "Lab 3.1a (Java) - Kafka Streams"; Script = "deploy-and-test-3.1a-java.ps1" },
+    @{ Name = "Lab 3.1a (.NET) - Streams API"; Script = "deploy-and-test-3.1a-dotnet.ps1" },
+    @{ Name = "Lab 3.1b (.NET) - ksqlDB Lab"; Script = "deploy-and-test-3.1b-dotnet.ps1" },
+    @{ Name = "Lab 3.4a (Java) - Metrics Dashboard"; Script = "deploy-and-test-3.4a-java.ps1" }
 )
 
 $success = 0

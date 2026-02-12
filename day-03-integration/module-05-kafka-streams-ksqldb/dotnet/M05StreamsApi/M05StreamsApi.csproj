@@ -7,18 +7,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="Controllers\SalesController.cs" />
-    <Compile Remove="Controllers\StoresController.cs" />
-    <Compile Remove="Models\Product.cs" />
-    <Compile Remove="Models\Sale.cs" />
-    <Compile Remove="Models\SaleAggregate.cs" />
-    <Compile Remove="Services\ProductsConsumerService.cs" />
-    <Compile Remove="Services\SalesStreamProcessorService.cs" />
-    <Compile Remove="Services\StreamsOptions.cs" />
-    <Compile Remove="Services\StreamsState.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="Confluent.Kafka" Version="2.8.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>

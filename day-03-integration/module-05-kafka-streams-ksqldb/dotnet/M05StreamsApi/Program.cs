@@ -15,8 +15,15 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
+// Banking services (transactions, balances)
 builder.Services.AddSingleton<BankingState>();
 builder.Services.AddSingleton(_ => BankingOptions.FromConfiguration(builder.Configuration));
+
+// Sales Streams services (sales, aggregations, state stores)
+builder.Services.AddSingleton<StreamsState>();
+builder.Services.AddSingleton(_ => StreamsOptions.FromConfiguration(builder.Configuration));
+
+// Shared Kafka producer
 builder.Services.AddSingleton<IProducer<string, string>>(sp =>
 {
     var bootstrapServers = builder.Configuration["Kafka:BootstrapServers"] ?? "localhost:9092";
@@ -30,7 +37,9 @@ builder.Services.AddSingleton<IProducer<string, string>>(sp =>
     return new ProducerBuilder<string, string>(config).Build();
 });
 
+// Background processors
 builder.Services.AddHostedService<BankingStreamProcessorService>();
+builder.Services.AddHostedService<SalesStreamProcessorService>();
 
 var app = builder.Build();
 
@@ -40,6 +49,24 @@ app.UseSwaggerUI(c =>
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "Module 05 - Banking Streams API (.NET) v1");
     c.RoutePrefix = "swagger";
 });
+
+// Root endpoint
+app.MapGet("/", () => Results.Ok(new
+{
+    application = "Module 05 - Banking Streams API (.NET)",
+    version = "1.0.0",
+    endpoints = new
+    {
+        swagger = "/swagger",
+        health = "/api/v1/health",
+        sales = "POST /api/v1/sales",
+        statsByProduct = "GET /api/v1/stats/by-product",
+        statsPerMinute = "GET /api/v1/stats/per-minute",
+        transactions = "POST /api/v1/transactions",
+        balances = "GET /api/v1/balances",
+        stores = "GET /api/v1/stores/{storeName}/all"
+    }
+}));
 
 app.MapControllers();
 

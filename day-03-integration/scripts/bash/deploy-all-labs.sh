@@ -1,8 +1,8 @@
 #!/bin/bash
 # =============================================================================
-# Day 03 - Deploy All Java Labs
+# Day 03 - Deploy All Labs (Java + .NET)
 # =============================================================================
-# Deploys all Day-03 Java labs to OpenShift (S2I binary build)
+# Deploys all Day-03 labs to OpenShift (S2I binary build)
 # Usage: ./deploy-all-labs.sh [--token "sha256~XXX"] [--server "https://..."]
 # =============================================================================
 
@@ -56,8 +56,10 @@ echo "Logged in as: $USER"
 
 # Deploy each lab
 declare -a labs=(
-    "Lab 3.1a - Kafka Streams:deploy-and-test-3.1a-java.sh"
-    "Lab 3.4a - Metrics Dashboard:deploy-and-test-3.4a-java.sh"
+    "Lab 3.1a (Java) - Kafka Streams:deploy-and-test-3.1a-java.sh"
+    "Lab 3.1a (.NET) - Streams API:deploy-and-test-3.1a-dotnet.sh"
+    "Lab 3.1b (.NET) - ksqlDB Lab:deploy-and-test-3.1b-dotnet.sh"
+    "Lab 3.4a (Java) - Metrics Dashboard:deploy-and-test-3.4a-java.sh"
 )
 
 SUCCESS=0
