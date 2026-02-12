@@ -1,0 +1,47 @@
+package com.data2ai.kafka.producer.resilient.controller;
+
+import com.data2ai.kafka.producer.resilient.model.Transaction;
+import com.data2ai.kafka.producer.resilient.service.ResilientTransactionService;
+import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
+@RestController
+@RequestMapping("/api/v1/transactions")
+public class TransactionsController {
+
+    private final ResilientTransactionService resilientService;
+
+    public TransactionsController(ResilientTransactionService resilientService) {
+        this.resilientService = resilientService;
+    }
+
+    @PostMapping
+    public CompletableFuture<ResponseEntity<Map<String, Object>>> create(@Valid @RequestBody Transaction tx) throws Exception {
+        return resilientService.sendWithRetry(tx)
+                .thenApply(ResponseEntity::ok);
+    }
+
+    @PostMapping("/batch")
+    public CompletableFuture<ResponseEntity<Map<String, Object>>> batch(@Valid @RequestBody List<Transaction> txs) {
+        CompletableFuture<?>[] futures = txs.stream().map(tx -> {
+            try {
+                return resilientService.sendWithRetry(tx);
+            } catch (Exception e) {
+                CompletableFuture<Map<String, Object>> failed = new CompletableFuture<>();
+                failed.completeExceptionally(e);
+                return failed;
+            }
+        }).toArray(CompletableFuture[]::new);
+
+        return CompletableFuture.allOf(futures)
+                .thenApply(_ignored -> ResponseEntity.ok(Map.of(
+                        "status", "PRODUCED",
+                        "count", txs.size()
+                )));
+    }
+}

@@ -29,8 +29,9 @@ public class KafkaProducerConfig {
         config.put(ProducerConfig.ACKS_CONFIG, "all");
         config.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
 
+        // Idempotent producer requires retries > 0.
         // Keep client retries small; application-level retry is demonstrated in this lab.
-        config.put(ProducerConfig.RETRIES_CONFIG, 0);
+        config.put(ProducerConfig.RETRIES_CONFIG, 3);
 
         return new DefaultKafkaProducerFactory<>(config);
     }

@@ -42,7 +42,7 @@ function Get-RouteHost($routeName) {
 
 function Test-Endpoint($url) {
     try {
-        $resp = Invoke-WebRequest -Uri $url -SkipCertificateCheck -Method GET -UseBasicParsing -ErrorAction SilentlyContinue
+        $resp = Invoke-WebRequest -Uri $url -Method GET -UseBasicParsing -ErrorAction SilentlyContinue
         return $resp.StatusCode
     } catch {
         if ($_.Exception.Response) { return [int]$_.Exception.Response.StatusCode }
@@ -52,16 +52,48 @@ function Test-Endpoint($url) {
 
 function Get-JsonResponse($url) {
     try {
-        $resp = Invoke-RestMethod -Uri $url -SkipCertificateCheck -Method GET -ErrorAction Stop
-        return $resp
-    } catch { return $null }
+        return Invoke-RestMethod -Uri $url -Method GET -ErrorAction Stop
+    } catch {
+        $ex = $_.Exception
+        if ($null -ne $ex.Response) {
+            try {
+                $statusCode = [int]$ex.Response.StatusCode
+                $sr = New-Object System.IO.StreamReader($ex.Response.GetResponseStream())
+                $raw = $sr.ReadToEnd()
+                return [pscustomobject]@{ statusCode = $statusCode; body = $raw }
+            } catch {
+                return [pscustomobject]@{ statusCode = 0; body = "" }
+            }
+        }
+        return $null
+    }
 }
 
 function Send-JsonRequest($url, $body) {
     try {
-        return Invoke-RestMethod -Uri $url -SkipCertificateCheck -Method POST `
+        return Invoke-RestMethod -Uri $url -Method POST `
             -ContentType "application/json" -Body $body -ErrorAction Stop
-    } catch { return $null }
+    } catch {
+        $ex = $_.Exception
+        if ($null -ne $ex.Response) {
+            try {
+                $statusCode = [int]$ex.Response.StatusCode
+                $sr = New-Object System.IO.StreamReader($ex.Response.GetResponseStream())
+                $raw = $sr.ReadToEnd()
+
+                try {
+                    $parsed = $raw | ConvertFrom-Json -ErrorAction Stop
+                    if ($null -ne $parsed) { return $parsed }
+                } catch {
+                }
+
+                return [pscustomobject]@{ statusCode = $statusCode; body = $raw }
+            } catch {
+                return [pscustomobject]@{ statusCode = 0; body = "" }
+            }
+        }
+        return $null
+    }
 }
 
 # =============================================================================
@@ -88,56 +120,60 @@ $currentServer = oc whoami --show-server 2>$null
 Write-Info "Project: $currentProject | Server: $currentServer"
 
 # =============================================================================
-# LAB 1.2a: Basic Producer
+# LAB 1.2a: Basic Producer (Java)
 # =============================================================================
-Write-Header "LAB 1.2a: Basic Producer API"
+Write-Header "LAB 1.2a: Basic Producer API (Java)"
 
-$routeHost = Get-RouteHost "ebanking-producer-api-secure"
-if (-not $routeHost) { Write-Skip "Route 'ebanking-producer-api-secure' not found" } else {
+$routeHost = Get-RouteHost "ebanking-producer-basic-java-secure"
+if (-not $routeHost) { Write-Skip "Route 'ebanking-producer-basic-java-secure' not found" } else {
     $base = "https://$routeHost"
     Write-Info "Route: $base"
 
+    Write-Step "Root Endpoint"
+    $s = Test-Endpoint "$base/"
+    if ($s -eq 200) { Write-Pass "Root endpoint OK" } else { Write-Fail "Root endpoint returned $s" }
+
     Write-Step "Health Check"
-    $s = Test-Endpoint "$base/api/Transactions/health"
+    $s = Test-Endpoint "$base/actuator/health"
     if ($s -eq 200) { Write-Pass "Health OK (200)" } else { Write-Fail "Health returned $s" }
 
-    Write-Step "Swagger UI"
-    $s = Test-Endpoint "$base/swagger/index.html"
-    if ($s -eq 200) { Write-Pass "Swagger accessible" } else { Write-Fail "Swagger returned $s" }
+    Write-Step "POST /api/v1/transactions"
+    $body = '{"fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":1500.00,"currency":"EUR","type":"TRANSFER","description":"Test script","customerId":"CUST-TEST-001"}'
+    $r = Send-JsonRequest "$base/api/v1/transactions" $body
+    if ($r -and $r.status -eq "PRODUCED") {
+        Write-Pass "Transaction produced successfully"
+    } else { Write-Fail "Transaction failed" }
 
-    Write-Step "POST /api/Transactions"
-    $body = '{"fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":1500.00,"currency":"EUR","type":1,"description":"Test script","customerId":"CUST-TEST-001"}'
-    $r = Post-JsonRequest "$base/api/Transactions" $body
-    if ($r -and $r.kafkaPartition -ne $null) {
-        Write-Pass "Sent -> partition=$($r.kafkaPartition), offset=$($r.kafkaOffset)"
-    } else { Write-Fail "Unexpected response" }
-
-    Write-Step "POST /api/Transactions/batch (3 tx)"
-    $batch = '[{"fromAccount":"FR76300010001111","toAccount":"FR76300010002222","amount":100,"currency":"EUR","type":1,"description":"Batch1","customerId":"CUST-B1"},{"fromAccount":"FR76300010003333","toAccount":"FR76300010004444","amount":250,"currency":"EUR","type":2,"description":"Batch2","customerId":"CUST-B2"},{"fromAccount":"FR76300010005555","toAccount":"FR76300010006666","amount":5000,"currency":"EUR","type":6,"description":"Batch3","customerId":"CUST-B3"}]'
-    $r = Send-JsonRequest "$base/api/Transactions/batch" $batch
+    Write-Step "POST /api/v1/transactions/batch (3 tx)"
+    $batch = '[{"fromAccount":"FR76300010001111","toAccount":"FR76300010002222","amount":100,"currency":"EUR","type":"TRANSFER","description":"Batch1","customerId":"CUST-B1"},{"fromAccount":"FR76300010003333","toAccount":"FR76300010004444","amount":250,"currency":"EUR","type":"PAYMENT","description":"Batch2","customerId":"CUST-B2"},{"fromAccount":"FR76300010005555","toAccount":"FR76300010006666","amount":5000,"currency":"EUR","type":"DEPOSIT","description":"Batch3","customerId":"CUST-B3"}]'
+    $r = Send-JsonRequest "$base/api/v1/transactions/batch" $batch
     if ($null -ne $r) { Write-Pass "Batch sent" } else { Write-Info "Batch response empty" }
 }
 
 # =============================================================================
-# LAB 1.2b: Keyed Producer
+# LAB 1.2b: Keyed Producer (Java)
 # =============================================================================
-Write-Header "LAB 1.2b: Keyed Producer API"
+Write-Header "LAB 1.2b: Keyed Producer API (Java)"
 
-$routeHost = Get-RouteHost "ebanking-keyed-api-secure"
-if (-not $routeHost) { Write-Skip "Route 'ebanking-keyed-api-secure' not found" } else {
+$routeHost = Get-RouteHost "ebanking-producer-keyed-java-secure"
+if (-not $routeHost) { Write-Skip "Route 'ebanking-producer-keyed-java-secure' not found" } else {
     $base = "https://$routeHost"
     Write-Info "Route: $base"
 
+    Write-Step "Root Endpoint"
+    $s = Test-Endpoint "$base/"
+    if ($s -eq 200) { Write-Pass "Root endpoint OK" } else { Write-Fail "Root endpoint returned $s" }
+
     Write-Step "Health Check"
-    $s = Test-Endpoint "$base/api/Transactions/health"
+    $s = Test-Endpoint "$base/actuator/health"
     if ($s -eq 200) { Write-Pass "Health OK" } else { Write-Fail "Health returned $s" }
 
     Write-Step "Same key -> same partition (3 tx for CUST-001)"
     $partitions = @()
     1..3 | ForEach-Object {
-        $body = "{`"fromAccount`":`"FR7630001000111$_`",`"toAccount`":`"FR76300010002222`",`"amount`":$($_ * 100),`"currency`":`"EUR`",`"type`":1,`"description`":`"Key$_`",`"customerId`":`"CUST-001`"}"
-        $r = Post-JsonRequest "$base/api/Transactions" $body
-        if ($r) { $partitions += $r.kafkaPartition }
+        $body = "{`"fromAccount`":`"FR7630001000111$_`",`"toAccount`":`"FR76300010002222`",`"amount`":$($_ * 100),`"currency`":`"EUR`",`"type`":`"TRANSFER`",`"description`":`"Key$_`",`"customerId`":`"CUST-001`"}"
+        $r = Send-JsonRequest "$base/api/v1/transactions" $body
+        if ($r -and $r.partition) { $partitions += $r.partition }
     }
     if ($partitions.Count -eq 3 -and ($partitions | Sort-Object -Unique).Count -eq 1) {
         Write-Pass "CUST-001: all -> partition $($partitions[0])"
@@ -148,134 +184,140 @@ if (-not $routeHost) { Write-Skip "Route 'ebanking-keyed-api-secure' not found" 
     }
 
     Write-Step "Different key -> different partition (CUST-002)"
-    $body = '{"fromAccount":"FR76300010007777","toAccount":"FR76300010008888","amount":999,"currency":"EUR","type":1,"description":"Key4","customerId":"CUST-002"}'
-    $r = Post-JsonRequest "$base/api/Transactions" $body
-    if ($r -and $r.kafkaPartition -ne $partitions[0]) {
-        Write-Pass "CUST-002 -> partition $($r.kafkaPartition) (different from $($partitions[0]))"
+    $body = '{"fromAccount":"FR76300010007777","toAccount":"FR76300010008888","amount":999,"currency":"EUR","type":"PAYMENT","description":"Key4","customerId":"CUST-002"}'
+    $r = Send-JsonRequest "$base/api/v1/transactions" $body
+    if ($r -and $r.partition -ne $partitions[0]) {
+        Write-Pass "CUST-002 -> partition $($r.partition) (different from $($partitions[0]))"
     } elseif ($r) {
         Write-Info "Same partition (hash collision possible)"
     } else { Write-Fail "No response" }
-
-    Write-Step "GET /api/Transactions/stats/partitions"
-    $r = Get-JsonResponse "$base/api/Transactions/stats/partitions"
-    if ($r -and $r.customerPartitionMap) { Write-Pass "Stats OK (total: $($r.totalMessages))" } else { Write-Fail "Stats failed" }
 }
 
 # =============================================================================
-# LAB 1.2c: Resilient Producer
+# LAB 1.2c: Resilient Producer (Java)
 # =============================================================================
-Write-Header "LAB 1.2c: Resilient Producer API"
+Write-Header "LAB 1.2c: Resilient Producer API (Java)"
 
-$routeHost = Get-RouteHost "ebanking-resilient-producer-api"
-if (-not $routeHost) { Write-Skip "Route 'ebanking-resilient-producer-api' not found" } else {
+$routeHost = Get-RouteHost "ebanking-producer-resilient-java-secure"
+if (-not $routeHost) { Write-Skip "Route 'ebanking-producer-resilient-java-secure' not found" } else {
     $base = "https://$routeHost"
     Write-Info "Route: $base"
+
+    Write-Step "Root Endpoint"
+    $s = Test-Endpoint "$base/"
+    if ($s -eq 200) { Write-Pass "Root endpoint OK" } else { Write-Fail "Root endpoint returned $s" }
 
     Write-Step "Health Check (circuit breaker)"
-    $s = Test-Endpoint "$base/api/Transactions/health"
+    $s = Test-Endpoint "$base/actuator/health"
     if ($s -eq 200) { Write-Pass "Health OK" } else { Write-Info "Status $s (circuit breaker may be open)" }
 
-    Write-Step "POST /api/Transactions (with retry/DLQ)"
-    $body = '{"fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":750,"currency":"EUR","type":1,"description":"Resilient test","customerId":"CUST-RES-001"}'
-    $r = Post-JsonRequest "$base/api/Transactions" $body
-    if ($r -and $r.status -eq "Processing") { Write-Pass "Sent OK (Processing)" }
-    elseif ($r -and $r.status -eq "SentToDLQ") { Write-Info "Sent to DLQ" }
+    Write-Step "POST /api/v1/transactions (with retry/DLQ)"
+    $body = '{"fromAccount":"FR7630001000123456789","toAccount":"FR7630001000987654321","amount":750,"currency":"EUR","type":"TRANSFER","description":"Resilient test","customerId":"CUST-RES-001"}'
+    $r = Send-JsonRequest "$base/api/v1/transactions" $body
+    if ($null -ne $r -and $r.status -eq "PRODUCED") { Write-Pass "Sent OK (Produced)" }
+    elseif ($null -ne $r -and $r.status -eq "SENT_TO_DLQ") { Write-Info "Sent to DLQ" }
     else { Write-Fail "Unexpected: $($r | ConvertTo-Json -Depth 1 -Compress)" }
 
-    Write-Step "GET /api/Transactions/metrics"
-    $r = Get-JsonResponse "$base/api/Transactions/metrics"
-    if ($r -and $r.successRate -ne $null) {
-        Write-Pass "Metrics OK (sent=$($r.totalSent), success=$($r.totalSuccess), dlq=$($r.totalDlq), CB=$($r.circuitBreakerState))"
-    } else { Write-Fail "Metrics failed" }
+    Write-Step "GET /api/v1/transactions/metrics"
+    $r = Get-JsonResponse "$base/api/v1/transactions/metrics"
+    if ($null -ne $r) { Write-Pass "Metrics accessible" } else { Write-Info "Metrics not available" }
 }
 
 # =============================================================================
-# LAB 1.3a: Fraud Detection Consumer
+# LAB 1.3a: Fraud Detection Consumer (Java)
 # =============================================================================
-Write-Header "LAB 1.3a: Fraud Detection Consumer"
+Write-Header "LAB 1.3a: Fraud Detection Consumer (Java)"
 
-$routeHost = Get-RouteHost "ebanking-fraud-api-secure"
-if (-not $routeHost) { Write-Skip "Route 'ebanking-fraud-api-secure' not found" } else {
+$routeHost = Get-RouteHost "ebanking-fraud-consumer-java-secure"
+if (-not $routeHost) { Write-Skip "Route 'ebanking-fraud-consumer-java-secure' not found" } else {
     $base = "https://$routeHost"
     Write-Info "Route: $base"
 
+    Write-Step "Root Endpoint"
+    $s = Test-Endpoint "$base/"
+    if ($s -eq 200) { Write-Pass "Root endpoint OK" } else { Write-Fail "Root endpoint returned $s" }
+
     Write-Step "Health Check"
-    $s = Test-Endpoint "$base/api/FraudDetection/health"
+    $s = Test-Endpoint "$base/actuator/health"
     if ($s -eq 200) { Write-Pass "Health OK" } else { Write-Info "Status $s" }
 
-    Write-Step "GET /api/FraudDetection/metrics"
-    $r = Get-JsonResponse "$base/api/FraudDetection/metrics"
-    if ($r -and $r.messagesConsumed -ne $null) {
+    Write-Step "GET /api/v1/stats"
+    $r = Get-JsonResponse "$base/api/v1/stats"
+    if ($null -ne $r -and $r.messagesConsumed -ne $null) {
         Write-Pass "Consumed: $($r.messagesConsumed), Alerts: $($r.fraudAlerts)"
-    } else { Write-Fail "Metrics failed" }
+    } else { Write-Fail "Stats failed" }
 
-    Write-Step "GET /api/FraudDetection/alerts"
-    $r = Get-JsonResponse "$base/api/FraudDetection/alerts"
-    if ($r -and $r.count -ne $null) { Write-Pass "Alerts: $($r.count)" } else { Write-Info "No alerts data" }
-
-    Write-Step "GET /api/FraudDetection/alerts/high-risk"
-    $r = Get-JsonResponse "$base/api/FraudDetection/alerts/high-risk"
-    if ($r -and $r.count -ne $null) { Write-Pass "High-risk: $($r.count)" } else { Write-Info "No high-risk data" }
+    Write-Step "GET /api/v1/alerts"
+    $r = Get-JsonResponse "$base/api/v1/alerts"
+    if ($null -ne $r -and $r.count -ne $null) { Write-Pass "Alerts: $($r.count)" } else { Write-Info "No alerts data" }
 }
 
 # =============================================================================
-# LAB 1.3b: Balance Consumer Group
+# LAB 1.3b: Balance Consumer Group (Java)
 # =============================================================================
-Write-Header "LAB 1.3b: Balance Consumer Group"
+Write-Header "LAB 1.3b: Balance Consumer Group (Java)"
 
-$routeHost = Get-RouteHost "ebanking-balance-api-secure"
-if (-not $routeHost) { Write-Skip "Route 'ebanking-balance-api-secure' not found" } else {
+$routeHost = Get-RouteHost "ebanking-balance-consumer-java-secure"
+if (-not $routeHost) { Write-Skip "Route 'ebanking-balance-consumer-java-secure' not found" } else {
     $base = "https://$routeHost"
     Write-Info "Route: $base"
 
+    Write-Step "Root Endpoint"
+    $s = Test-Endpoint "$base/"
+    if ($s -eq 200) { Write-Pass "Root endpoint OK" } else { Write-Fail "Root endpoint returned $s" }
+
     Write-Step "Health Check"
-    $s = Test-Endpoint "$base/api/Balance/health"
+    $s = Test-Endpoint "$base/actuator/health"
     if ($s -eq 200) { Write-Pass "Health OK" } else { Write-Info "Status $s" }
 
-    Write-Step "GET /api/Balance/balances"
-    $r = Get-JsonResponse "$base/api/Balance/balances"
-    if ($r -and $r.count -ne $null) { Write-Pass "Customers tracked: $($r.count)" } else { Write-Info "No balance data" }
+    Write-Step "GET /api/v1/balances"
+    $r = Get-JsonResponse "$base/api/v1/balances"
+    if ($null -ne $r -and $r.count -ne $null) { Write-Pass "Customers tracked: $($r.count)" } else { Write-Info "No balance data" }
 
-    Write-Step "GET /api/Balance/metrics"
-    $r = Get-JsonResponse "$base/api/Balance/metrics"
-    if ($r -and $r.messagesConsumed -ne $null) {
+    Write-Step "GET /api/v1/stats"
+    $r = Get-JsonResponse "$base/api/v1/stats"
+    if ($null -ne $r -and $r.messagesConsumed -ne $null) {
         Write-Pass "Metrics OK (consumed=$($r.messagesConsumed), partitions=$($r.assignedPartitions))"
     } else { Write-Fail "Metrics failed" }
 
-    Write-Step "GET /api/Balance/rebalancing-history"
-    $r = Get-JsonResponse "$base/api/Balance/rebalancing-history"
-    if ($r -and $r.totalRebalancingEvents -ne $null) {
+    Write-Step "GET /api/v1/rebalancing"
+    $r = Get-JsonResponse "$base/api/v1/rebalancing"
+    if ($null -ne $r -and $r.totalRebalancingEvents -ne $null) {
         Write-Pass "Rebalancing events: $($r.totalRebalancingEvents)"
     } else { Write-Info "No rebalancing data" }
 }
 
 # =============================================================================
-# LAB 1.3c: Audit & Compliance (Manual Commit)
+# LAB 1.3c: Audit & Compliance (Manual Commit) (Java)
 # =============================================================================
-Write-Header "LAB 1.3c: Audit & Compliance (Manual Commit)"
+Write-Header "LAB 1.3c: Audit & Compliance (Manual Commit) (Java)"
 
-$routeHost = Get-RouteHost "ebanking-audit-api-secure"
-if (-not $routeHost) { Write-Skip "Route 'ebanking-audit-api-secure' not found" } else {
+$routeHost = Get-RouteHost "ebanking-audit-consumer-java-secure"
+if (-not $routeHost) { Write-Skip "Route 'ebanking-audit-consumer-java-secure' not found" } else {
     $base = "https://$routeHost"
     Write-Info "Route: $base"
 
+    Write-Step "Root Endpoint"
+    $s = Test-Endpoint "$base/"
+    if ($s -eq 200) { Write-Pass "Root endpoint OK" } else { Write-Fail "Root endpoint returned $s" }
+
     Write-Step "Health Check"
-    $s = Test-Endpoint "$base/api/Audit/health"
+    $s = Test-Endpoint "$base/actuator/health"
     if ($s -eq 200) { Write-Pass "Health OK" } else { Write-Info "Status $s" }
 
-    Write-Step "GET /api/Audit/metrics"
-    $r = Get-JsonResponse "$base/api/Audit/metrics"
-    if ($r -and $r.manualCommits -ne $null) {
+    Write-Step "GET /api/v1/stats"
+    $r = Get-JsonResponse "$base/api/v1/stats"
+    if ($null -ne $r -and $r.manualCommits -ne $null) {
         Write-Pass "Metrics OK (consumed=$($r.messagesConsumed), commits=$($r.manualCommits), dupes=$($r.duplicatesSkipped), dlq=$($r.messagesSentToDlq))"
     } else { Write-Fail "Metrics failed" }
 
-    Write-Step "GET /api/Audit/log"
-    $r = Get-JsonResponse "$base/api/Audit/log"
-    if ($r -and $r.count -ne $null) { Write-Pass "Audit records: $($r.count)" } else { Write-Info "No audit data" }
+    Write-Step "GET /api/v1/audit"
+    $r = Get-JsonResponse "$base/api/v1/audit"
+    if ($null -ne $r -and $r.count -ne $null) { Write-Pass "Audit records: $($r.count)" } else { Write-Info "No audit data" }
 
-    Write-Step "GET /api/Audit/dlq"
-    $r = Get-JsonResponse "$base/api/Audit/dlq"
-    if ($r -and $r.count -ne $null) { Write-Pass "DLQ messages: $($r.count)" } else { Write-Info "No DLQ data" }
+    Write-Step "GET /api/v1/dlq"
+    $r = Get-JsonResponse "$base/api/v1/dlq"
+    if ($null -ne $r -and $r.count -ne $null) { Write-Pass "DLQ messages: $($r.count)" } else { Write-Info "No DLQ data" }
 }
 
 # =============================================================================

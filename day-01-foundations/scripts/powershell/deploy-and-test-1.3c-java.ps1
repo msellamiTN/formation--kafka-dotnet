@@ -38,9 +38,14 @@ $labDir = (Resolve-Path $labDir).Path
 Write-Info "Build context: $labDir"
 
 Write-Step "Create BuildConfig (if missing)"
-oc get buildconfig $AppName 2>$null | Out-Null
-if ($LASTEXITCODE -eq 0) { Write-Info "BuildConfig already exists" }
-else { oc new-build $Builder --binary=true --name=$AppName; Write-Pass "BuildConfig created" }
+try {
+    oc get buildconfig $AppName 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { Write-Info "BuildConfig already exists" }
+    else { throw "Not found" }
+} catch {
+    oc new-build $Builder --binary=true --name=$AppName | Out-Null
+    Write-Pass "BuildConfig created"
+}
 
 Write-Step "Start build"
 oc start-build $AppName --from-dir=$labDir --follow
@@ -48,9 +53,14 @@ if ($LASTEXITCODE -ne 0) { Write-Fail "Build failed"; exit 1 }
 Write-Pass "Build completed"
 
 Write-Header "STEP 2: Deploy"
-oc get deployment $AppName 2>$null | Out-Null
-if ($LASTEXITCODE -eq 0) { Write-Info "Deployment already exists" }
-else { oc new-app $AppName; Write-Pass "Deployment created" }
+try {
+    oc get deployment $AppName 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { Write-Info "Deployment already exists" }
+    else { throw "Not found" }
+} catch {
+    oc new-app $AppName | Out-Null
+    Write-Pass "Deployment created"
+}
 
 Write-Step "Set environment variables"
 oc set env deployment/$AppName `
@@ -63,9 +73,14 @@ oc set env deployment/$AppName `
 Write-Pass "Environment variables set"
 
 Write-Step "Create edge route (if missing)"
-oc get route $RouteName 2>$null | Out-Null
-if ($LASTEXITCODE -eq 0) { Write-Info "Route already exists" }
-else { oc create route edge $RouteName --service=$AppName --port=8080-tcp; Write-Pass "Route created" }
+try {
+    oc get route $RouteName 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { Write-Info "Route already exists" }
+    else { throw "Not found" }
+} catch {
+    oc create route edge $RouteName --service=$AppName --port=8080-tcp | Out-Null
+    Write-Pass "Route created"
+}
 
 Write-Step "Wait for deployment"
 oc wait --for=condition=available deployment/$AppName --timeout=300s

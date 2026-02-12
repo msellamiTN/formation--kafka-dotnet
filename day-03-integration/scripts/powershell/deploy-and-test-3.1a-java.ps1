@@ -1,5 +1,5 @@
 # =============================================================================
-# Lab 1.2c (Java): Resilient Producer - OpenShift S2I Binary Build + Test Script
+# Lab 3.1a (Java): Kafka Streams - OpenShift S2I Binary Build + Test Script
 # =============================================================================
 
 param(
@@ -12,8 +12,8 @@ $script:Pass = 0
 $script:Fail = 0
 $script:Skip = 0
 
-$AppName = "ebanking-producer-resilient-java"
-$RouteName = "ebanking-producer-resilient-java-secure"
+$AppName = "ebanking-streams-java"
+$RouteName = "ebanking-streams-java-secure"
 $BuilderImage = "java:openjdk-17-ubi8"
 
 function Write-Header($msg) {
@@ -38,9 +38,16 @@ function Test-Endpoint($url) {
     }
 }
 
+function Get-JsonResponse($url) {
+    try {
+        return Invoke-RestMethod -Uri $url -Method GET -ErrorAction Stop
+    } catch { return $null }
+}
+
 function Send-JsonRequest($url, $body) {
     try {
-        return Invoke-RestMethod -Uri $url -Method POST -ContentType "application/json" -Body $body -ErrorAction Stop
+        return Invoke-RestMethod -Uri $url -Method POST `
+            -ContentType "application/json" -Body $body -ErrorAction Stop
     } catch { return $null }
 }
 
@@ -52,7 +59,7 @@ function Get-RouteHost($routeName) {
     } catch { return "" }
 }
 
-Write-Header "Lab 1.2c (Java) - Deploy & Test (OpenShift S2I Binary Build)"
+Write-Header "Lab 3.1a (Java) - Deploy & Test (OpenShift S2I Binary Build)"
 
 Write-Step "Switching to project: $Project"
 oc project $Project 2>$null | Out-Null
@@ -62,7 +69,7 @@ Write-Pass "Using project: $(oc project -q 2>$null)"
 Write-Header "STEP 1: Build (S2I binary)"
 Write-Step "Navigate to Java source directory"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$javaDir = Join-Path $scriptDir "..\..\module-02-producer\lab-1.2c-producer-error-handling\java"
+$javaDir = Join-Path $scriptDir "..\..\module-05-kafka-streams-ksqldb\java"
 Set-Location $javaDir
 Write-Info "Build context: $(Get-Location)"
 
@@ -90,7 +97,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Step "Set environment variables"
-oc set env deployment/$AppName SERVER_PORT=8080 KAFKA_BOOTSTRAP_SERVERS=kafka-svc:9092 KAFKA_TOPIC=banking.transactions KAFKA_DLQ_TOPIC=banking.transactions.dlq MAX_RETRIES=3 RETRY_BACKOFF_MS=1000 CIRCUIT_BREAKER_THRESHOLD=5 CIRCUIT_BREAKER_OPEN_MS=60000 2>$null | Out-Null
+oc set env deployment/$AppName SERVER_PORT=8080 KAFKA_BOOTSTRAP_SERVERS=kafka-svc:9092 INPUT_TOPIC=sales-events OUTPUT_TOPIC=sales-by-product APPLICATION_ID=sales-streams-app 2>$null | Out-Null
 if ($LASTEXITCODE -eq 0) { Write-Pass "Environment variables set" }
 
 Write-Step "Create edge route (if missing)"
@@ -114,37 +121,26 @@ Write-Info "API URL: $baseUrl"
 Write-Header "STEP 3: Verify"
 Write-Step "Check health endpoint"
 $healthStatus = 0
-$maxAttempts = 12
-for ($i = 1; $i -le $maxAttempts; $i++) {
+for ($i = 1; $i -le 12; $i++) {
     $healthStatus = Test-Endpoint "$baseUrl/actuator/health"
     if ($healthStatus -eq 200) { break }
     Start-Sleep -Seconds 5
 }
+if ($healthStatus -eq 200) { Write-Pass "Health check OK (200)" } else { Write-Fail "Health check failed: $healthStatus" }
 
-if ($healthStatus -eq 200) { Write-Pass "Health check OK (200)" } else { Write-Fail "Health check failed after retry: $healthStatus" }
+Write-Step "Check root endpoint"
+$rootStatus = Test-Endpoint "$baseUrl/"
+if ($rootStatus -eq 200) { Write-Pass "Root endpoint OK" } else { Write-Fail "Root endpoint returned $rootStatus" }
 
-Write-Step "Check metrics endpoint"
-$metricsStatus = Test-Endpoint "$baseUrl/api/v1/transactions/metrics"
-if ($metricsStatus -eq 200) { Write-Pass "Metrics endpoint OK (200)" } else { Write-Fail "Metrics endpoint failed: $metricsStatus" }
+Write-Header "STEP 4: Test Kafka Streams API"
+Write-Step "POST /api/v1/sales (produce sale event)"
+$body = '{"productId":"PROD-001","quantity":2,"unitPrice":125.00}'
+$r = Send-JsonRequest "$baseUrl/api/v1/sales" $body
+if ($null -ne $r -and $r.status -eq "ACCEPTED") { Write-Pass "Sale event accepted" } else { Write-Fail "Sale event failed" }
 
-Write-Header "STEP 4: Produce test transaction"
-$body = @{
-    fromAccount = "FR7630001000123456789"
-    toAccount = "FR7630001000987654321"
-    amount = 10.00
-    currency = "EUR"
-    type = "TRANSFER"
-    description = "Lab 1.2c (Java) - resilient producer test"
-    customerId = "CUST-R-001"
-} | ConvertTo-Json
-
-$response = Send-JsonRequest "$baseUrl/api/v1/transactions" $body
-if ($null -ne $response -and $response.status) {
-    Write-Pass "Transaction accepted"
-    $response | ConvertTo-Json -Depth 10 | Write-Host
-} else {
-    Write-Fail "Transaction request failed"
-}
+Write-Step "GET /api/v1/stats/by-product"
+$r = Get-JsonResponse "$baseUrl/api/v1/stats/by-product"
+if ($null -ne $r) { Write-Pass "Stats by product accessible" } else { Write-Info "Stats not available (streams may need warm-up)" }
 
 Write-Header "Summary"
 Write-Info "PASS=$script:Pass FAIL=$script:Fail SKIP=$script:Skip"
