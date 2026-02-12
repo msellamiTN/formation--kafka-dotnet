@@ -61,36 +61,278 @@ Day 03 propose **deux pistes parallèles** pour couvrir les deux écosystèmes p
 
 ---
 
-## 📚 Bloc 3.1 — Kafka Streams (1h30)
+## 📚 Bloc 3.1 — Kafka Streams & ksqlDB (1h30)
 
 > **Théorie** : 20 min | **Lab** : 1h10
 
-### Concepts clés
+### Architecture Globale
 
 ```mermaid
-flowchart LR
-    subgraph Input["📥 Événements"]
-        IN["sales-events"]
+flowchart TB
+    subgraph Sources["📥 Sources de Transactions"]
+        Web["🌐 Web Banking"]
+        Mobile["📱 Mobile App"]
+        ATM["🏧 ATM"]
+        API["🚀 REST API"]
     end
 
-    subgraph Topology["🔄 Kafka Streams Topology"]
-        FILTER["⚡ Filter >100€"]
-        AGG["📊 Aggregate par produit"]
-        WIN["⏰ Fenêtrage par minute"]
-        JOIN["🔗 Join avec référentiel"]
+    subgraph KafkaCluster["� Kafka Cluster"]
+        T["📋 transactions"]
+        VT["📋 verified_transactions"]
+        FA["📋 fraud_alerts"]
+        ABS["📋 account_balances"]
+        HS["📋 hourly_stats"]
+        SE["📋 sales-events"]
     end
 
-    subgraph Output["📤 Résultats"]
-        OUT1["large-sales"]
-        OUT2["sales-by-product"]
-        OUT3["sales-per-minute"]
-        OUT4["enriched-sales"]
+    subgraph Processing["⚙️ Stream Processing"]
+        subgraph Java["☕ Kafka Streams (Java)"]
+            KS["Kafka Streams API"]
+            SS["State Stores"]
+            TO["Topology"]
+        end
+        
+        subgraph DotNet["🚀 .NET Streams API"]
+            SP["SalesProcessor"]
+            TP["TransactionProcessor"]
+            BS["BalanceService"]
+        end
+        
+        subgraph KsqlDB["⚙️ ksqlDB Engine"]
+            S1["STREAM transactions"]
+            S2["STREAM verified_transactions"]
+            T1["TABLE account_balances"]
+            T2["TABLE hourly_stats"]
+        end
     end
 
-    IN --> FILTER --> OUT1
-    IN --> AGG --> OUT2
-    IN --> WIN --> OUT3
-    IN --> JOIN --> OUT4
+    subgraph Outputs["📊 Downstream Services"]
+        Fraud["🔍 Anti-Fraude"]
+        Balance["💰 Balance Service"]
+        Alert["⚠️ Alert Service"]
+        Dashboard["📈 Real-time Dashboard"]
+        Audit["� Audit Service"]
+    end
+
+    Web --> API
+    Mobile --> API
+    ATM --> API
+    API --> T
+    API --> SE
+    
+    T --> S1
+    S1 --> S2
+    S1 --> T1
+    S2 --> FA
+    S1 --> T2
+    
+    SE --> KS
+    KS --> SS
+    KS --> TO
+    
+    S2 --> Fraud
+    FA --> Alert
+    T1 --> Balance
+    T2 --> Dashboard
+    SS --> Audit
+
+    style Sources fill:#e3f2fd,stroke:#1976d2
+    style KafkaCluster fill:#fff3e0,stroke:#f57c00
+    style Processing fill:#f3e5f5,stroke:#7b1fa2
+    style Outputs fill:#e8f5e8,stroke:#388e3c
+```
+
+### Cycle de Vie d'une Transaction Stream Processing
+
+```mermaid
+sequenceDiagram
+    actor Client as 🧑‍💼 Client Bancaire
+    participant App as 📱 App Mobile/Web
+    participant API as 🚀 E-Banking API
+    participant Kafka as 🔥 Kafka Broker
+    participant Streams as ⚙️ Stream Processing
+    participant Dashboard as 📊 Dashboard
+    participant Alert as ⚠️ Alert Service
+
+    Client->>App: Initier virement 1500€
+    App->>API: POST /api/transactions
+    API->>API: Valider IBAN, montant, devise
+    API->>Kafka: Publier transaction (clé: customerId)
+    Kafka-->>API: ACK (partition 2, offset 1234)
+    API-->>App: 201 Created + métadonnées Kafka
+    App-->>Client: "Virement en cours de traitement"
+
+    Note over Kafka,Dashboard: Stream Processing temps réel
+    
+    Kafka->>Streams: Consommer transaction
+    Streams->>Streams: Appliquer règles de fraude
+    Streams->>Streams: Mettre à jour solde compte
+    Streams->>Kafka: Émettre verified_transaction
+    Streams->>Kafka: Émettre fraud_alert (si nécessaire)
+    
+    par Fraude détectée
+        Kafka->>Alert: Consommer alerte fraude
+        Alert->>Dashboard: Afficher alerte en temps réel
+        Alert-->>Client: 📧 "Transaction suspecte détectée"
+    and Transaction valide
+        Kafka->>Dashboard: Consommer solde mis à jour
+        Dashboard-->>Client: 📧 "Nouveau solde: 8500€"
+    end
+```
+
+### Concepts Clés Expliqués
+
+#### 1. Kafka Streams (Java)
+
+```java
+// Topologie de traitement temps réel
+StreamsBuilder builder = new StreamsBuilder();
+
+KStream<String, Transaction> transactions = builder.stream("transactions");
+
+// Filtrer les transactions > 10000€ (alerte fraude)
+KStream<String, Transaction> highValue = transactions
+    .filter((key, tx) -> tx.getAmount().compareTo(new BigDecimal("10000")) > 0);
+
+// Agréger par produit (ventes)
+KTable<String, BigDecimal> productSales = builder.stream("sales-events")
+    .groupBy((key, sale) -> sale.getProductId(), Grouped.with(Serdes.String(), saleSerde))
+    .aggregate(
+        () -> BigDecimal.ZERO,
+        (key, sale, agg) -> agg.add(sale.getUnitPrice().multiply(new BigDecimal(sale.getQuantity()))),
+        Materialized.as("sales-by-product")
+    );
+
+// Fenêtrage par minute
+KStream<Windowed<String>, BigDecimal> minuteStats = transactions
+    .groupByKey()
+    .windowedBy(TimeWindows.of(Duration.ofMinutes(1)))
+    .aggregate(
+        () -> BigDecimal.ZERO,
+        (key, tx, agg) -> agg.add(tx.getAmount()),
+        Materialized.as("minute-stats")
+    );
+```
+
+#### 2. .NET Streams API
+
+```csharp
+// Service de traitement des ventes
+public class SalesStreamProcessorService : BackgroundService
+{
+    private readonly IProducer<string, string> _producer;
+    private readonly ILogger<SalesStreamProcessorService> _logger;
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        // Consommer les événements de vente
+        var config = new ConsumerConfig
+        {
+            BootstrapServers = "kafka-svc:9092",
+            GroupId = "sales-processor",
+            AutoOffsetReset = AutoOffsetReset.Earliest
+        };
+
+        using var consumer = new ConsumerBuilder<string, string>(config).Build();
+        consumer.Subscribe(new[] { "sales-events" });
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            var result = consumer.Consume(stoppingToken);
+            var sale = JsonSerializer.Deserialize<SaleEvent>(result.Message.Value);
+            
+            // Traiter et agréger
+            await ProcessSaleAsync(sale);
+            
+            consumer.Commit(result);
+        }
+    }
+
+    private async Task ProcessSaleAsync(SaleEvent sale)
+    {
+        // Calculer les statistiques
+        var stats = new SalesStats
+        {
+            ProductId = sale.ProductId,
+            TotalAmount = sale.UnitPrice * sale.Quantity,
+            Quantity = sale.Quantity,
+            Timestamp = DateTime.UtcNow
+        };
+
+        // Publier les stats agrégées
+        var message = new Message<string, string>
+        {
+            Key = sale.ProductId,
+            Value = JsonSerializer.Serialize(stats)
+        };
+
+        await _producer.ProduceAsync("sales-stats", message);
+    }
+}
+```
+
+#### 3. ksqlDB Stream Processing
+
+```sql
+-- Créer les streams
+CREATE STREAM transactions (
+    transaction_id VARCHAR PRIMARY KEY,
+    from_account VARCHAR,
+    to_account VARCHAR,
+    amount DECIMAL(10,2),
+    currency VARCHAR,
+    transaction_type VARCHAR,
+    customer_id VARCHAR,
+    timestamp VARCHAR
+) WITH (
+    KAFKA_TOPIC = 'transactions',
+    VALUE_FORMAT = 'JSON'
+);
+
+-- Stream des transactions vérifiées
+CREATE STREAM verified_transactions WITH (
+    KAFKA_TOPIC = 'verified_transactions',
+    VALUE_FORMAT = 'JSON'
+) AS SELECT 
+    *
+FROM transactions
+WHERE amount < 10000  -- Filtrer les montants raisonnables
+  AND LENGTH(from_account) = 27  -- Valider format IBAN
+  AND LENGTH(to_account) = 27;
+
+-- Table matérialisée pour les soldes
+CREATE TABLE account_balances (
+    account_id VARCHAR PRIMARY KEY,
+    balance DECIMAL(12,2),
+    last_updated TIMESTAMP
+) WITH (
+    KAFKA_TOPIC = 'account_balances',
+    VALUE_FORMAT = 'JSON',
+    KEY = 'account_id'
+);
+
+-- Mettre à jour les soldes en continu
+INSERT INTO account_balances
+SELECT 
+    to_account AS account_id,
+    SUM(amount) AS balance,
+    LATEST_BY_OFFSET(timestamp) AS last_updated
+FROM transactions
+GROUP BY to_account;
+
+-- Alerts fraude
+CREATE STREAM fraud_alerts WITH (
+    KAFKA_TOPIC = 'fraud_alerts',
+    VALUE_FORMAT = 'JSON'
+) AS SELECT 
+    transaction_id,
+    from_account,
+    to_account,
+    amount,
+    'HIGH_AMOUNT' AS alert_type,
+    timestamp
+FROM transactions
+WHERE amount > 10000;
 ```
 
 | Concept | Description | Exemple |
@@ -458,12 +700,292 @@ mvn test
 
 # Piste .NET
 cd day-03-integration/module-07-testing/dotnet
-dotnet test
+
+# Lab 3.1b .NET — ksqlDB Lab (déploie ksqlDB + app)
+./scripts/bash/deploy-and-test-3.1b-dotnet.sh --token "sha256~XXX" --server "https://api..."
+```
+
+</details>
+
+#### Option B : Déploiement Manuel (Étape par Étape)
+
+<details>
+<summary>📋 Déploiement Manuel Java</summary>
+
+```bash
+# 1. Builder l'application Java
+cd module-05-kafka-streams-ksqldb/java
+mvn clean package -DskipTests
+
+# 2. Créer le build S2I
+oc new-build java:openjdk-17-ubi8 --binary=true --name=ebanking-streams-java
+
+# 3. Lancer la build
+oc start-build ebanking-streams-java --from-dir=. --follow
+
+# 4. Créer l'application
+oc new-app ebanking-streams-java
+
+# 5. Configurer les variables d'environnement
+oc set env deployment/ebanking-streams-java \
+  KAFKA_BOOTSTRAP_SERVERS=kafka-svc:9092 \
+  SPRING_PROFILES_ACTIVE=openshift
+
+# 6. Créer la route sécurisée
+oc create route edge ebanking-streams-java-secure --service=ebanking-streams-java --port=8080-tcp
+
+# 7. Attendre le déploiement
+oc rollout status deployment/ebanking-streams-java
+```
+
+</details>
+
+<details>
+<summary>📋 Déploiement Manuel .NET</summary>
+
+```bash
+# 1. Builder l'application .NET
+cd module-05-kafka-streams-ksqldb/dotnet/M05StreamsApi
+dotnet publish -c Release -o ./publish
+
+# 2. Créer le build S2I
+oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-streams-dotnet
+
+# 3. Lancer la build
+oc start-build ebanking-streams-dotnet --from-dir=./publish --follow
+
+# 4. Créer l'application
+oc new-app ebanking-streams-dotnet
+
+# 5. Configurer les variables d'environnement
+oc set env deployment/ebanking-streams-dotnet \
+  KAFKA__BootstrapServers=kafka-svc:9092 \
+  ASPNETCORE_ENVIRONMENT=Production
+
+# 6. Créer la route sécurisée
+oc create route edge ebanking-streams-dotnet-secure --service=ebanking-streams-dotnet --port=8080-tcp
+
+# 7. Attendre le déploiement
+oc rollout status deployment/ebanking-streams-dotnet
+```
+
+</details>
+
+### Étape 4 : Valider les Déploiements
+
+#### Vérifier les pods
+
+```bash
+# Vérifier que tous les pods sont Running
+oc get pods -l app=ebanking-streams-java
+oc get pods -l app=ebanking-streams-dotnet
+oc get pods -l app=banking-ksqldb-lab
+
+# Attendu : 1/1 dans la colonne READY pour chaque pod
+```
+
+#### Vérifier les routes
+
+```bash
+# Obtenir les URLs publiques
+oc get route ebanking-streams-java-secure -o jsonpath='{.spec.host}'
+oc get route ebanking-streams-dotnet-secure -o jsonpath='{.spec.host}'
+oc get route banking-ksqldb-lab-secure -o jsonpath='{.spec.host}'
+```
+
+#### Health Checks
+
+```bash
+# Test des endpoints de santé
+curl -k https://ebanking-streams-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/actuator/health
+curl -k https://ebanking-streams-dotnet-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/health
+curl -k https://banking-ksqldb-lab-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/TransactionStream/health
 ```
 
 ---
 
-## 🚢 Déploiement — 3 Environnements
+## 🧪 Tests et Validation
+
+### Scénario 1 : Produire des Événements de Vente
+
+#### Java Kafka Streams
+
+```bash
+# Produire un événement de vente
+curl -k -X POST https://ebanking-streams-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/sales \
+  -H "Content-Type: application/json" \
+  -d '{"productId":"PROD-001","quantity":2,"unitPrice":125.00}'
+
+**Réponse attendue (201 Created)**:
+```json
+{
+  "message": "Sale event processed",
+  "productId": "PROD-001",
+  "quantity": 2,
+  "unitPrice": 125.00,
+  "totalAmount": 250.00,
+  "timestamp": "2026-02-12T10:30:00Z"
+}
+```
+
+# Vérifier les statistiques
+curl -k https://ebanking-streams-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/stats/by-product
+
+**Réponse attendue**:
+```json
+[
+  {
+    "productId": "PROD-001",
+    "totalAmount": 250.00,
+    "totalQuantity": 2,
+    "averagePrice": 125.00
+  }
+]
+```
+```
+
+#### .NET Streams API
+
+```bash
+# Produire un événement de vente
+curl -k -X POST https://ebanking-streams-dotnet-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/sales \
+  -H "Content-Type: application/json" \
+  -d '{"productId":"PROD-002","quantity":3,"unitPrice":99.50}'
+
+**Réponse attendue (201 Created)**:
+```json
+{
+  "message": "Sale event processed successfully",
+  "productId": "PROD-002",
+  "quantity": 3,
+  "unitPrice": 99.50,
+  "totalAmount": 298.50
+}
+```
+
+# Produire une transaction bancaire
+curl -k -X POST https://ebanking-streams-dotnet-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/transactions \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"CUST-001","amount":1500.00,"type":"TRANSFER"}'
+
+**Réponse attendue (201 Created)**:
+```json
+{
+  "message": "Transaction processed successfully",
+  "customerId": "CUST-001",
+  "amount": 1500.00,
+  "type": "TRANSFER",
+  "status": "Processed"
+}
+```
+```
+
+### Scénario 2 : ksqlDB Stream Processing
+
+```bash
+# Initialiser les streams ksqlDB
+curl -k -X POST https://banking-ksqldb-lab-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/TransactionStream/initialize
+
+**Réponse attendue (200 OK)**:
+```json
+{
+  "message": "ksqlDB streams initialized successfully",
+  "streamsCreated": ["transactions", "verified_transactions"],
+  "tablesCreated": ["account_balances"]
+}
+```
+
+# Générer 10 transactions de test
+curl -k -X POST https://banking-ksqldb-lab-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/TransactionStream/transactions/generate/10
+
+**Réponse attendue (200 OK)**:
+```json
+{
+  "message": "Generated 10 test transactions",
+  "transactions": [
+    {
+      "transactionId": "tx-001",
+      "fromAccount": "FR7630001000111222334",
+      "toAccount": "FR7630001000445566778",
+      "amount": 250.00,
+      "type": "TRANSFER"
+    }
+    // ... 9 more transactions
+  ]
+}
+```
+
+# Consulter le solde d'un compte (Pull Query)
+curl -k https://banking-ksqldb-lab-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/TransactionStream/account/CUST-001/balance
+
+**Réponse attendue (200 OK)**:
+```json
+{
+  "accountId": "CUST-001",
+  "balance": 12500.50,
+  "lastUpdated": "2026-02-12T10:35:00Z",
+  "transactionCount": 15
+}
+```
+
+# Stream des transactions vérifiées (Push Query)
+curl -k https://banking-ksqldb-lab-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/TransactionStream/verified/stream
+
+**Réponse attendue (Server-Sent Events)**:
+```
+data: {"transactionId":"tx-002","amount":150.00,"verifiedAt":"2026-02-12T10:36:00Z"}
+
+data: {"transactionId":"tx-003","amount":75.25,"verifiedAt":"2026-02-12T10:36:05Z"}
+```
+```
+
+### Scénario 3 : Vérification dans Kafka
+
+#### Using Kafka UI
+
+**Docker**: <http://localhost:8080>
+
+1. Aller dans **Topics** → **transactions**
+2. Cliquer sur **Messages**
+3. Vérifier les transactions avec format JSON valide
+4. Aller dans **Topics** → **verified_transactions**
+5. Vérifier que seules les transactions valides sont présentes
+
+#### Using Kafka CLI
+
+```bash
+# Vérifier les transactions originales
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server kafka-0.kafka-svc:9092 \
+  --topic transactions \
+  --from-beginning \
+  --max-messages 3
+
+**Résultat attendu**:
+```json
+{"transactionId":"tx-001","fromAccount":"FR7630001000111222334","toAccount":"FR7630001000445566778","amount":250.00,"type":"TRANSFER"}
+{"transactionId":"tx-002","fromAccount":"FR7630001000223344556","toAccount":"FR7630001000556677889","amount":150.00,"type":"PAYMENT"}
+{"transactionId":"tx-003","fromAccount":"FR7630001000334455667","toAccount":"FR7630001000667788990","amount":75.25,"type":"TRANSFER"}
+```
+
+# Vérifier les transactions vérifiées
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server kafka-0.kafka-svc:9092 \
+  --topic verified_transactions \
+  --from-beginning \
+  --max-messages 3
+
+**Résultat attendu** (seules les transactions valides):
+```json
+{"transactionId":"tx-001","amount":250.00,"verifiedAt":"2026-02-12T10:36:00Z"}
+{"transactionId":"tx-002","amount":150.00,"verifiedAt":"2026-02-12T10:36:05Z"}
+{"transactionId":"tx-003","amount":75.25,"verifiedAt":"2026-02-12T10:36:10Z"}
+```
+```
+
+---
+
+## 🚢 Déploiement — 4 Environnements
 
 Chaque lab Day 03 peut être déployé dans **4 environnements**, comme les labs Day 01 et Day 02 :
 

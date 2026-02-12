@@ -72,6 +72,448 @@ cd dotnet/BankingKsqlDBLab && dotnet run
 
 ---
 
+## 🎯 Objectifs du Lab 3.1
+
+À la fin de ce bloc, vous serez capable de :
+
+1. ✅ **Implémenter une topologie Kafka Streams** avec KStream, KTable, et agrégations
+2. ✅ **Utiliser ksqlDB** pour le traitement SQL en temps réel
+3. ✅ **Déployer sur OpenShift Sandbox** avec S2I builds
+4. ✅ **Exécuter des requêtes interactives** sur les state stores
+5. ✅ **Monitorer les métriques** de stream processing
+6. ✅ **Gérer les erreurs** et la tolérance aux pannes
+
+---
+
+## 🚀 Instructions Pas à Pas
+
+### Étape 1 : Préparer l'environnement
+
+#### Cluster Kafka opérationnel
+
+<details>
+<summary>🐳 Docker Compose</summary>
+
+```bash
+# Démarrer le cluster (depuis le module-01)
+cd ../../module-01-cluster
+./scripts/up.sh
+
+# Vérifier la santé
+docker ps | grep kafka
+# kafka et kafka-ui doivent être "Up"
+```
+
+</details>
+
+<details>
+<summary>☸️ OKD / K3s / Kubernetes</summary>
+
+```bash
+kubectl get kafka -n kafka
+# Expected: bhf-kafka with status Ready
+```
+
+</details>
+
+<details>
+<summary>☁️ OpenShift Sandbox (Recommended)</summary>
+
+```bash
+# Prérequis: oc CLI installé
+# Token et serveur depuis votre sandbox OpenShift
+
+# Vérifier l'accès
+oc login --token=sha256~XXXX --server=https://api.sandbox.xxx.openshiftapps.com:6443
+oc project msellamitn-dev
+```
+
+**Le script gère automatiquement :**
+- ✅ Scale Kafka cluster (si nécessaire)
+- ✅ Déployer ksqlDB avec configuration optimale
+- ✅ Créer tous les topics Kafka requis
+- ✅ Builder et déployer les applications Java/.NET
+- ✅ Configurer routes TLS edge termination
+- ✅ Initialiser les streams ksqlDB
+- ✅ Générer transactions de test
+- ✅ Valider les push/pull queries
+
+</details>
+
+### Étape 2 : Créer les topics nécessaires
+
+<details>
+<summary>🐳 Docker Compose</summary>
+
+```bash
+# Topics pour le lab
+for TOPIC in transactions verified_transactions fraud_alerts account_balances hourly_stats sales-events sales-stats
+do
+  docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+    --bootstrap-server localhost:9092 \
+    --create --if-not-exists \
+    --topic "$TOPIC" \
+    --partitions 6 \
+    --replication-factor 1
+done
+
+# Vérifier
+docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --list
+```
+
+</details>
+
+<details>
+<summary>☸️ OKD / K3s</summary>
+
+```bash
+for TOPIC in transactions verified_transactions fraud_alerts account_balances hourly_stats sales-events sales-stats
+do
+  kubectl run kafka-cli -it --rm --image=quay.io/strimzi/kafka:latest-kafka-4.0.0 \
+    --restart=Never -n kafka -- \
+    bin/kafka-topics.sh --bootstrap-server bhf-kafka-kafka-bootstrap:9092 \
+    --create --if-not-exists --topic "$TOPIC" --partitions 6 --replication-factor 3
+done
+```
+
+</details>
+
+<details>
+<summary>☁️ OpenShift Sandbox</summary>
+
+```bash
+# Les topics sont créés automatiquement par le script de déploiement
+# Si vous devez les créer manuellement :
+
+oc exec kafka-0 -- bash -c "
+  kafka-topics --bootstrap-server kafka-0.kafka-svc:9092 --create --topic transactions --partitions 6 --replication-factor 1 --if-not-exists
+  kafka-topics --bootstrap-server kafka-0.kafka-svc:9092 --create --topic verified_transactions --partitions 6 --replication-factor 1 --if-not-exists
+  kafka-topics --bootstrap-server kafka-0.kafka-svc:9092 --create --topic fraud_alerts --partitions 6 --replication-factor 1 --if-not-exists
+  kafka-topics --bootstrap-server kafka-0.kafka-svc:9092 --create --topic account_balances --partitions 6 --replication-factor 1 --if-not-exists
+  kafka-topics --bootstrap-server kafka-0.kafka-svc:9092 --create --topic hourly_stats --partitions 6 --replication-factor 1 --if-not-exists
+  kafka-topics --bootstrap-server kafka-0.kafka-svc:9092 --create --topic sales-events --partitions 6 --replication-factor 1 --if-not-exists
+  kafka-topics --bootstrap-server kafka-0.kafka-svc:9092 --create --topic sales-stats --partitions 6 --replication-factor 1 --if-not-exists
+"
+```
+
+</details>
+
+### Étape 3 : Déployer les Applications
+
+#### Option A : Déploiement Automatisé (Recommandé)
+
+<details>
+<summary>🖥️ PowerShell (Windows)</summary>
+
+```powershell
+# Lab 3.1a Java — Kafka Streams
+.\scripts\powershell\deploy-and-test-3.1a-java.ps1 -Token "sha256~XXX" -Server "https://api..."
+
+# Lab 3.1a .NET — Streams API
+.\scripts\powershell\deploy-and-test-3.1a-dotnet.ps1 -Token "sha256~XXX" -Server "https://api..."
+
+# Lab 3.1b .NET — ksqlDB Lab (déploie ksqlDB + app)
+.\scripts\powershell\deploy-and-test-3.1b-dotnet.ps1 -Token "sha256~XXX" -Server "https://api..."
+```
+
+</details>
+
+<details>
+<summary>🐧 Bash (Linux/macOS/WSL)</summary>
+
+```bash
+# Lab 3.1a Java — Kafka Streams
+./scripts/bash/deploy-and-test-3.1a-java.sh --token "sha256~XXX" --server "https://api..."
+
+# Lab 3.1a .NET — Streams API
+./scripts/bash/deploy-and-test-3.1a-dotnet.sh --token "sha256~XXX" --server "https://api..."
+
+# Lab 3.1b .NET — ksqlDB Lab (déploie ksqlDB + app)
+./scripts/bash/deploy-and-test-3.1b-dotnet.sh --token "sha256~XXX" --server "https://api..."
+```
+
+</details>
+
+#### Option B : Déploiement Manuel (Étape par Étape)
+
+<details>
+<summary>📋 Déploiement Manuel Java</summary>
+
+```bash
+# 1. Builder l'application Java
+cd java
+mvn clean package -DskipTests
+
+# 2. Créer le build S2I
+oc new-build java:openjdk-17-ubi8 --binary=true --name=ebanking-streams-java
+
+# 3. Lancer la build
+oc start-build ebanking-streams-java --from-dir=. --follow
+
+# 4. Créer l'application
+oc new-app ebanking-streams-java
+
+# 5. Configurer les variables d'environnement
+oc set env deployment/ebanking-streams-java \
+  KAFKA_BOOTSTRAP_SERVERS=kafka-svc:9092 \
+  SPRING_PROFILES_ACTIVE=openshift
+
+# 6. Créer la route sécurisée
+oc create route edge ebanking-streams-java-secure --service=ebanking-streams-java --port=8080-tcp
+
+# 7. Attendre le déploiement
+oc rollout status deployment/ebanking-streams-java
+```
+
+</details>
+
+<details>
+<summary>📋 Déploiement Manuel .NET</summary>
+
+```bash
+# 1. Builder l'application .NET
+cd dotnet/M05StreamsApi
+dotnet publish -c Release -o ./publish
+
+# 2. Créer le build S2I
+oc new-build dotnet:8.0-ubi8 --binary=true --name=ebanking-streams-dotnet
+
+# 3. Lancer la build
+oc start-build ebanking-streams-dotnet --from-dir=./publish --follow
+
+# 4. Créer l'application
+oc new-app ebanking-streams-dotnet
+
+# 5. Configurer les variables d'environnement
+oc set env deployment/ebanking-streams-dotnet \
+  KAFKA__BootstrapServers=kafka-svc:9092 \
+  ASPNETCORE_ENVIRONMENT=Production
+
+# 6. Créer la route sécurisée
+oc create route edge ebanking-streams-dotnet-secure --service=ebanking-streams-dotnet --port=8080-tcp
+
+# 7. Attendre le déploiement
+oc rollout status deployment/ebanking-streams-dotnet
+```
+
+</details>
+
+### Étape 4 : Valider les Déploiements
+
+#### Vérifier les pods
+
+```bash
+# Vérifier que tous les pods sont Running
+oc get pods -l app=ebanking-streams-java
+oc get pods -l app=ebanking-streams-dotnet
+oc get pods -l app=banking-ksqldb-lab
+
+# Attendu : 1/1 dans la colonne READY pour chaque pod
+```
+
+#### Vérifier les routes
+
+```bash
+# Obtenir les URLs publiques
+oc get route ebanking-streams-java-secure -o jsonpath='{.spec.host}'
+oc get route ebanking-streams-dotnet-secure -o jsonpath='{.spec.host}'
+oc get route banking-ksqldb-lab-secure -o jsonpath='{.spec.host}'
+```
+
+#### Health Checks
+
+```bash
+# Test des endpoints de santé
+curl -k https://ebanking-streams-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/actuator/health
+curl -k https://ebanking-streams-dotnet-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/health
+curl -k https://banking-ksqldb-lab-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/TransactionStream/health
+```
+
+---
+
+## 🧪 Tests et Validation
+
+### Scénario 1 : Produire des Événements de Vente
+
+#### Java Kafka Streams
+
+```bash
+# Produire un événement de vente
+curl -k -X POST https://ebanking-streams-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/sales \
+  -H "Content-Type: application/json" \
+  -d '{"productId":"PROD-001","quantity":2,"unitPrice":125.00}'
+
+**Réponse attendue (201 Created)**:
+```json
+{
+  "message": "Sale event processed",
+  "productId": "PROD-001",
+  "quantity": 2,
+  "unitPrice": 125.00,
+  "totalAmount": 250.00,
+  "timestamp": "2026-02-12T10:30:00Z"
+}
+```
+
+# Vérifier les statistiques
+curl -k https://ebanking-streams-java-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/stats/by-product
+
+**Réponse attendue**:
+```json
+[
+  {
+    "productId": "PROD-001",
+    "totalAmount": 250.00,
+    "totalQuantity": 2,
+    "averagePrice": 125.00
+  }
+]
+```
+```
+
+#### .NET Streams API
+
+```bash
+# Produire un événement de vente
+curl -k -X POST https://ebanking-streams-dotnet-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/sales \
+  -H "Content-Type: application/json" \
+  -d '{"productId":"PROD-002","quantity":3,"unitPrice":99.50}'
+
+**Réponse attendue (201 Created)**:
+```json
+{
+  "message": "Sale event processed successfully",
+  "productId": "PROD-002",
+  "quantity": 3,
+  "unitPrice": 99.50,
+  "totalAmount": 298.50
+}
+```
+
+# Produire une transaction bancaire
+curl -k -X POST https://ebanking-streams-dotnet-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/v1/transactions \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"CUST-001","amount":1500.00,"type":"TRANSFER"}'
+
+**Réponse attendue (201 Created)**:
+```json
+{
+  "message": "Transaction processed successfully",
+  "customerId": "CUST-001",
+  "amount": 1500.00,
+  "type": "TRANSFER",
+  "status": "Processed"
+}
+```
+```
+
+### Scénario 2 : ksqlDB Stream Processing
+
+```bash
+# Initialiser les streams ksqlDB
+curl -k -X POST https://banking-ksqldb-lab-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/TransactionStream/initialize
+
+**Réponse attendue (200 OK)**:
+```json
+{
+  "message": "ksqlDB streams initialized successfully",
+  "streamsCreated": ["transactions", "verified_transactions"],
+  "tablesCreated": ["account_balances"]
+}
+```
+
+# Générer 10 transactions de test
+curl -k -X POST https://banking-ksqldb-lab-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/TransactionStream/transactions/generate/10
+
+**Réponse attendue (200 OK)**:
+```json
+{
+  "message": "Generated 10 test transactions",
+  "transactions": [
+    {
+      "transactionId": "tx-001",
+      "fromAccount": "FR7630001000111222334",
+      "toAccount": "FR7630001000445566778",
+      "amount": 250.00,
+      "type": "TRANSFER"
+    }
+    // ... 9 more transactions
+  ]
+}
+```
+
+# Consulter le solde d'un compte (Pull Query)
+curl -k https://banking-ksqldb-lab-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/TransactionStream/account/CUST-001/balance
+
+**Réponse attendue (200 OK)**:
+```json
+{
+  "accountId": "CUST-001",
+  "balance": 12500.50,
+  "lastUpdated": "2026-02-12T10:35:00Z",
+  "transactionCount": 15
+}
+```
+
+# Stream des transactions vérifiées (Push Query)
+curl -k https://banking-ksqldb-lab-secure.apps.sandbox.x8i5.p1.openshiftapps.com/api/TransactionStream/verified/stream
+
+**Réponse attendue (Server-Sent Events)**:
+```
+data: {"transactionId":"tx-002","amount":150.00,"verifiedAt":"2026-02-12T10:36:00Z"}
+
+data: {"transactionId":"tx-003","amount":75.25,"verifiedAt":"2026-02-12T10:36:05Z"}
+```
+```
+
+### Scénario 3 : Vérification dans Kafka
+
+#### Using Kafka UI
+
+**Docker**: <http://localhost:8080>
+
+1. Aller dans **Topics** → **transactions**
+2. Cliquer sur **Messages**
+3. Vérifier les transactions avec format JSON valide
+4. Aller dans **Topics** → **verified_transactions**
+5. Vérifier que seules les transactions valides sont présentes
+
+#### Using Kafka CLI
+
+```bash
+# Vérifier les transactions originales
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server kafka-0.kafka-svc:9092 \
+  --topic transactions \
+  --from-beginning \
+  --max-messages 3
+
+**Résultat attendu**:
+```json
+{"transactionId":"tx-001","fromAccount":"FR7630001000111222334","toAccount":"FR7630001000445566778","amount":250.00,"type":"TRANSFER"}
+{"transactionId":"tx-002","fromAccount":"FR7630001000223344556","toAccount":"FR7630001000556677889","amount":150.00,"type":"PAYMENT"}
+{"transactionId":"tx-003","fromAccount":"FR7630001000334455667","toAccount":"FR7630001000667788990","amount":75.25,"type":"TRANSFER"}
+```
+
+# Vérifier les transactions vérifiées
+oc exec kafka-0 -- /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server kafka-0.kafka-svc:9092 \
+  --topic verified_transactions \
+  --from-beginning \
+  --max-messages 3
+
+**Résultat attendu** (seules les transactions valides):
+```json
+{"transactionId":"tx-001","amount":250.00,"verifiedAt":"2026-02-12T10:36:00Z"}
+{"transactionId":"tx-002","amount":150.00,"verifiedAt":"2026-02-12T10:36:05Z"}
+{"transactionId":"tx-003","amount":75.25,"verifiedAt":"2026-02-12T10:36:10Z"}
+```
+```
+
+---
+
 ## 🚢 Déploiement — 4 Environnements
 
 Chaque lab peut être déployé dans **4 environnements**, comme les labs Day 01 et Day 02 :
