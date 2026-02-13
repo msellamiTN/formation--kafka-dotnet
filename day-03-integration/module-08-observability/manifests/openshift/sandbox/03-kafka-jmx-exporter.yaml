@@ -1,0 +1,156 @@
+# =============================================================================
+# Kafka JMX Exporter - OpenShift Sandbox Deployment
+# =============================================================================
+# Deploys JMX Exporter for Kafka brokers with production configuration
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-jmx-exporter-config
+  labels:
+    app: kafka-jmx-exporter
+    module: observability
+data:
+  config.yml: |
+    # Production Kafka JMX Exporter Configuration
+    # Exposes critical Kafka metrics for monitoring
+    startDelaySeconds: 0
+    lowercaseOutputName: true
+    rules:
+      # Kafka Broker Metrics
+      - pattern: "kafka.server<type=BrokerTopicMetrics, name=MessagesInPerSec><>Count"
+        name: "kafka_server_brokertopicmetrics_messagesin_total"
+        help: "Total number of messages received by the broker"
+        type: COUNTER
+      
+      - pattern: "kafka.server<type=BrokerTopicMetrics, name=BytesInPerSec><>Count"
+        name: "kafka_server_brokertopicmetrics_bytesin_total"
+        help: "Total bytes received by the broker"
+        type: COUNTER
+      
+      - pattern: "kafka.server<type=BrokerTopicMetrics, name=BytesOutPerSec><>Count"
+        name: "kafka_server_brokertopicmetrics_bytesout_total"
+        help: "Total bytes sent by the broker"
+        type: COUNTER
+      
+      # Kafka Controller Metrics
+      - pattern: "kafka.controller<type=KafkaController, name=ActiveControllerCount><>Value"
+        name: "kafka_controller_active_controller_count"
+        help: "Number of active controllers in the cluster"
+        type: GAUGE
+      
+      # Kafka Log Metrics
+      - pattern: "kafka.log<type=LogFlushStats, name=LogFlushRateAndTimeMs><>Count"
+        name: "kafka_log_logflush_total"
+        help: "Total number of log flushes"
+        type: COUNTER
+      
+      # Kafka Network Metrics
+      - pattern: "kafka.network<type=RequestMetrics, name=RequestsPerSec, request=Produce><>Count"
+        name: "kafka_network_requestmetrics_produce_requests_total"
+        help: "Total number of produce requests"
+        type: COUNTER
+      
+      - pattern: "kafka.network<type=RequestMetrics, name=RequestsPerSec, request=FetchConsumer><>Count"
+        name: "kafka_network_requestmetrics_fetch_consumer_requests_total"
+        help: "Total number of fetch consumer requests"
+        type: COUNTER
+      
+      # JVM Metrics
+      - pattern: "java.lang<type=Memory><HeapMemoryUsage>used"
+        name: "jvm_memory_heap_used_bytes"
+        help: "Used heap memory in bytes"
+        type: GAUGE
+      
+      - pattern: "java.lang<type=Memory><NonHeapMemoryUsage>used"
+        name: "jvm_memory_nonheap_used_bytes"
+        help: "Used non-heap memory in bytes"
+        type: GAUGE
+      
+      - pattern: "java.lang<type=GarbageCollector, name=.*><CollectionCount>"
+        name: "jvm_gc_collection_total"
+        help: "Total number of garbage collections"
+        type: COUNTER
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kafka-jmx-exporter
+  labels:
+    app: kafka-jmx-exporter
+    module: observability
+spec:
+  selector:
+    matchLabels:
+      app: kafka-jmx-exporter
+  template:
+    metadata:
+      labels:
+        app: kafka-jmx-exporter
+        module: observability
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9404"
+        prometheus.io/path: "/metrics"
+    spec:
+      hostNetwork: true
+      containers:
+      - name: jmx-exporter
+        image: sscaling/jmx-prometheus-exporter:0.17.2
+        ports:
+        - containerPort: 9404
+          name: metrics
+          protocol: TCP
+        args:
+          - "9404"
+          - "/etc/jmx-exporter/config.yml"
+        env:
+        - name: JMX_EXPORTER_CONFIG_FILE
+          value: "/etc/jmx-exporter/config.yml"
+        - name: JMX_PORT
+          value: "9999"
+        - name: KAFKA_JMX_OPTS
+          value: "-Dcom.sun.management.jmxremote.port=9999 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false"
+        volumeMounts:
+        - name: config
+          mountPath: /etc/jmx-exporter
+          readOnly: true
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+      volumes:
+      - name: config
+        configMap:
+          name: kafka-jmx-exporter-config
+      # Deploy on Kafka nodes only
+      nodeSelector:
+        kubernetes.io/hostname: kafka-0
+      tolerations:
+      - key: "node-role.kubernetes.io/master"
+        operator: "Exists"
+        effect: "NoSchedule"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-jmx-exporter
+  labels:
+    app: kafka-jmx-exporter
+    module: observability
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9404"
+    prometheus.io/path: "/metrics"
+spec:
+  selector:
+    app: kafka-jmx-exporter
+  ports:
+  - name: metrics
+    port: 9404
+    targetPort: 9404
+    protocol: TCP
+  type: ClusterIP

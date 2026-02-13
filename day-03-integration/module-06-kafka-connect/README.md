@@ -51,6 +51,22 @@ curl http://localhost:8083/connectors
 > - L'utilisateur `banking` a besoin du rôle **REPLICATION** pour Debezium
 > - L'extension `uuid-ossp` nécessite l'utilisateur **postgres** (superuser)
 
+#### Option A : Scripts automatisés (Recommandé)
+
+```bash
+# Bash — déploie et teste tout en une commande
+cd day-03-integration/scripts/bash
+./deploy-and-test-3.2a-kafka-connect.sh
+
+# PowerShell
+cd day-03-integration\scripts\powershell
+.\deploy-and-test-3.2a-kafka-connect.ps1
+```
+
+Les scripts appliquent les manifests YAML depuis `scripts/openshift/sandbox/manifests/`, initialisent le schéma, créent le connecteur CDC et testent le CDC temps réel. Voir `scripts/README.md` pour les détails.
+
+#### Option B : Déploiement manuel (étapes ci-dessous)
+
 #### Prérequis Sandbox
 
 ```bash

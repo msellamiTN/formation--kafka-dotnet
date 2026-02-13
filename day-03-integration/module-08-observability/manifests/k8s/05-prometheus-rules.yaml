@@ -1,0 +1,153 @@
+# =============================================================================
+# Prometheus Alert Rules - Kafka Monitoring
+# =============================================================================
+# Defines alerting rules for Kafka cluster health and consumer lag
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kafka-alerts
+  labels:
+    app: prometheus
+    module: observability
+spec:
+  groups:
+    - name: kafka-cluster
+      rules:
+        - alert: KafkaBrokerDown
+          expr: up{job="kafka-metrics-app"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            service: kafka
+          annotations:
+            summary: "Kafka broker is down"
+            description: "Kafka broker {{ $labels.instance }} has been down for more than 1 minute"
+        
+        - alert: KafkaClusterUnhealthy
+          expr: kafka_cluster_healthy == 0
+          for: 2m
+          labels:
+            severity: critical
+            service: kafka
+          annotations:
+            summary: "Kafka cluster is unhealthy"
+            description: "Kafka cluster health check has been failing for more than 2 minutes"
+        
+        - alert: KafkaUnderReplicatedPartitions
+          expr: kafka_cluster_underreplicated_partitions > 0
+          for: 5m
+          labels:
+            severity: warning
+            service: kafka
+          annotations:
+            summary: "Kafka under-replicated partitions detected"
+            description: "{{ $value }} Kafka partitions are under-replicated"
+        
+        - alert: KafkaControllerOffline
+          expr: kafka_cluster_controller_available == 0
+          for: 1m
+          labels:
+            severity: critical
+            service: kafka
+          annotations:
+            summary: "Kafka controller is offline"
+            description: "No Kafka controller is available in the cluster"
+    
+    - name: kafka-consumers
+      rules:
+        - alert: HighConsumerLag
+          expr: kafka_consumer_group_total_lag > 1000
+          for: 2m
+          labels:
+            severity: warning
+            service: kafka
+          annotations:
+            summary: "High consumer lag detected"
+            description: "Consumer group {{ $labels.group_id }} has {{ $value }} messages lag"
+        
+        - alert: CriticalConsumerLag
+          expr: kafka_consumer_group_total_lag > 10000
+          for: 1m
+          labels:
+            severity: critical
+            service: kafka
+          annotations:
+            summary: "Critical consumer lag detected"
+            description: "Consumer group {{ $labels.group_id }} has {{ $value }} messages lag"
+        
+        - alert: ConsumerGroupOffline
+          expr: kafka_consumer_group_state{state="dead"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            service: kafka
+          annotations:
+            summary: "Consumer group is offline"
+            description: "Consumer group {{ $labels.group_id }} has no active members"
+    
+    - name: kafka-topics
+      rules:
+        - alert: KafkaTopicNoReplicas
+          expr: kafka_topic_replication_factor < 2
+          for: 10m
+          labels:
+            severity: warning
+            service: kafka
+          annotations:
+            summary: "Kafka topic has insufficient replicas"
+            description: "Topic {{ $labels.topic_name }} has replication factor {{ $value }}"
+        
+        - alert: KafkaTopicEmpty
+          expr: kafka_topic_messages_total == 0
+          for: 1h
+          labels:
+            severity: info
+            service: kafka
+          annotations:
+            summary: "Kafka topic appears to be empty"
+            description: "Topic {{ $labels.topic_name }} has no messages"
+    
+    - name: kafka-performance
+      rules:
+        - alert: KafkaHighMessageRate
+          expr: rate(kafka_topic_messages_in_total[5m]) > 1000
+          for: 5m
+          labels:
+            severity: warning
+            service: kafka
+          annotations:
+            summary: "High Kafka message rate"
+            description: "Topic {{ $labels.topic_name }} is receiving {{ $value }} messages/sec"
+        
+        - alert: KafkaLowMessageRate
+          expr: rate(kafka_topic_messages_in_total[5m]) < 1
+          for: 15m
+          labels:
+            severity: info
+            service: kafka
+          annotations:
+            summary: "Low Kafka message rate"
+            description: "Topic {{ $labels.topic_name }} is receiving {{ $value }} messages/sec"
+    
+    - name: monitoring-system
+      rules:
+        - alert: PrometheusTargetDown
+          expr: up == 0
+          for: 1m
+          labels:
+            severity: critical
+            service: monitoring
+          annotations:
+            summary: "Prometheus target is down"
+            description: "Target {{ $labels.instance }} of job {{ $labels.job }} is down"
+        
+        - alert: PrometheusNotConnectedToAlertmanager
+          expr: prometheus_notifications_queue_length > 0
+          for: 1m
+          labels:
+            severity: warning
+            service: monitoring
+          annotations:
+            summary: "Prometheus cannot connect to Alertmanager"
+            description: "Prometheus has {{ $value }} alerts in queue"

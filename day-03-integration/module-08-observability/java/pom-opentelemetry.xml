@@ -1,0 +1,51 @@
+<!-- OpenTelemetry Dependencies for Kafka Metrics Dashboard -->
+<dependencies>
+    <!-- OpenTelemetry API -->
+    <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-api</artifactId>
+        <version>1.32.0</version>
+    </dependency>
+    
+    <!-- OpenTelemetry SDK -->
+    <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-sdk</artifactId>
+        <version>1.32.0</version>
+    </dependency>
+    
+    <!-- OpenTelemetry Prometheus Exporter -->
+    <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-exporter-prometheus</artifactId>
+        <version>1.32.0</version>
+    </dependency>
+    
+    <!-- OpenTelemetry Instrumentation for Spring Boot -->
+    <dependency>
+        <groupId>io.opentelemetry.instrumentation</groupId>
+        <artifactId>opentelemetry-spring-boot-starter</artifactId>
+        <version>1.32.0-alpha</version>
+    </dependency>
+    
+    <!-- OpenTelemetry Instrumentation for Kafka -->
+    <dependency>
+        <groupId>io.opentelemetry.instrumentation</groupId>
+        <artifactId>opentelemetry-kafka-clients-2.6</artifactId>
+        <version>1.32.0-alpha</version>
+    </dependency>
+    
+    <!-- OpenTelemetry Instrumentation for HTTP -->
+    <dependency>
+        <groupId>io.opentelemetry.instrumentation</groupId>
+        <artifactId>opentelemetry-spring-boot-starter-webmvc</artifactId>
+        <version>1.32.0-alpha</version>
+    </dependency>
+    
+    <!-- OpenTelemetry Resource Detector for Spring Boot -->
+    <dependency>
+        <groupId>io.opentelemetry.instrumentation</groupId>
+        <artifactId>opentelemetry-spring-boot-autoconfigure</artifactId>
+        <version>1.32.0-alpha</version>
+    </dependency>
+</dependencies>

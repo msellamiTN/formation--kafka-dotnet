@@ -59,7 +59,9 @@ declare -a labs=(
     "Lab 3.1a (Java) - Kafka Streams:deploy-and-test-3.1a-java.sh"
     "Lab 3.1a (.NET) - Streams API:deploy-and-test-3.1a-dotnet.sh"
     "Lab 3.1b (.NET) - ksqlDB Lab:deploy-and-test-3.1b-dotnet.sh"
+    "Lab 3.2a - Kafka Connect CDC:deploy-and-test-3.2a-kafka-connect.sh"
     "Lab 3.4a (Java) - Metrics Dashboard:deploy-and-test-3.4a-java.sh"
+    "Lab 3.4b - Observability Stack:deploy-and-test-3.4b-observability.sh"
 )
 
 SUCCESS=0

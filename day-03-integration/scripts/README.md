@@ -17,19 +17,27 @@ Scripts **Bash** et **PowerShell** pour déployer et tester les labs Day 03 (Jav
 ```text
 scripts/
 ├── bash/
-│   ├── deploy-and-test-3.1a-java.sh    # Lab 3.1a (Java) - Kafka Streams
-│   ├── deploy-and-test-3.1a-dotnet.sh  # Lab 3.1a (.NET) - Streams API
-│   ├── deploy-and-test-3.1b-dotnet.sh  # Lab 3.1b (.NET) - ksqlDB Lab
-│   ├── deploy-and-test-3.4a-java.sh    # Lab 3.4a (Java) - Metrics Dashboard
-│   ├── deploy-all-labs.sh              # Déployer tous les labs
-│   └── test-all-apis.sh               # Tester toutes les APIs
+│   ├── deploy-and-test-3.1a-java.sh          # Lab 3.1a (Java) - Kafka Streams
+│   ├── deploy-and-test-3.1a-dotnet.sh        # Lab 3.1a (.NET) - Streams API
+│   ├── deploy-and-test-3.1b-dotnet.sh        # Lab 3.1b (.NET) - ksqlDB Lab
+│   ├── deploy-and-test-3.2a-kafka-connect.sh # Lab 3.2a - Kafka Connect CDC
+│   ├── cleanup-3.2a-kafka-connect.sh         # Lab 3.2a - Nettoyage
+│   ├── deploy-and-test-3.4a-java.sh          # Lab 3.4a (Java) - Metrics Dashboard
+│   ├── deploy-and-test-3.4b-observability.sh # Lab 3.4b - Observability Stack
+│   ├── cleanup-3.4b-observability.sh         # Lab 3.4b - Nettoyage
+│   ├── deploy-all-labs.sh                    # Déployer tous les labs
+│   └── test-all-apis.sh                     # Tester toutes les APIs
 ├── powershell/
-│   ├── deploy-and-test-3.1a-java.ps1   # Lab 3.1a (Java) - Kafka Streams
-│   ├── deploy-and-test-3.1a-dotnet.ps1 # Lab 3.1a (.NET) - Streams API
-│   ├── deploy-and-test-3.1b-dotnet.ps1 # Lab 3.1b (.NET) - ksqlDB Lab
-│   ├── deploy-and-test-3.4a-java.ps1   # Lab 3.4a (Java) - Metrics Dashboard
-│   ├── deploy-all-labs.ps1             # Déployer tous les labs
-│   └── test-all-apis.ps1              # Tester toutes les APIs
+│   ├── deploy-and-test-3.1a-java.ps1          # Lab 3.1a (Java) - Kafka Streams
+│   ├── deploy-and-test-3.1a-dotnet.ps1        # Lab 3.1a (.NET) - Streams API
+│   ├── deploy-and-test-3.1b-dotnet.ps1        # Lab 3.1b (.NET) - ksqlDB Lab
+│   ├── deploy-and-test-3.2a-kafka-connect.ps1 # Lab 3.2a - Kafka Connect CDC
+│   ├── cleanup-3.2a-kafka-connect.ps1         # Lab 3.2a - Nettoyage
+│   ├── deploy-and-test-3.4a-java.ps1          # Lab 3.4a (Java) - Metrics Dashboard
+│   ├── deploy-and-test-3.4b-observability.ps1 # Lab 3.4b - Observability Stack
+│   ├── cleanup-3.4b-observability.ps1         # Lab 3.4b - Nettoyage
+│   ├── deploy-all-labs.ps1                    # Déployer tous les labs
+│   └── test-all-apis.ps1                     # Tester toutes les APIs
 └── README.md                           # Ce fichier
 ```
 
@@ -49,6 +57,10 @@ scripts/
 # .NET
 .\scripts\powershell\deploy-and-test-3.1a-dotnet.ps1 -Token "sha256~XXX" -Server "https://api..."
 .\scripts\powershell\deploy-and-test-3.1b-dotnet.ps1 -Token "sha256~XXX" -Server "https://api..."
+# Kafka Connect CDC (pas de S2I, déploie manifests + connecteur)
+.\scripts\powershell\deploy-and-test-3.2a-kafka-connect.ps1
+# Observability Stack (Prometheus + Grafana + Metrics App)
+.\scripts\powershell\deploy-and-test-3.4b-observability.ps1
 ```
 
 </details>
@@ -63,6 +75,10 @@ scripts/
 # .NET
 ./scripts/bash/deploy-and-test-3.1a-dotnet.sh --token "sha256~XXX" --server "https://api..."
 ./scripts/bash/deploy-and-test-3.1b-dotnet.sh --token "sha256~XXX" --server "https://api..."
+# Kafka Connect CDC (pas de S2I, déploie manifests + connecteur)
+./scripts/bash/deploy-and-test-3.2a-kafka-connect.sh
+# Observability Stack (Prometheus + Grafana + Metrics App)
+./scripts/bash/deploy-and-test-3.4b-observability.sh
 ```
 
 </details>
@@ -118,7 +134,11 @@ scripts/
 | 3.1a | Java | `deploy-and-test-3.1a-java.sh` | `deploy-and-test-3.1a-java.ps1` | Kafka Streams temps réel |
 | 3.1a | .NET | `deploy-and-test-3.1a-dotnet.sh` | `deploy-and-test-3.1a-dotnet.ps1` | Streams API (.NET) |
 | 3.1b | .NET | `deploy-and-test-3.1b-dotnet.sh` | `deploy-and-test-3.1b-dotnet.ps1` | ksqlDB Lab (.NET) |
+| 3.2a | CDC | `deploy-and-test-3.2a-kafka-connect.sh` | `deploy-and-test-3.2a-kafka-connect.ps1` | Kafka Connect CDC (Debezium) |
+| 3.2a | CDC | `cleanup-3.2a-kafka-connect.sh` | `cleanup-3.2a-kafka-connect.ps1` | Nettoyage Kafka Connect |
 | 3.4a | Java | `deploy-and-test-3.4a-java.sh` | `deploy-and-test-3.4a-java.ps1` | Tableau de bord Métriques |
+| 3.4b | Monitoring | `deploy-and-test-3.4b-observability.sh` | `deploy-and-test-3.4b-observability.ps1` | Observability Stack (Prometheus + Grafana) |
+| 3.4b | Monitoring | `cleanup-3.4b-observability.sh` | `cleanup-3.4b-observability.ps1` | Nettoyage Observability |
 
 ### Scripts master
 
@@ -137,6 +157,10 @@ scripts/
 | `ebanking-streams-dotnet` | .NET | `ebanking-streams-dotnet-secure` | 8080 | M05 - Streams API |
 | `banking-ksqldb-lab` | .NET | `banking-ksqldb-lab-secure` | 8080 | M05 - ksqlDB |
 | `ebanking-metrics-java` | Java | `ebanking-metrics-java-secure` | 8080 | M08 - Observabilité |
+| `kafka-connect` | CDC | `kafka-connect` | 8083 | M06 - Kafka Connect |
+| `postgres-banking` | CDC | _(interne)_ | 5432 | M06 - PostgreSQL Banking |
+| `prometheus` | Monitoring | `prometheus` | 9090 | M08 - Observabilité |
+| `grafana` | Monitoring | `grafana` | 3000 | M08 - Observabilité |
 
 ---
 

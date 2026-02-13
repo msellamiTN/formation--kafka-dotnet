@@ -224,9 +224,84 @@ gantt
 
 ---
 
-## 🛠️ Partie Pratique (70%)
+## � Déploiement rapide
+
+### Déploiement OpenShift Sandbox (Recommandé)
+
+> **Lab 3.4a** : Metrics Dashboard (Java Spring Boot + AdminClient)
+> **Lab 3.4b** : Full Observability Stack (Prometheus + Grafana + Metrics App)
+
+#### Option A : Scripts automatisés
+
+```bash
+# Bash — Lab 3.4a : Metrics Dashboard seul (S2I)
+cd day-03-integration/scripts/bash
+./deploy-and-test-3.4a-java.sh
+
+# Bash — Lab 3.4b : Stack complet (Prometheus + Grafana + Metrics App)
+./deploy-and-test-3.4b-observability.sh
+
+# PowerShell
+cd day-03-integration\scripts\powershell
+.\deploy-and-test-3.4a-java.ps1
+.\deploy-and-test-3.4b-observability.ps1
+```
+
+Le script 3.4b déploie automatiquement :
+
+- **Prometheus** (prom/prometheus:v2.47.0) — scrape metrics depuis l'app Java
+- **Grafana** (grafana/grafana:10.2.0) — datasource Prometheus pré-configurée
+- **Metrics Dashboard** (ebanking-metrics-java) — via S2I si pas déjà déployé
+- Import automatique du dashboard Kafka (`grafana/dashboards/kafka-metrics-dashboard.json`)
+
+#### Nettoyage
+
+```bash
+# Bash
+./cleanup-3.4b-observability.sh
+
+# PowerShell
+.\cleanup-3.4b-observability.ps1
+```
+
+#### Manifests OpenShift Sandbox
+
+```text
+manifests/openshift/sandbox/
+├── 01-prometheus.yaml    # Prometheus Deployment + Service + ConfigMap
+└── 02-grafana.yaml       # Grafana Deployment + Service + Provisioning
+```
+
+#### Manifests K8s/OKD (complet)
+
+```text
+manifests/k8s/
+├── 01-prometheus.yaml           # Prometheus + PVC + ServiceMonitor
+├── 02-grafana.yaml              # Grafana + PVC
+├── 03-grafana-provisioning.yaml # Datasources + Dashboard provider
+├── 04-alertmanager.yaml         # AlertManager + routing rules
+└── 05-prometheus-rules.yaml     # PrometheusRule CRD (alerting rules)
+```
+
+---
+
+## �🛠️ Partie Pratique (70%)
 
 ### Prérequis
+
+<details>
+<summary>☁️ <b>Mode OpenShift Sandbox</b></summary>
+
+```bash
+# Se connecter au Sandbox
+oc login --token=sha256~XXX --server=https://api.rm3.7wse.p1.openshiftapps.com:6443
+oc project msellamitn-dev
+
+# Vérifier que Kafka est déjà déployé
+oc get pods -l app=kafka
+```
+
+</details>
 
 <details>
 <summary>🐳 <b>Mode Docker</b></summary>

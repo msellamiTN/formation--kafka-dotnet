@@ -40,7 +40,9 @@ $labs = @(
     @{ Name = "Lab 3.1a (Java) - Kafka Streams"; Script = "deploy-and-test-3.1a-java.ps1" },
     @{ Name = "Lab 3.1a (.NET) - Streams API"; Script = "deploy-and-test-3.1a-dotnet.ps1" },
     @{ Name = "Lab 3.1b (.NET) - ksqlDB Lab"; Script = "deploy-and-test-3.1b-dotnet.ps1" },
-    @{ Name = "Lab 3.4a (Java) - Metrics Dashboard"; Script = "deploy-and-test-3.4a-java.ps1" }
+    @{ Name = "Lab 3.2a - Kafka Connect CDC"; Script = "deploy-and-test-3.2a-kafka-connect.ps1" },
+    @{ Name = "Lab 3.4a (Java) - Metrics Dashboard"; Script = "deploy-and-test-3.4a-java.ps1" },
+    @{ Name = "Lab 3.4b - Observability Stack"; Script = "deploy-and-test-3.4b-observability.ps1" }
 )
 
 $success = 0

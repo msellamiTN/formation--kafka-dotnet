@@ -1,0 +1,114 @@
+# =============================================================================
+# Prometheus - OpenShift Sandbox Deployment
+# =============================================================================
+# Deploys Prometheus with minimal resources for Sandbox constraints
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  labels:
+    app: prometheus
+    module: observability
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    
+    scrape_configs:
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+      
+      - job_name: 'kafka-metrics-app'
+        static_configs:
+          - targets: ['ebanking-metrics-java:8080']
+        metrics_path: /actuator/prometheus
+        scrape_interval: 10s
+      
+      - job_name: 'kafka-metrics-app-opentelemetry'
+        static_configs:
+          - targets: ['ebanking-metrics-java:9464']
+        metrics_path: /metrics
+        scrape_interval: 10s
+      
+      - job_name: 'kafka-metrics-exporter'
+        static_configs:
+          - targets: ['kafka-metrics-exporter:9404']
+        metrics_path: /actuator/prometheus
+        scrape_interval: 15s
+        honor_labels: true
+      
+      - job_name: 'jaeger'
+        static_configs:
+          - targets: ['jaeger:16686']
+        metrics_path: /metrics
+        scrape_interval: 15s
+      
+      - job_name: 'grafana'
+        static_configs:
+          - targets: ['grafana:3000']
+        metrics_path: /metrics
+        scrape_interval: 15s
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+    module: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+      - name: prometheus
+        image: prom/prometheus:v2.47.0
+        ports:
+        - containerPort: 9090
+        args:
+          - '--config.file=/etc/prometheus/prometheus.yml'
+          - '--storage.tsdb.path=/prometheus'
+          - '--web.enable-lifecycle'
+          - '--storage.tsdb.retention.time=7d'
+        volumeMounts:
+        - name: config
+          mountPath: /etc/prometheus
+        - name: storage
+          mountPath: /prometheus
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 300m
+            memory: 512Mi
+      volumes:
+      - name: config
+        configMap:
+          name: prometheus-config
+      - name: storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+    module: observability
+spec:
+  selector:
+    app: prometheus
+  ports:
+  - port: 9090
+    targetPort: 9090
+  type: ClusterIP
